@@ -16,19 +16,29 @@ local sectionOpen
 local sectionDone
 local listPanel
 local detailPanel
-local GOLD = { r = 0.90, g = 0.70, b = 0.27 }
+local GOLD = { r = 0.99, g = 0.93, b = 0.59 }
 local listChild
 local listScroll
 local detailFS
 local detailTitle
+local detailGoalsHeader
 local detailChild
 local detailScroll
-local subtitle
 local rows = {}
+local goalRows = {}
+local INK = { r = 0.22, g = 0.12, b = 0.04 }
+local INK_MUTED = { r = 0.42, g = 0.35, b = 0.25 }
+local lastDetailID
 local selectedID
 local built = false
 local checking = false
 local lastCharacterLine = ""
+local syncScrollBar
+local scrollBy
+local bindWheel
+local wheelOnFrame
+local wheelOnList
+local wheelOnDetail
 
 local function secret(v)
     if issecretvalue == nil or v == nil then
@@ -403,66 +413,64 @@ local function setSectionExpanded(key, open)
     GutSagaDB.sections[key] = open and true or false
 end
 
-local function objectiveText(entry)
+local function objectiveLines(entry)
     local objs = entry.objectives
+    local lines = {}
     if type(objs) ~= "table" then
-        return bullets(type(objs) == "string" and objs or "")
+        local text = type(objs) == "string" and objs or ""
+        if text == "" then
+            return lines
+        end
+        for line in string.gmatch(text, "[^\n]+") do
+            table.insert(lines, { done = false, text = line })
+        end
+        return lines
     end
     local bucket = savedSteps(entry)
-    local lines = {}
-    local locked = false
     for i, obj in ipairs(objs) do
         if type(obj) == "table" then
             local id = obj.id or tostring(i)
             local step = bucket.steps[id] or {}
-            local mark = "|cff888888-|r"
-            if step.done then
-                mark = "|cff20ff20+|r"
-            elseif locked then
-                mark = "|cff666666-|r"
+            local done = step.done and true or false
+            local label
+            if done then
+                label = (obj.text or "Mål") .. " (Fullført)"
             else
-                mark = "|cffffffff>|r"
-            end
-            if not step.done then
-                locked = true
-            end
-            local label = applyItemLink(obj.text or "Mål", obj)
-            if obj.type == "location" and not step.done then
-                local where = world.minimap
-                if where == "" then
-                    where = world.subzone
-                end
-                if where == "" then
-                    where = world.zone
-                end
-                if where ~= "" then
-                    label = label .. " (" .. where .. ")"
-                end
-            end
-            if (obj.type == "collect" or obj.type == "kill") and not step.done then
-                local need = tonumber(obj.count) or 1
-                local have = tonumber(step.count) or 0
-                if obj.type == "collect" then
-                    local id = tonumber(obj.item_id)
-                    if id then
-                        local live = itemCount(id)
-                        if live > have then
-                            have = live
-                        end
+                label = applyItemLink(obj.text or "Mål", obj)
+                if obj.type == "location" then
+                    local where = world.minimap
+                    if where == "" then
+                        where = world.subzone
+                    end
+                    if where == "" then
+                        where = world.zone
+                    end
+                    if where ~= "" then
+                        label = label .. " (" .. where .. ")"
                     end
                 end
-                label = string.format("%s (%d/%d)", label, have, need)
+                if obj.type == "collect" or obj.type == "kill" then
+                    local need = tonumber(obj.count) or 1
+                    local have = tonumber(step.count) or 0
+                    if obj.type == "collect" then
+                        local itemID = tonumber(obj.item_id)
+                        if itemID then
+                            local live = itemCount(itemID)
+                            if live > have then
+                                have = live
+                            end
+                        end
+                    end
+                    label = string.format("%s (%d/%d)", label, have, need)
+                end
+                if obj.type == "kill" then
+                    label = label .. " (eksperimentell)"
+                end
             end
-            if obj.type == "kill" then
-                label = label .. " (eksperimentell)"
-            end
-            table.insert(lines, mark .. " " .. label)
+            table.insert(lines, { done = done, text = label })
         end
     end
-    if #lines == 0 then
-        return "Ingen"
-    end
-    return table.concat(lines, "\n")
+    return lines
 end
 
 local function inInstance()
@@ -747,6 +755,68 @@ local function checkAll()
     end
 end
 
+local function onGoalLinkClick(_, link, text, button)
+    if IsModifiedClick and IsModifiedClick("DRESSUP") and DressUpItemLink then
+        pcall(DressUpItemLink, link)
+        return
+    end
+    if SetItemRef then
+        pcall(SetItemRef, link, text, button or "LeftButton")
+    end
+end
+
+local function onGoalLinkEnter(owner, link)
+    if not GameTooltip or type(link) ~= "string" then
+        return
+    end
+    GameTooltip:SetOwner(owner, "ANCHOR_CURSOR")
+    local ok = pcall(GameTooltip.SetHyperlink, GameTooltip, link)
+    if ok then
+        GameTooltip:Show()
+    end
+end
+
+local function onGoalLinkLeave()
+    if GameTooltip then
+        GameTooltip:Hide()
+    end
+end
+
+local function ensureGoalRow(i)
+    local row = goalRows[i]
+    if row then
+        return row
+    end
+    row = CreateFrame("Frame", nil, detailChild)
+    row:SetHeight(18)
+    local box = row:CreateTexture(nil, "ARTWORK")
+    box:SetSize(14, 14)
+    box:SetPoint("TOPLEFT", 0, 1)
+    row.box = box
+    local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    text:SetPoint("TOPLEFT", box, "TOPRIGHT", 8, 0)
+    text:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+    text:SetJustifyH("LEFT")
+    text:SetJustifyV("TOP")
+    text:SetWordWrap(true)
+    text:SetSpacing(2)
+    text:SetTextColor(INK.r, INK.g, INK.b)
+    if text.SetHyperlinksEnabled then
+        text:SetHyperlinksEnabled(true)
+    end
+    pcall(function()
+        text:SetScript("OnHyperlinkClick", onGoalLinkClick)
+        text:SetScript("OnHyperlinkEnter", onGoalLinkEnter)
+        text:SetScript("OnHyperlinkLeave", onGoalLinkLeave)
+    end)
+    row:EnableMouse(true)
+    bindWheel(row, detailScroll, 28)
+    bindWheel(text, detailScroll, 28)
+    row.text = text
+    goalRows[i] = row
+    return row
+end
+
 local function ensureRow(i)
     local row = rows[i]
     if row then
@@ -760,6 +830,13 @@ local function ensureRow(i)
     bg:SetBlendMode("ADD")
     bg:SetAlpha(0)
     row.bg = bg
+    local hover = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+    hover:SetAllPoints()
+    hover:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    hover:SetBlendMode("ADD")
+    hover:SetVertexColor(0.55, 0.42, 0.22)
+    hover:SetAlpha(0)
+    row.hover = hover
     local title = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", 8, -4)
     title:SetPoint("TOPRIGHT", -8, -4)
@@ -771,9 +848,20 @@ local function ensureRow(i)
     sub:SetPoint("BOTTOMRIGHT", -8, 4)
     sub:SetJustifyH("LEFT")
     row.sub = sub
+    bindWheel(row, listScroll, 36)
+    bindWheel(title, listScroll, 36)
+    bindWheel(sub, listScroll, 36)
     row:SetScript("OnClick", function(self)
         selectedID = self.questID
         refresh()
+    end)
+    row:SetScript("OnEnter", function(self)
+        if self.questID ~= selectedID then
+            self.hover:SetAlpha(0.45)
+        end
+    end)
+    row:SetScript("OnLeave", function(self)
+        self.hover:SetAlpha(0)
     end)
     rows[i] = row
     return row
@@ -784,8 +872,12 @@ local function placeSectionHeader(header, y, label, expanded, onToggle)
     header:SetPoint("TOPLEFT", listChild, "TOPLEFT", 0, -y)
     header:SetPoint("TOPRIGHT", listChild, "TOPRIGHT", 0, -y)
     header:Show()
-    local arrow = expanded and "[-]" or "[+]"
-    header.label:SetText(arrow .. "  " .. label)
+    if expanded then
+        header.icon:SetTexture("Interface\\Buttons\\UI-MinusButton-UP")
+    else
+        header.icon:SetTexture("Interface\\Buttons\\UI-PlusButton-UP")
+    end
+    header.label:SetText(label)
     header:SetScript("OnClick", onToggle)
     return y + 24
 end
@@ -795,11 +887,6 @@ refresh = function()
         return
     end
     local entries = currentEntries()
-    if player.name == "" then
-        subtitle:SetText("")
-    else
-        subtitle:SetText(player.name)
-    end
 
     local openList, doneList = {}, {}
     for i = 1, #entries do
@@ -810,12 +897,24 @@ refresh = function()
         end
     end
 
+    local selectedEntry = selectedID and findEntry(selectedID) or nil
+    if not selectedEntry then
+        if openList[1] then
+            selectedEntry = openList[1]
+        elseif doneList[1] then
+            selectedEntry = doneList[1]
+        end
+        if selectedEntry then
+            selectedID = selectedEntry.quest_id
+        end
+    end
+
     local openExpanded = sectionExpanded("open", true)
     local doneExpanded = sectionExpanded("done", true)
-    local y = 0
+    local listY = 0
     local rowIndex = 0
 
-    y = placeSectionHeader(sectionOpen, y, "Ikke startet (" .. #openList .. ")", openExpanded, function()
+    listY = placeSectionHeader(sectionOpen, listY, "Ikke startet (" .. #openList .. ")", openExpanded, function()
         setSectionExpanded("open", not openExpanded)
         refresh()
     end)
@@ -823,26 +922,26 @@ refresh = function()
         for i = 1, #openList do
             rowIndex = rowIndex + 1
             local row = ensureRow(rowIndex)
-            local entry = openList[i]
+            local item = openList[i]
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", listChild, "TOPLEFT", 4, -y)
+            row:SetPoint("TOPLEFT", listChild, "TOPLEFT", 4, -listY)
             row:Show()
-            row.questID = entry.quest_id
-            row.title:SetText(entry.title or "Saga")
+            row.questID = item.quest_id
+            row.title:SetText(item.title or "Saga")
             row.title:SetTextColor(GOLD.r, GOLD.g, GOLD.b)
-            row.sub:SetText(creatorName(entry))
+            row.sub:SetText(creatorName(item))
             row.sub:SetTextColor(0.72, 0.68, 0.58)
-            if entry.quest_id == selectedID then
+            if item.quest_id == selectedID then
                 row.bg:SetAlpha(0.7)
             else
                 row.bg:SetAlpha(0)
             end
-            y = y + 40
+            listY = listY + 40
         end
     end
 
-    y = y + 6
-    y = placeSectionHeader(sectionDone, y, "Fullførte (" .. #doneList .. ")", doneExpanded, function()
+    listY = listY + 6
+    listY = placeSectionHeader(sectionDone, listY, "Fullførte (" .. #doneList .. ")", doneExpanded, function()
         setSectionExpanded("done", not doneExpanded)
         refresh()
     end)
@@ -850,43 +949,48 @@ refresh = function()
         for i = 1, #doneList do
             rowIndex = rowIndex + 1
             local row = ensureRow(rowIndex)
-            local entry = doneList[i]
+            local item = doneList[i]
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", listChild, "TOPLEFT", 4, -y)
+            row:SetPoint("TOPLEFT", listChild, "TOPLEFT", 4, -listY)
             row:Show()
-            row.questID = entry.quest_id
-            row.title:SetText(entry.title or "Saga")
+            row.questID = item.quest_id
+            row.title:SetText(item.title or "Saga")
             row.title:SetTextColor(0.55, 0.75, 0.45)
-            row.sub:SetText(creatorName(entry))
+            row.sub:SetText(creatorName(item))
             row.sub:SetTextColor(0.55, 0.52, 0.45)
-            if entry.quest_id == selectedID then
+            if item.quest_id == selectedID then
                 row.bg:SetAlpha(0.55)
             else
                 row.bg:SetAlpha(0)
             end
-            y = y + 40
+            listY = listY + 40
         end
     end
 
     for i = rowIndex + 1, #rows do
         rows[i]:Hide()
     end
-    listChild:SetHeight(math.max(y + 8, 10))
-
-    local entry = selectedID and findEntry(selectedID) or nil
-    if not entry then
-        if openList[1] then
-            entry = openList[1]
-        elseif doneList[1] then
-            entry = doneList[1]
-        end
-        if entry then
-            selectedID = entry.quest_id
-        end
+    local listH = math.max(listY + 8, 10)
+    listChild:SetHeight(listH)
+    if listScroll.UpdateScrollChildRect then
+        listScroll:UpdateScrollChildRect()
     end
-    local width = detailScroll:GetWidth() - 12
-    if not entry then
+    listScroll.range = math.max(0, listH - 418)
+
+    if selectedID ~= lastDetailID then
+        lastDetailID = selectedID
+        detailScroll.offset = 0
+        detailScroll:SetVerticalScroll(0)
+    end
+    local width = 348
+    detailChild:SetWidth(width + 12)
+    local detailY = 4
+    local goals = {}
+    detailFS:Show()
+    if not selectedEntry then
         detailTitle:SetText("")
+        detailTitle:Hide()
+        detailGoalsHeader:Hide()
         if player.name == "" then
             detailFS:SetText("Logg inn på en karakter.")
         elseif type(GutSagaData) ~= "table" or type(GutSagaData.entries) ~= "table" or #GutSagaData.entries == 0 then
@@ -894,28 +998,73 @@ refresh = function()
         else
             detailFS:SetText("Ingen sagaer for " .. player.name .. ".")
         end
+        detailFS:SetTextColor(INK.r, INK.g, INK.b)
+        detailFS:SetWidth(width)
+        detailFS:ClearAllPoints()
+        detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        detailY = detailY + (detailFS:GetStringHeight() or 14) + 8
     else
-        local description = (type(entry.description) == "string" and entry.description ~= "") and entry.description or "Ingen"
-        detailTitle:SetText(entry.title or "Saga")
-        detailFS:SetText(table.concat({
-            "|cff3f2a14Beskrivelse|r",
-            description,
-            "",
-            "|cff3f2a14Mål|r",
-            objectiveText(entry),
-        }, "\n"))
+        local description = (type(selectedEntry.description) == "string" and selectedEntry.description ~= "")
+            and selectedEntry.description or "Ingen"
+        detailTitle:Show()
+        detailTitle:SetText(selectedEntry.title or "Saga")
+        detailTitle:SetTextColor(INK.r, INK.g, INK.b)
+        detailTitle:SetWidth(width)
+        detailTitle:ClearAllPoints()
+        detailTitle:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        detailY = detailY + (detailTitle:GetStringHeight() or 20) + 12
+
+        detailFS:SetText(description)
+        detailFS:SetTextColor(INK.r, INK.g, INK.b)
+        detailFS:SetWidth(width)
+        detailFS:ClearAllPoints()
+        detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        detailY = detailY + (detailFS:GetStringHeight() or 14) + 16
+
+        detailGoalsHeader:Show()
+        detailGoalsHeader:ClearAllPoints()
+        detailGoalsHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        detailGoalsHeader:SetWidth(width)
+        detailGoalsHeader:SetTextColor(INK.r, INK.g, INK.b)
+        detailY = detailY + (detailGoalsHeader:GetStringHeight() or 20) + 10
+
+        local okGoals, goalList = pcall(objectiveLines, selectedEntry)
+        if okGoals and type(goalList) == "table" then
+            goals = goalList
+        end
     end
-    detailTitle:SetWidth(width)
-    detailFS:SetWidth(width)
-    local titleH = detailTitle:GetStringHeight() or 0
-    if detailTitle:GetText() == "" then
-        titleH = 0
-        detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -6)
-    else
-        detailFS:SetPoint("TOPLEFT", detailTitle, "BOTTOMLEFT", 0, -10)
+
+    local textWidth = width - 22
+    for i, goal in ipairs(goals) do
+        local row = ensureGoalRow(i)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        row:SetWidth(width)
+        row:Show()
+        if goal.done then
+            row.box:SetTexture("Interface\\AddOns\\GutSaga\\check")
+            row.text:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+        else
+            row.box:SetTexture("Interface\\AddOns\\GutSaga\\box")
+            row.text:SetTextColor(INK.r, INK.g, INK.b)
+        end
+        row.text:SetWidth(textWidth)
+        row.text:SetText(goal.text or "")
+        local h = math.max(16, (row.text:GetStringHeight() or 14) + 4)
+        row:SetHeight(h)
+        detailY = detailY + h + 10
     end
-    local height = titleH + (detailFS:GetStringHeight() or 10) + 24
-    detailChild:SetHeight(math.max(height, 10))
+    for i = #goals + 1, #goalRows do
+        goalRows[i]:Hide()
+    end
+    local detailH = math.max(detailY + 8, 10)
+    detailChild:SetHeight(detailH)
+    if detailScroll.UpdateScrollChildRect then
+        detailScroll:UpdateScrollChildRect()
+    end
+    detailScroll.range = math.max(0, detailH - 410)
+    pcall(syncScrollBar, listScroll)
+    pcall(syncScrollBar, detailScroll)
 end
 
 finishQuest = function(entry)
@@ -966,6 +1115,7 @@ local function show()
     if frame then
         frame:Show()
         onWorld()
+        refresh()
     end
 end
 
@@ -983,16 +1133,233 @@ local function toggle()
     end
 end
 
-local function scrollBy(self, delta, step)
-    local nxt = self:GetVerticalScroll() - delta * step
-    local maxScroll = self:GetVerticalScrollRange()
+local function wheelDelta(delta)
+    local n = plainNumber(delta)
+    if n then
+        if n > 0 then
+            return 1
+        end
+        if n < 0 then
+            return -1
+        end
+        return 0
+    end
+    -- Secret/tainted deltas: never branch on the raw value; only recover a plain sign.
+    local ok, sign = pcall(function()
+        if delta > 0 then
+            return 1
+        end
+        if delta < 0 then
+            return -1
+        end
+        return 0
+    end)
+    if ok then
+        return plainNumber(sign) or 1
+    end
+    return 1
+end
+
+syncScrollBar = function(scroll)
+    local bar = scroll and scroll.bar
+    if not bar then
+        return
+    end
+    if scroll.UpdateScrollChildRect then
+        scroll:UpdateScrollChildRect()
+    end
+    local range = scroll.range or 0
+    if scroll.GetVerticalScrollRange then
+        local nativeRange = scroll:GetVerticalScrollRange() or 0
+        if nativeRange > range then
+            range = nativeRange
+        end
+    end
+    if range < 0 then
+        range = 0
+    end
+    scroll.range = range
+    local cur = scroll.offset or 0
+    if cur < 0 then
+        cur = 0
+    elseif cur > range then
+        cur = range
+    end
+    scroll.offset = cur
+    scroll:SetVerticalScroll(cur)
+    local maxVal = math.max(1, range)
+    bar.skip = true
+    bar:SetMinMaxValues(0, maxVal)
+    -- Force WoW's Slider to place the thumb texture even when cur is 0 on first open.
+    bar:SetValue(cur == 0 and maxVal or 0)
+    bar:SetValue(cur)
+    bar.skip = false
+    if bar.thumb then
+        if range > 0 then
+            bar.thumb:Show()
+        else
+            bar.thumb:Hide()
+        end
+    end
+end
+
+scrollBy = function(self, delta, step)
+    if not self then
+        return
+    end
+    local dir = wheelDelta(delta)
+    if dir == 0 then
+        return
+    end
+    if self.UpdateScrollChildRect then
+        self:UpdateScrollChildRect()
+    end
+    local range = self.range or 0
+    if self.GetVerticalScrollRange then
+        local nativeRange = self:GetVerticalScrollRange() or 0
+        if nativeRange > range then
+            range = nativeRange
+        end
+    end
+    if range <= 0 then
+        return
+    end
+    local nxt = (self.offset or 0) - dir * (step or 40)
     if nxt < 0 then
         nxt = 0
+    elseif nxt > range then
+        nxt = range
     end
-    if nxt > maxScroll then
-        nxt = maxScroll
+    self.offset = nxt
+    -- Drive the slider when present so thumb + OnValueChanged stay aligned.
+    local bar = self.bar
+    if bar then
+        bar.skip = true
+        bar:SetMinMaxValues(0, math.max(1, range))
+        bar:SetValue(nxt == 0 and math.max(1, range) or 0)
+        bar:SetValue(nxt)
+        bar.skip = false
     end
     self:SetVerticalScroll(nxt)
+    syncScrollBar(self)
+end
+
+bindWheel = function(target, scroll, step)
+    if not target then
+        return
+    end
+    pcall(function()
+        if target.EnableMouseWheel then
+            target:EnableMouseWheel(true)
+        end
+        target:SetScript("OnMouseWheel", function(_, delta)
+            scrollBy(scroll, delta, step)
+        end)
+    end)
+end
+
+wheelOnList = function(_, delta)
+    scrollBy(listScroll, delta, 36)
+end
+
+wheelOnDetail = function(_, delta)
+    scrollBy(detailScroll, delta, 28)
+end
+
+wheelOnFrame = function(_, delta)
+    local scale = frame and frame:GetEffectiveScale() or 1
+    if scale == 0 then
+        scale = 1
+    end
+    local cx = GetCursorPosition()
+    cx = (plainNumber(cx) or 0) / scale
+    local left = detailPanel and detailPanel:GetLeft()
+    left = plainNumber(left)
+    if left and cx >= left then
+        scrollBy(detailScroll, delta, 28)
+    else
+        scrollBy(listScroll, delta, 36)
+    end
+end
+
+local function makeScrollArrow(parent, up)
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(18, 16)
+    local tex = btn:CreateTexture(nil, "ARTWORK")
+    tex:SetPoint("TOPLEFT", -4, 4)
+    tex:SetPoint("BOTTOMRIGHT", 4, -4)
+    if up then
+        tex:SetTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up")
+    else
+        tex:SetTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up")
+    end
+    btn.tex = tex
+    return btn
+end
+
+local function attachScrollBar(parent, scroll, step)
+    local up = makeScrollArrow(parent, true)
+    local down = makeScrollArrow(parent, false)
+    up:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -5, -6)
+    down:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -5, 6)
+    local bar = CreateFrame("Slider", nil, parent)
+    bar:SetOrientation("VERTICAL")
+    bar:SetWidth(16)
+    bar:SetPoint("TOP", up, "BOTTOM", 0, -2)
+    bar:SetPoint("BOTTOM", down, "TOP", 0, 2)
+    bar:SetMinMaxValues(0, 1)
+    bar:SetValueStep(1)
+    local trackBorder = bar:CreateTexture(nil, "BACKGROUND")
+    trackBorder:SetPoint("TOPLEFT", 2, 2)
+    trackBorder:SetPoint("BOTTOMRIGHT", -2, -2)
+    trackBorder:SetColorTexture(0.38, 0.28, 0.14, 0.9)
+    local track = bar:CreateTexture(nil, "BORDER")
+    track:SetPoint("TOPLEFT", 3, 1)
+    track:SetPoint("BOTTOMRIGHT", -3, -1)
+    track:SetColorTexture(0.08, 0.05, 0.03, 0.95)
+    bar:SetThumbTexture("Interface\\Buttons\\UI-ScrollBar-Knob")
+    local thumb = bar:GetThumbTexture()
+    if thumb then
+        thumb:SetSize(24, 24)
+    end
+    bar.thumb = thumb
+    bar:EnableMouse(true)
+    bar:EnableMouseWheel(true)
+    bar:SetScript("OnValueChanged", function(self, value)
+        if self.skip then
+            return
+        end
+        local v = value or 0
+        scroll.offset = v
+        if scroll.UpdateScrollChildRect then
+            scroll:UpdateScrollChildRect()
+        end
+        scroll:SetVerticalScroll(v)
+    end)
+    scroll:SetScript("OnScrollRangeChanged", function(self)
+        syncScrollBar(self)
+    end)
+    bar:SetScript("OnMouseWheel", function(_, delta)
+        scrollBy(scroll, delta, step)
+    end)
+    up:EnableMouseWheel(true)
+    up:SetScript("OnClick", function()
+        scrollBy(scroll, 1, step)
+    end)
+    up:SetScript("OnMouseWheel", function(_, delta)
+        scrollBy(scroll, delta, step)
+    end)
+    down:EnableMouseWheel(true)
+    down:SetScript("OnClick", function()
+        scrollBy(scroll, -1, step)
+    end)
+    down:SetScript("OnMouseWheel", function(_, delta)
+        scrollBy(scroll, delta, step)
+    end)
+    bar.up = up
+    bar.down = down
+    scroll.bar = bar
+    return bar
 end
 
 local function useBackdrop(f, info, border)
@@ -1014,10 +1381,20 @@ local function makeSectionHeader(parent)
     bg:SetAllPoints()
     bg:SetColorTexture(0.18, 0.12, 0.05, 0.85)
     btn.bg = bg
+    local icon = btn:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(16, 16)
+    icon:SetPoint("LEFT", 4, 0)
+    icon:SetTexture("Interface\\Buttons\\UI-MinusButton-UP")
+    btn.icon = icon
+    local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints(icon)
+    highlight:SetTexture("Interface\\Buttons\\UI-PlusButton-Hilight")
+    highlight:SetBlendMode("ADD")
     local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("LEFT", 6, 0)
+    label:SetPoint("LEFT", icon, "RIGHT", 4, 0)
     label:SetTextColor(GOLD.r, GOLD.g, GOLD.b)
     btn.label = label
+    bindWheel(btn, listScroll, 36)
     return btn
 end
 
@@ -1028,12 +1405,14 @@ local function build()
     built = true
     local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
     frame = CreateFrame("Frame", "GutSagaFrame", UIParent, backdropTemplate)
-    frame:SetSize(720, 500)
+    frame:SetSize(700, 500)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("HIGH")
     frame:SetMovable(true)
     frame:SetClampedToScreen(true)
     frame:EnableMouse(true)
+    frame:EnableMouseWheel(true)
+    frame:SetScript("OnMouseWheel", wheelOnFrame)
     frame:Hide()
     table.insert(UISpecialFrames, "GutSagaFrame")
     useBackdrop(frame, {
@@ -1053,10 +1432,7 @@ local function build()
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOP", header, "TOP", 0, -14)
     title:SetText("GutSaga")
-    title:SetTextColor(1, 0.92, 0.65)
-    subtitle = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    subtitle:SetPoint("TOP", frame, "TOP", 0, -34)
-    subtitle:SetTextColor(0.92, 0.82, 0.55)
+    title:SetTextColor(1, 0.95, 0.72)
 
     local mark = frame:CreateTexture(nil, "OVERLAY")
     mark:SetSize(58, 58)
@@ -1069,8 +1445,10 @@ local function build()
     local drag = CreateFrame("Frame", nil, frame)
     drag:SetPoint("TOPLEFT", frame, "TOPLEFT", 56, 10)
     drag:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -46, 10)
-    drag:SetHeight(36)
+    drag:SetHeight(28)
     drag:EnableMouse(true)
+    drag:EnableMouseWheel(true)
+    drag:SetScript("OnMouseWheel", wheelOnFrame)
     drag:RegisterForDrag("LeftButton")
     drag:SetScript("OnDragStart", function()
         frame:StartMoving()
@@ -1091,7 +1469,7 @@ local function build()
     listPanel = CreateFrame("Frame", nil, frame, backdropTemplate)
     listPanel:SetPoint("TOPLEFT", 22, -48)
     listPanel:SetPoint("BOTTOMLEFT", 22, 18)
-    listPanel:SetWidth(236)
+    listPanel:SetSize(236, 434)
     useBackdrop(listPanel, {
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1104,23 +1482,29 @@ local function build()
         listPanel:SetBackdropColor(0.07, 0.05, 0.03, 0.92)
     end
 
-    listScroll = CreateFrame("ScrollFrame", nil, listPanel)
-    listScroll:SetPoint("TOPLEFT", 6, -6)
-    listScroll:SetPoint("BOTTOMRIGHT", -6, 6)
-    listChild = CreateFrame("Frame", nil, listScroll)
-    listChild:SetSize(210, 360)
+    listScroll = CreateFrame("ScrollFrame", "GutSagaListScroll", listPanel)
+    listScroll:SetPoint("TOPLEFT", 6, -8)
+    listScroll:SetPoint("BOTTOMRIGHT", -28, 8)
+    listScroll:SetSize(202, 418)
+    listChild = CreateFrame("Frame", "GutSagaListChild", listScroll)
+    listChild:SetSize(196, 418)
     listScroll:SetScrollChild(listChild)
-    listScroll:EnableMouseWheel(true)
-    listScroll:SetScript("OnMouseWheel", function(self, delta)
-        scrollBy(self, delta, 36)
-    end)
+    listPanel:EnableMouse(true)
+    listScroll:EnableMouse(true)
+    listChild:EnableMouse(true)
+    bindWheel(listPanel, listScroll, 36)
+    bindWheel(listScroll, listScroll, 36)
+    bindWheel(listChild, listScroll, 36)
     sectionOpen = makeSectionHeader(listChild)
     sectionDone = makeSectionHeader(listChild)
+    attachScrollBar(listPanel, listScroll, 36)
 
+    -- Same top and bottom as the sidebar. Explicit size keeps ScrollFrame
+    -- clipping valid even when refreshed before the window is first shown.
     detailPanel = CreateFrame("Frame", nil, frame, backdropTemplate)
     detailPanel:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 14, 0)
-    detailPanel:SetPoint("BOTTOMLEFT", listPanel, "BOTTOMRIGHT", 14, 0)
-    detailPanel:SetWidth(400)
+    detailPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -18, 18)
+    detailPanel:SetSize(410, 434)
     useBackdrop(detailPanel, {
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1136,19 +1520,22 @@ local function build()
     parchment:SetPoint("TOPLEFT", 5, -5)
     parchment:SetPoint("BOTTOMRIGHT", -5, 5)
     parchment:SetTexture("Interface\\QuestFrame\\QuestBG")
-    parchment:SetTexCoord(0, 0.72, 0.02, 0.72)
+    parchment:SetTexCoord(0, 0.58, 0.02, 0.66)
     parchment:SetVertexColor(1, 0.97, 0.9)
 
-    detailScroll = CreateFrame("ScrollFrame", nil, detailPanel)
+    detailScroll = CreateFrame("ScrollFrame", "GutSagaDetailScroll", detailPanel)
     detailScroll:SetPoint("TOPLEFT", 12, -12)
-    detailScroll:SetPoint("BOTTOMRIGHT", -12, 12)
-    detailChild = CreateFrame("Frame", nil, detailScroll)
-    detailChild:SetSize(360, 200)
+    detailScroll:SetPoint("BOTTOMRIGHT", -30, 12)
+    detailScroll:SetSize(368, 410)
+    detailChild = CreateFrame("Frame", "GutSagaDetailChild", detailScroll)
+    detailChild:SetSize(360, 410)
     detailScroll:SetScrollChild(detailChild)
-    detailScroll:EnableMouseWheel(true)
-    detailScroll:SetScript("OnMouseWheel", function(self, delta)
-        scrollBy(self, delta, 28)
-    end)
+    detailPanel:EnableMouse(true)
+    detailScroll:EnableMouse(true)
+    detailChild:EnableMouse(true)
+    bindWheel(detailPanel, detailScroll, 28)
+    bindWheel(detailScroll, detailScroll, 28)
+    bindWheel(detailChild, detailScroll, 28)
     local titleFont = "GameFontNormalLarge"
     if QuestTitleFont then
         titleFont = "QuestTitleFont"
@@ -1158,47 +1545,30 @@ local function build()
     detailTitle:SetJustifyH("LEFT")
     detailTitle:SetJustifyV("TOP")
     detailTitle:SetWordWrap(true)
-    detailTitle:SetTextColor(0.22, 0.12, 0.04)
+    detailTitle:SetTextColor(INK.r, INK.g, INK.b)
     detailFS = detailChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     detailFS:SetPoint("TOPLEFT", detailTitle, "BOTTOMLEFT", 0, -10)
     detailFS:SetJustifyH("LEFT")
     detailFS:SetJustifyV("TOP")
     detailFS:SetWordWrap(true)
     detailFS:SetSpacing(2)
-    detailFS:SetTextColor(0.22, 0.12, 0.04)
+    detailFS:SetTextColor(INK.r, INK.g, INK.b)
     if detailFS.SetHyperlinksEnabled then
         detailFS:SetHyperlinksEnabled(true)
     end
-    detailChild:EnableMouse(true)
-    local function linkClick(_, link, text, button)
-        if IsModifiedClick and IsModifiedClick("DRESSUP") and DressUpItemLink then
-            pcall(DressUpItemLink, link)
-            return
-        end
-        if SetItemRef then
-            pcall(SetItemRef, link, text, button or "LeftButton")
-        end
-    end
-    local function linkEnter(owner, link)
-        if not GameTooltip or type(link) ~= "string" then
-            return
-        end
-        GameTooltip:SetOwner(owner, "ANCHOR_CURSOR")
-        local ok = pcall(GameTooltip.SetHyperlink, GameTooltip, link)
-        if ok then
-            GameTooltip:Show()
-        end
-    end
-    local function linkLeave()
-        if GameTooltip then
-            GameTooltip:Hide()
-        end
-    end
+    detailGoalsHeader = detailChild:CreateFontString(nil, "OVERLAY", titleFont)
+    detailGoalsHeader:SetJustifyH("LEFT")
+    detailGoalsHeader:SetText("Mål")
+    detailGoalsHeader:SetTextColor(INK.r, INK.g, INK.b)
     pcall(function()
-        detailFS:SetScript("OnHyperlinkClick", linkClick)
-        detailFS:SetScript("OnHyperlinkEnter", linkEnter)
-        detailFS:SetScript("OnHyperlinkLeave", linkLeave)
+        detailFS:SetScript("OnHyperlinkClick", onGoalLinkClick)
+        detailFS:SetScript("OnHyperlinkEnter", onGoalLinkEnter)
+        detailFS:SetScript("OnHyperlinkLeave", onGoalLinkLeave)
     end)
+    bindWheel(detailTitle, detailScroll, 28)
+    bindWheel(detailFS, detailScroll, 28)
+    bindWheel(detailGoalsHeader, detailScroll, 28)
+    attachScrollBar(detailPanel, detailScroll, 28)
 
     toast = CreateFrame("Frame", "GutSagaToast", UIParent, backdropTemplate)
     toast:SetSize(390, 92)
@@ -1257,14 +1627,8 @@ local function build()
         toast.age = 0
         toast:SetAlpha(0)
         toast:Show()
-        if PlaySound then
-            local played = false
-            if SOUNDKIT and SOUNDKIT.ACHIEVEMENT_EARNED then
-                played = pcall(PlaySound, SOUNDKIT.ACHIEVEMENT_EARNED)
-            end
-            if not played then
-                pcall(PlaySound, 888)
-            end
+        if PlaySoundFile then
+            pcall(PlaySoundFile, "Interface\\AddOns\\GutSaga\\complete.mp3", "Master")
         end
     end
 
@@ -1338,12 +1702,23 @@ end
 SLASH_GUTSAGA1 = "/gutsaga"
 SLASH_GUTSAGA2 = "/gs"
 SlashCmdList.GUTSAGA = function(msg)
-    msg = string.lower(msg or "")
+    msg = string.lower(string.gsub(msg or "", "^%s+", ""))
     if msg == "hide" then
         hide()
-    else
-        show()
+        return
     end
+    if msg == "reset" or msg == "reset goldshire" then
+        initDB()
+        local id = "cf031479-7288-4508-b139-f23f1e322026"
+        GutSagaDB.completions[id] = nil
+        GutSagaDB.objectives[id] = nil
+        selectedID = id
+        chat("|cffc9a227GutSaga|r: «En kveld i Goldshire» er tilbakestilt.")
+        onWorld()
+        show()
+        return
+    end
+    show()
 end
 
 local events = CreateFrame("Frame")

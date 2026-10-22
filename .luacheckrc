@@ -43,6 +43,7 @@ read_globals = {
     "DressUpItemLink",
     "IsModifiedClick",
     "PlaySound",
+    "PlaySoundFile",
     "SOUNDKIT",
     "Mixin",
     "BackdropTemplateMixin",
