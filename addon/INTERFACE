@@ -1,0 +1,5 @@
+# WoW TOC interface numbers. Keep these in sync with the .toc files.
+# Forever (beta, client 1.60.1): change GutSaga_Forever.toc and GutSaga.toc together.
+# Retail test client: change GutSaga_Mainline.toc (Midnight 12.x; confirm with /dump select(4, GetBuildInfo())).
+FOREVER=16001
+MAINLINE=120000
