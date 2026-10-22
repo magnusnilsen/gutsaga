@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -233,8 +234,15 @@ func (a *App) pollSavedVars() {
 		return
 	}
 	for _, c := range list {
+		if _, ok := syncdata.QuestByID(a.sync, c.QuestID); !ok {
+			continue
+		}
+		key := queue.CompletionKey(c.QuestID, c.Character, c.Realm)
+		if !a.serverHasCompletion(c.QuestID, c.Character, c.Realm) {
+			a.Queue.ForgetDone(key)
+		}
 		ok := a.Queue.Enqueue(queue.Item{
-			Kind: "completion", Key: queue.CompletionKey(c.QuestID, c.Character, c.Realm),
+			Kind: "completion", Key: key,
 			QuestID: c.QuestID, QuestVersion: c.QuestVersion, Character: c.Character, Realm: c.Realm,
 			Level: c.Level, CompletedAt: c.At.UTC().Format(time.RFC3339),
 		})
@@ -242,6 +250,47 @@ func (a *App) pollSavedVars() {
 			a.Log.Info("lest fra SavedVariables", "character", c.Character, "quest", c.QuestID)
 		}
 	}
+}
+
+func (a *App) serverHasCompletion(questID, character, realm string) bool {
+	for _, c := range a.sync.Completions {
+		if c.QuestID != questID {
+			continue
+		}
+		if !strings.EqualFold(c.Character, character) {
+			continue
+		}
+		if realm != "" && c.Realm != "" && !strings.EqualFold(c.Realm, realm) {
+			continue
+		}
+		return true
+	}
+	for _, p := range a.sync.Progress {
+		if p.QuestID != questID || p.Status != "completed" {
+			continue
+		}
+		ch, ok := characterByID(a.sync, p.CharacterID)
+		if !ok {
+			continue
+		}
+		if !strings.EqualFold(ch.Name, character) {
+			continue
+		}
+		if realm != "" && ch.Realm != "" && !strings.EqualFold(ch.Realm, realm) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func characterByID(sync contract.SyncResponse, id string) (contract.Character, bool) {
+	for _, ch := range sync.Characters {
+		if ch.ID == id {
+			return ch, true
+		}
+	}
+	return contract.Character{}, false
 }
 
 func (a *App) Flush(ctx context.Context) {

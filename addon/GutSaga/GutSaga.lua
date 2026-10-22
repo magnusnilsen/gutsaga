@@ -82,25 +82,6 @@ local function unixNow()
     return time()
 end
 
-local function chat(line)
-    -- Visible in the chat UI.
-    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-        DEFAULT_CHAT_FRAME:AddMessage(line)
-    else
-        print(line)
-    end
-    -- Classic Era does not write AddMessage into WoWChatLog.txt. Whispering
-    -- the machine line to yourself is logged so the companion sees it live
-    -- (SavedVariables only flush on /reload or logout).
-    if type(line) == "string" and line:find("%[GutSaga%]", 1, false)
-        and (line:find(" COMPLETE ", 1, true) or line:find(" CHARACTER ", 1, true) or line:find(" LEVELUP ", 1, true)) then
-        local name = UnitName and UnitName("player")
-        if name and name ~= "" and SendChatMessage then
-            pcall(SendChatMessage, line, "WHISPER", nil, name)
-        end
-    end
-end
-
 local function enableChatLog()
     if C_CVar and C_CVar.SetCVar then
         pcall(C_CVar.SetCVar, "chatLog", "1")
@@ -109,6 +90,48 @@ local function enableChatLog()
     end
     if LoggingChat then
         pcall(LoggingChat, true)
+    end
+end
+
+-- Classic Era does not write AddMessage into WoWChatLog.txt, and you cannot
+-- whisper yourself. Machine lines go on a private "GutSaga" channel so the
+-- companion can read them live (SavedVariables only flush on /reload/logout).
+local function ensureMachineChannel()
+    if not JoinPermanentChannel or not GetChannelName then
+        return 0
+    end
+    local id = GetChannelName("GutSaga")
+    if type(id) == "number" and id > 0 then
+        return id
+    end
+    local frameID = DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.GetID and DEFAULT_CHAT_FRAME:GetID() or 1
+    pcall(JoinPermanentChannel, "GutSaga", nil, frameID, 1)
+    id = GetChannelName("GutSaga")
+    if type(id) == "number" then
+        return id
+    end
+    return 0
+end
+
+local function chat(line)
+    local machine = type(line) == "string" and line:find("[GutSaga]", 1, true)
+        and (line:find(" COMPLETE ", 1, true) or line:find(" CHARACTER ", 1, true) or line:find(" LEVELUP ", 1, true))
+    if machine then
+        -- Do not whisper or AddMessage: those either fail on Classic or spam the UI.
+        -- A private GutSaga channel is what WoWChatLog.txt actually records.
+        enableChatLog()
+        if SendChatMessage then
+            local id = ensureMachineChannel()
+            if id > 0 then
+                pcall(SendChatMessage, line, "CHANNEL", nil, id)
+            end
+        end
+        return
+    end
+    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+        DEFAULT_CHAT_FRAME:AddMessage(line)
+    else
+        print(line)
     end
 end
 

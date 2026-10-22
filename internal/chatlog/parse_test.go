@@ -16,6 +16,15 @@ func TestParseCompleteRealmWithSpaces(t *testing.T) {
 	}
 }
 
+func TestParseCompleteFromChannelEcho(t *testing.T) {
+	// Channel named GutSaga prefixes the line; payload must still parse.
+	line := `10/22 22:30:00.000  [GutSaga] Magní: [GutSaga] COMPLETE 11111111-1111-1111-1111-111111111111 3 Magní Celebras 2 1761144240`
+	ev, ok := Parse(line)
+	if !ok || ev.Kind != KindComplete || ev.Character != "Magní" || ev.Realm != "Celebras" {
+		t.Fatalf("%+v ok=%v", ev, ok)
+	}
+}
+
 func TestParseCharacterPipes(t *testing.T) {
 	line := `[GutSaga] CHARACTER Magni|Argent Dawn|12|Dwarf|Warrior|Magnus#2231|1761144240`
 	ev, ok := Parse(line)
