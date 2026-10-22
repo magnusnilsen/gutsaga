@@ -1,5 +1,6 @@
 // Package app runs the GutSaga companion: install the addon, sync quests, and
-// report completions read from the chat log. It never sends input to the game.
+// report completions from the chat log and SavedVariables. It never sends input
+// to the game.
 package app
 
 import (
@@ -18,6 +19,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 	"github.com/magnusnilsen/gutsaga/internal/install"
 	"github.com/magnusnilsen/gutsaga/internal/queue"
+	"github.com/magnusnilsen/gutsaga/internal/savedvars"
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
 	"github.com/magnusnilsen/gutsaga/internal/syncdata"
 	"github.com/magnusnilsen/gutsaga/internal/update"
@@ -86,6 +88,7 @@ func (a *App) Run(ctx context.Context) {
 			return
 		case <-tailTick.C:
 			a.pollChat()
+			a.pollSavedVars()
 		case <-flushTick.C:
 			a.Flush(ctx)
 		case <-syncTick.C:
@@ -219,6 +222,28 @@ func (a *App) pollChat() {
 	}
 }
 
+// pollSavedVars enqueues completions the addon wrote locally. On Classic Era,
+// AddMessage lines never reach WoWChatLog.txt, so this is the reliable path.
+func (a *App) pollSavedVars() {
+	if a.WowDir == "" {
+		return
+	}
+	list, err := savedvars.ReadCompletions(a.WowDir)
+	if err != nil {
+		return
+	}
+	for _, c := range list {
+		ok := a.Queue.Enqueue(queue.Item{
+			Kind: "completion", Key: queue.CompletionKey(c.QuestID, c.Character, c.Realm),
+			QuestID: c.QuestID, QuestVersion: c.QuestVersion, Character: c.Character, Realm: c.Realm,
+			Level: c.Level, CompletedAt: c.At.UTC().Format(time.RFC3339),
+		})
+		if ok {
+			a.Log.Info("lest fra SavedVariables", "character", c.Character, "quest", c.QuestID)
+		}
+	}
+}
+
 func (a *App) Flush(ctx context.Context) {
 	now := time.Now()
 	for _, item := range a.Queue.Due(now) {
@@ -302,7 +327,11 @@ func (a *App) send(ctx context.Context, item queue.Item) error {
 		CharacterID: item.CharacterID, QuestID: item.QuestID, QuestVersion: item.QuestVersion,
 		BattleTag: tag, Level: item.Level, CompletedAt: item.CompletedAt,
 	}, image)
-	return err
+	if err != nil {
+		return err
+	}
+	_ = a.pullSync(ctx)
+	return nil
 }
 
 func (a *App) maybeUpdate(ctx context.Context) {

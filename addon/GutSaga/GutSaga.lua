@@ -83,6 +83,8 @@ local function unixNow()
 end
 
 local function chat(line)
+    -- Visible in the chat UI. Classic Era does not write AddMessage into
+    -- WoWChatLog.txt; the companion also reads GutSagaDB.completions.
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         DEFAULT_CHAT_FRAME:AddMessage(line)
     else
@@ -329,16 +331,42 @@ end
 
 local function activityList(entry)
     local out = {}
-    if type(entry) ~= "table" or type(entry.completed_by) ~= "table" then
-        return out
-    end
-    for i = 1, #entry.completed_by do
-        local row = entry.completed_by[i]
+    local seen = {}
+    local function add(row)
         local line = activityLine(row)
-        if line ~= "" then
-            table.insert(out, {
-                text = line,
-                at = (type(row) == "table" and type(row.completed_at) == "string") and row.completed_at or "",
+        if line == "" then
+            return
+        end
+        local key = line:lower()
+        if seen[key] then
+            return
+        end
+        seen[key] = true
+        local at = ""
+        if type(row) == "table" then
+            if type(row.completed_at) == "string" then
+                at = row.completed_at
+            elseif type(row.completed_at) == "number" then
+                at = string.format("%014d", row.completed_at)
+            end
+        end
+        table.insert(out, { text = line, at = at })
+    end
+    if type(entry) == "table" and type(entry.completed_by) == "table" then
+        for i = 1, #entry.completed_by do
+            add(entry.completed_by[i])
+        end
+    end
+    -- Local finishes before the companion has synced them to the API.
+    if type(entry) == "table" and type(entry.quest_id) == "string" then
+        initDB()
+        local localDone = GutSagaDB.completions and GutSagaDB.completions[entry.quest_id]
+        if type(localDone) == "table" then
+            add({
+                character = localDone.character or player.name,
+                realm = localDone.realm or player.realm,
+                battletag = player.battletag,
+                completed_at = localDone.completed_at,
             })
         end
     end
