@@ -1908,11 +1908,27 @@ SlashCmdList.GUTSAGA = function(msg)
         hide()
         return
     end
-    if msg == "reset" or msg == "reset goldshire" then
+    if msg == "wipe" or msg == "clear" or msg == "reset" then
+        -- Must clear in-memory SavedVariables. Editing the file on disk while
+        -- logged in is overwritten on the next /reload or logout.
+        initDB()
+        GutSagaDB.completions = {}
+        GutSagaDB.objectives = {}
+        selectedID = nil
+        chat("|cffc9a227GutSaga|r: Alle lokale fullføringer er slettet.")
+        onWorld()
+        if frame and frame:IsShown() then
+            refresh()
+        end
+        return
+    end
+    if msg == "reset goldshire" then
         initDB()
         local id = "cf031479-7288-4508-b139-f23f1e322026"
         GutSagaDB.completions[id] = nil
-        GutSagaDB.objectives[id] = nil
+        if type(GutSagaDB.objectives) == "table" then
+            GutSagaDB.objectives[id] = nil
+        end
         selectedID = id
         chat("|cffc9a227GutSaga|r: «En kveld i Goldshire» er tilbakestilt.")
         onWorld()
