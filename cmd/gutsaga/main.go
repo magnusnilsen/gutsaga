@@ -115,13 +115,15 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `GutSaga – følgeprogram for oppdragene til gutane
 
   gutsaga                         start, installer tillegget, logg inn med Smia
-  gutsaga --client retail         bruk _retail_ (Midnight) i stedet for Forever
+  gutsaga --client retail         bruk _retail_ (Midnight)
+  gutsaga --client classic_era    bruk _classic_era_ (Classic Era)
+  gutsaga --client classic        bruk _classic_ (Mists)
   gutsaga --api-url http://localhost:8080
   gutsaga sync                    hent oppdrag én gang
   gutsaga setup                   valgfri mappe og oppdateringsrepo
   gutsaga --headless              kjør uten skuffikon
 
-Miljøvariabler: GUTSAGA_API_URL, GUTSAGA_CLIENT (forever|retail), GUTSAGA_WOW_PATH, GUTSAGA_DEV_TOKEN.
+Miljøvariabler: GUTSAGA_API_URL, GUTSAGA_CLIENT (forever|retail|classic_era|classic), GUTSAGA_WOW_PATH, GUTSAGA_DEV_TOKEN.
 Innstillingene lagres i config.json. Programmet leser chatloggen. Det sender aldri tastetrykk til spillet.
 `)
 }

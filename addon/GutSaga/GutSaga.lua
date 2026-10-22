@@ -1,4 +1,4 @@
--- GutSaga quest log for World of Warcraft: Forever and retail Midnight.
+-- GutSaga quest log for Forever, retail Midnight, Classic Era, and Classic (Mists).
 -- Interface numbers live in the .toc files (see addon/INTERFACE).
 -- Machine-readable chat lines (ASCII, parsed by the companion):
 --   [GutSaga] CHARACTER name|realm|level|race|class|battletag|unix
@@ -73,9 +73,33 @@ end
 local function enableChatLog()
     if C_CVar and C_CVar.SetCVar then
         pcall(C_CVar.SetCVar, "chatLog", "1")
+    elseif SetCVar then
+        pcall(SetCVar, "chatLog", "1")
     end
     if LoggingChat then
         pcall(LoggingChat, true)
+    end
+end
+
+local function takeScreenshot()
+    if Screenshot then
+        pcall(Screenshot)
+    end
+end
+
+local function registerPrefix(prefix)
+    if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+        pcall(C_ChatInfo.RegisterAddonMessagePrefix, prefix)
+    elseif RegisterAddonMessagePrefix then
+        pcall(RegisterAddonMessagePrefix, prefix)
+    end
+end
+
+local function sendAddon(prefix, message, channel)
+    if C_ChatInfo and C_ChatInfo.SendAddonMessage then
+        pcall(C_ChatInfo.SendAddonMessage, prefix, message, channel)
+    elseif SendAddonMessage then
+        pcall(SendAddonMessage, prefix, message, channel)
     end
 end
 
@@ -342,7 +366,10 @@ local function inInstance()
 end
 
 local function broadcast(message)
-    if inInstance() or not C_ChatInfo or not C_ChatInfo.SendAddonMessage then
+    if inInstance() then
+        return
+    end
+    if not ((C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage) then
         return
     end
     local inRaid, inGroup, inGuild = false, false, false
@@ -356,13 +383,51 @@ local function broadcast(message)
         inGuild = IsInGuild() and true or false
     end)
     if inRaid then
-        pcall(C_ChatInfo.SendAddonMessage, PREFIX, message, "RAID")
+        sendAddon(PREFIX, message, "RAID")
     elseif inGroup then
-        pcall(C_ChatInfo.SendAddonMessage, PREFIX, message, "PARTY")
+        sendAddon(PREFIX, message, "PARTY")
     end
     if inGuild then
-        pcall(C_ChatInfo.SendAddonMessage, PREFIX, message, "GUILD")
+        sendAddon(PREFIX, message, "GUILD")
     end
+end
+
+local function bagItemCount(id)
+    local slotsOf = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
+    local idOf = (C_Container and C_Container.GetContainerItemID) or GetContainerItemID
+    local infoOf = (C_Container and C_Container.GetContainerItemInfo) or GetContainerItemInfo
+    if type(slotsOf) ~= "function" then
+        return nil
+    end
+    local total, found = 0, false
+    for bag = 0, 4 do
+        local okSlots, slots = pcall(slotsOf, bag)
+        local nSlots = okSlots and plainNumber(slots) or 0
+        for slot = 1, nSlots or 0 do
+            local itemID, count
+            if type(idOf) == "function" then
+                local okID, got = pcall(idOf, bag, slot)
+                itemID = okID and plainNumber(got) or nil
+            end
+            if type(infoOf) == "function" then
+                local okInfo, a, b = pcall(infoOf, bag, slot)
+                if okInfo and type(a) == "table" then
+                    itemID = itemID or plainNumber(a.itemID)
+                    count = plainNumber(a.stackCount) or 1
+                elseif okInfo then
+                    count = plainNumber(b) or 1
+                end
+            end
+            if itemID == id then
+                found = true
+                total = total + (count or 1)
+            end
+        end
+    end
+    if not found then
+        return nil
+    end
+    return total
 end
 
 local function itemCount(id)
@@ -379,6 +444,10 @@ local function itemCount(id)
         if v then
             return v
         end
+    end
+    local bags = bagItemCount(id)
+    if bags then
+        return bags
     end
     return 0
 end
@@ -401,24 +470,33 @@ local function readLocation()
             world.subzone = s
         end
     end
-    if not C_Map or not C_Map.GetBestMapForUnit then
-        return
+    local id
+    if C_Map and C_Map.GetBestMapForUnit then
+        local ok, mapID = pcall(C_Map.GetBestMapForUnit, "player")
+        id = ok and plainNumber(mapID) or nil
     end
-    local ok, mapID = pcall(C_Map.GetBestMapForUnit, "player")
-    local id = ok and plainNumber(mapID) or nil
-    if not id or not C_Map.GetPlayerMapPosition then
-        return
-    end
-    world.mapID = id
-    local posOK, a, b = pcall(C_Map.GetPlayerMapPosition, id, "player")
-    if not posOK then
-        return
+    if id then
+        world.mapID = id
     end
     local x, y
-    if type(a) == "number" and type(b) == "number" then
-        x, y = a, b
-    elseif type(a) == "table" then
-        x, y = a.x, a.y
+    if id and C_Map and C_Map.GetPlayerMapPosition then
+        local posOK, a, b = pcall(C_Map.GetPlayerMapPosition, id, "player")
+        if posOK then
+            if type(a) == "number" and type(b) == "number" then
+                x, y = a, b
+            elseif type(a) == "table" then
+                x, y = a.x, a.y
+            end
+        end
+    end
+    if (not x or not y) and GetPlayerMapPosition then
+        if SetMapToCurrentZone then
+            pcall(SetMapToCurrentZone)
+        end
+        local posOK, a, b = pcall(GetPlayerMapPosition, "player")
+        if posOK and type(a) == "number" and type(b) == "number" then
+            x, y = a, b
+        end
     end
     x = plainNumber(x)
     y = plainNumber(y)
@@ -631,9 +709,7 @@ finishQuest = function(entry)
         character = player.name,
         realm = player.realm,
     }
-    if Screenshot then
-        pcall(Screenshot)
-    end
+    takeScreenshot()
     local realm = player.realm
     if realm == "" then
         realm = "-"
@@ -841,9 +917,7 @@ events:SetScript("OnEvent", function(_, event, ...)
         end
         initDB()
         enableChatLog()
-        if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
-            pcall(C_ChatInfo.RegisterAddonMessagePrefix, PREFIX)
-        end
+        registerPrefix(PREFIX)
         return
     end
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then

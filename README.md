@@ -6,7 +6,7 @@ Forever-klienten er 1.60.1 og bruker det moderne tilleggs-API-et (Midnight), ikk
 
 ## Lokal testing
 
-Dette er veien før Railway finnes. Du trenger Docker, Go, og retail-klienten (Midnight) på macOS. API-et kjører på maskinen. Innloggingen går til Smia i nettleseren og tilbake til `127.0.0.1`.
+Dette er veien før Railway finnes. Du trenger Docker, Go, og en WoW-klient på macOS: Classic Era, Classic (Mists) eller retail. API-et kjører på maskinen. Innloggingen går til Smia i nettleseren og tilbake til `127.0.0.1`.
 
 1. Klon repoet og stå i rotmappen.
 2. Portene `5432` og `8080` må være ledige.
@@ -38,7 +38,35 @@ Samme valg som miljøvariabler: `GUTSAGA_API_URL=http://localhost:8080` og `GUTS
 - «Melk til vaktlaget»: stå i Goldshire igjen og ha 1 Ice Cold Milk (gjenstand 1179, selges av Farley).
 - Følgeprogrammet plukker opp linjen og skjermbildet og sender dem til `http://localhost:8080`. Oppdraget står som fullført etter `/reload`.
 
-NPC-navnene i seed er engelske, fordi `UnitName` følger klientspråket. Kartkoordinatene er de samme på norsk og engelsk. Kjør retail på engelsk for denne runden, eller endre `npc` i API-et til navnet klienten viser.
+### Classic
+
+Retail trengs ikke. Seed-oppdragene er de samme i Classic Elwynn: kart 37, Lion's Pride Inn, Innkeeper Farley, Refreshing Spring Water (159) og Ice Cold Milk (1179).
+
+Grensesnittnumrene er hentet 22. oktober 2026 (`/dump select(4, GetBuildInfo())` i klienten om du vil sjekke):
+
+| Klient | Mappe | TOC | Interface |
+|---|---|---|---|
+| Classic Era 1.15.9 | `_classic_era_` | `GutSaga_Vanilla.toc` | 11509 |
+| Classic (Mists) 5.5.4 | `_classic_` | `GutSaga_Mists.toc` | 50504 |
+| Anniversary (TBC) 2.5.6 | `_anniversary_` | `GutSaga_TBC.toc` | 20506 |
+
+Anniversary er Burning Crusade nå, så den laster ikke Vanilla-filen. Era gjør det.
+
+```bash
+go run ./cmd/gutsaga --api-url http://localhost:8080 --client classic_era
+```
+
+Mists-progresjon:
+
+```bash
+go run ./cmd/gutsaga --api-url http://localhost:8080 --client classic
+```
+
+`classic_era` peker på `_classic_era_`. `classic` peker på `_classic_`. Samme valg finnes som `GUTSAGA_CLIENT`. Uten flagg leter programmet selv, og en maskin som bare har Classic blir funnet. Har du flere klienter, sett flagget så riktig mappe vinner.
+
+**Forventet resultat:** samme tre oppdrag og samme chatlinjer som på retail. Stå på torget i Goldshire, ikke nede i en gruve, så kart-id er 37 og ikke et underkart. Tillegget bruker `C_Map`, `C_Item` og `C_Container` når klienten har dem, og de eldre kallene (`GetPlayerMapPosition`, `GetItemCount`, veske-API) når de mangler. `BNGetInfo`, `Screenshot` og `LoggingChat` kalles bare hvis de finnes. BattleTag kan være tom på en klient uten Battle.net-navn. Da fullfører oppdraget likevel.
+
+NPC-navnene i seed er engelske, fordi `UnitName` følger klientspråket. Kartkoordinatene er de samme på norsk og engelsk. Kjør klienten på engelsk for denne runden, eller endre `npc` i API-et til navnet klienten viser.
 
 Du må være medlem av Smia-hubben wow. Ellers svarer API-et 403. API-containeren må nå `https://smia.tools` for å sjekke tokenet. Den lagrer ikke Smia-tokenet, bare en egen økt (`gss_…`) i 30 dager.
 
@@ -123,7 +151,7 @@ Realm kan ha mellomrom. Tillegget skrur på chatlogging (`LoggingChat`). Loggen 
 
 Andre som har GutSaga og står i gruppe eller guild, kan få et kort varsel. Inne i instanser sender vi ikke addon-meldinger, fordi klienten begrenser dem der. Vi leser heller ikke hemmelige enhetsverdier i kamp. Navn og nivå huskes fra innlogging.
 
-`## Interface: 16001` i `GutSaga_Forever.toc` er beta-verdien. Endre tallet i `addon/INTERFACE` og i toc-filene samtidig. `GutSaga_Mainline.toc` er for å teste på retail (`120000` til du har sjekket med `/dump select(4, GetBuildInfo())`). Når programmet installerer for Forever, skriver det Forever-nummeret inn i alle toc-filene, også `_Mainline`, fordi klienten kan tro at den er retail.
+`## Interface: 16001` i `GutSaga_Forever.toc` er beta-verdien. Endre tallet i `addon/INTERFACE` og i toc-filene samtidig. `GutSaga_Mainline.toc` er retail (`120000`). `GutSaga_Vanilla.toc` er Classic Era (`11509`). `GutSaga_Mists.toc` er Classic-progresjon (`50504`). `GutSaga_TBC.toc` er Anniversary (`20506`). Når programmet installerer for Forever, skriver det Forever-nummeret inn i alle toc-filene, fordi den klienten kan laste Mainline-filen. De andre klientene beholder sin egen toc.
 
 ## For den som driver serveren
 

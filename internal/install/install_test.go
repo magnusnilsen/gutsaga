@@ -70,6 +70,36 @@ func TestTOCFilesMatchInterfaceList(t *testing.T) {
 	check("GutSaga_Forever.toc", forever)
 	check("GutSaga.toc", forever)
 	check("GutSaga_Mainline.toc", mainline)
+	check("GutSaga_Vanilla.toc", between(text, "VANILLA=", "\n"))
+	check("GutSaga_Mists.toc", between(text, "MISTS=", "\n"))
+	check("GutSaga_TBC.toc", between(text, "TBC=", "\n"))
+}
+
+func TestInstallClassicKeepsFlavorTOCs(t *testing.T) {
+	wow := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(wow, "Interface", "AddOns"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(wow, "classic"); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(wow, "Interface", "AddOns", "GutSaga")
+	toc, _ := os.ReadFile(filepath.Join(root, "GutSaga.toc"))
+	vanilla, _ := os.ReadFile(filepath.Join(root, "GutSaga_Vanilla.toc"))
+	mists, _ := os.ReadFile(filepath.Join(root, "GutSaga_Mists.toc"))
+	if !strings.Contains(string(toc), "Interface: 50504") {
+		t.Fatalf("classic fallback toc:\n%s", toc)
+	}
+	if !strings.Contains(string(vanilla), "Interface: 11509") || !strings.Contains(string(mists), "Interface: 50504") {
+		t.Fatalf("flavor tocs were rewritten:\n%s\n%s", vanilla, mists)
+	}
+	if err := Install(wow, "classic_era"); err != nil {
+		t.Fatal(err)
+	}
+	toc, _ = os.ReadFile(filepath.Join(root, "GutSaga.toc"))
+	if !strings.Contains(string(toc), "Interface: 11509") {
+		t.Fatalf("era fallback toc:\n%s", toc)
+	}
 }
 
 func between(s, start, end string) string {

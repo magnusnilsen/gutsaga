@@ -60,37 +60,104 @@ func isFlavor(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-func score(path, client string) int {
-	// Only the install folder and its parent count. A home directory named
-	// "forever" must not beat an actual Forever client folder.
-	base := strings.ToLower(filepath.Base(path))
-	parent := strings.ToLower(filepath.Base(filepath.Dir(path)))
-	blob := parent + "/" + base
-	forever := strings.Contains(blob, "forever")
-	retail := strings.Contains(blob, "_retail_") || strings.HasSuffix(base, "retail")
-	if client == "retail" {
-		if retail {
-			return 100
-		}
-		if forever {
-			return 10
-		}
-		return 1
+// NormalizeClient accepts the flags and folder nicknames the companion understands.
+func NormalizeClient(client string) string {
+	switch strings.ToLower(strings.TrimSpace(client)) {
+	case "", "forever":
+		return "forever"
+	case "retail", "mainline":
+		return "retail"
+	case "classic_era", "classic-era", "classicera", "era", "vanilla":
+		return "classic_era"
+	case "classic", "mists", "progression":
+		return "classic"
+	case "anniversary", "tbc":
+		return "anniversary"
+	default:
+		return strings.ToLower(strings.TrimSpace(client))
 	}
-	if forever {
+}
+
+// ValidClient reports whether client is a known flavor after normalization.
+func ValidClient(client string) bool {
+	switch NormalizeClient(client) {
+	case "forever", "retail", "classic_era", "classic", "anniversary":
+		return true
+	default:
+		return false
+	}
+}
+
+func flavorKind(path string) string {
+	// Only the install folder name counts. A home directory named "forever"
+	// must not beat an actual client folder. "_classic_era_" is not "_classic_".
+	base := strings.ToLower(filepath.Base(path))
+	switch {
+	case strings.Contains(base, "classic_era") || strings.Contains(base, "_classic_era_"):
+		return "classic_era"
+	case strings.Contains(base, "anniversary"):
+		return "anniversary"
+	case base == "_classic_" || base == "classic":
+		return "classic"
+	case strings.Contains(base, "_retail_") || strings.HasSuffix(base, "retail"):
+		return "retail"
+	case strings.Contains(base, "forever"):
+		return "forever"
+	default:
+		return ""
+	}
+}
+
+func score(path, client string) int {
+	kind := flavorKind(path)
+	client = NormalizeClient(client)
+	if kind != "" && kind == client {
 		return 100
 	}
-	if retail {
-		return 10
+	switch client {
+	case "forever":
+		if kind == "retail" {
+			return 20
+		}
+	case "classic_era":
+		if kind == "anniversary" {
+			return 40
+		}
+		if kind == "classic" {
+			return 30
+		}
+	case "classic":
+		if kind == "classic_era" {
+			return 30
+		}
+	case "anniversary":
+		if kind == "classic_era" {
+			return 30
+		}
+	case "retail":
+		if kind == "forever" {
+			return 10
+		}
+	}
+	if kind != "" {
+		return 5
 	}
 	return 1
 }
 
 func flavorOrder(client string) []string {
-	if client == "retail" {
-		return []string{"_retail_", "_forever_", "forever", "_classic_era_", "_classic_"}
+	switch NormalizeClient(client) {
+	case "retail":
+		return []string{"_retail_", "_forever_", "forever", "_classic_era_", "_classic_", "_anniversary_"}
+	case "classic_era":
+		return []string{"_classic_era_", "_anniversary_", "_classic_", "_retail_", "_forever_", "forever"}
+	case "classic":
+		return []string{"_classic_", "_classic_era_", "_anniversary_", "_retail_", "_forever_", "forever"}
+	case "anniversary":
+		return []string{"_anniversary_", "_classic_era_", "_classic_", "_retail_", "_forever_", "forever"}
+	default:
+		return []string{"_forever_", "forever", "_retail_", "_classic_era_", "_classic_", "_anniversary_"}
 	}
-	return []string{"_forever_", "forever", "_retail_", "_classic_era_", "_classic_"}
 }
 
 // Resolve returns the flavor directory (the one that contains Interface/AddOns).
@@ -143,10 +210,13 @@ func Detect(configured string, candidates []string) (string, error) {
 	return DetectClient(configured, candidates, "forever")
 }
 
-// DetectClient prefers _retail_ when client is "retail", otherwise Forever.
+// DetectClient prefers the folder for client: forever, retail, classic_era
+// (_classic_era_), classic (_classic_), or anniversary (_anniversary_).
+// A missing preferred folder still resolves to another installed flavor.
 func DetectClient(configured string, candidates []string, client string) (string, error) {
-	if client != "retail" {
-		client = "forever"
+	client = NormalizeClient(client)
+	if !ValidClient(client) {
+		return "", errors.New("ukjent klient. Bruk forever, retail, classic_era eller classic")
 	}
 	if strings.TrimSpace(configured) != "" {
 		if p, ok := ResolveClient(configured, client); ok {

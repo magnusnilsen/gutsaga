@@ -83,6 +83,38 @@ func TestDetectClientPrefersRetail(t *testing.T) {
 	}
 }
 
+func TestDetectClassicFlavors(t *testing.T) {
+	root := t.TempDir()
+	era := filepath.Join(root, "World of Warcraft", "_classic_era_")
+	classic := filepath.Join(root, "World of Warcraft", "_classic_")
+	for _, p := range []string{era, classic} {
+		if err := os.MkdirAll(filepath.Join(p, "Interface", "AddOns"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	parent := filepath.Join(root, "World of Warcraft")
+	got, err := DetectClient(parent, nil, "classic_era")
+	if err != nil || got != era {
+		t.Fatalf("era got %s err %v", got, err)
+	}
+	got, err = DetectClient(parent, nil, "classic")
+	if err != nil || got != classic {
+		t.Fatalf("classic got %s err %v", got, err)
+	}
+	only := t.TempDir()
+	justClassic := filepath.Join(only, "World of Warcraft", "_classic_")
+	if err := os.MkdirAll(filepath.Join(justClassic, "Interface", "AddOns"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err = DetectClient("", []string{filepath.Join(only, "World of Warcraft")}, "forever")
+	if err != nil || got != justClassic {
+		t.Fatalf("auto got %s err %v", got, err)
+	}
+	if NormalizeClient("vanilla") != "classic_era" || NormalizeClient("mists") != "classic" {
+		t.Fatal("aliases")
+	}
+}
+
 func TestAddonPaths(t *testing.T) {
 	base := filepath.Join("Wow", "forever")
 	if !strings.HasSuffix(AddonDir(base), filepath.Join("Interface", "AddOns", "GutSaga")) {

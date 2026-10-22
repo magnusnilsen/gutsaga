@@ -8,10 +8,11 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 )
 
-// Retail Midnight map positions are fractions of UiMap 37 (Elwynn Forest).
-// Lion's Pride Inn / Goldshire is about 43.8, 65.8. The north road where
-// Falkhaan Isenstrider stands is about 45.6, 47.7. NPC names are enUS because
-// UnitName follows the client language. Coordinates do not.
+// Map positions are fractions of UiMap 37 (Elwynn Forest) on retail, Classic Era,
+// and Mists Classic. Lion's Pride Inn / Goldshire is about 43.8, 65.8. The north
+// road where Falkhaan Isenstrider stands is about 45.6, 47.7. Innkeeper Farley,
+// Refreshing Spring Water (159), and Ice Cold Milk (1179) exist in all three.
+// NPC names are enUS because UnitName follows the client language.
 func seedQuests() []QuestInput {
 	goldX, goldY := 0.438, 0.658
 	goldR := 0.05

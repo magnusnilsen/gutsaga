@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/magnusnilsen/gutsaga/internal/wowpath"
 )
 
 type Update struct {
@@ -111,15 +113,12 @@ func (cfg *Config) Normalize() {
 	cfg.APIKey = strings.TrimSpace(cfg.APIKey)
 	cfg.SessionToken = strings.TrimSpace(cfg.SessionToken)
 	cfg.WowPath = strings.TrimSpace(cfg.WowPath)
-	cfg.Client = strings.ToLower(strings.TrimSpace(cfg.Client))
+	cfg.Client = wowpath.NormalizeClient(cfg.Client)
 	if cfg.SessionToken == "" && strings.HasPrefix(cfg.APIKey, "gss_") {
 		cfg.SessionToken = cfg.APIKey
 	}
 	if cfg.APIKey == "" {
 		cfg.APIKey = cfg.SessionToken
-	}
-	if cfg.Client == "" {
-		cfg.Client = "forever"
 	}
 }
 
@@ -135,9 +134,7 @@ func SavePath(path string, cfg Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if cfg.Client == "" {
-		cfg.Client = "forever"
-	}
+	cfg.Client = wowpath.NormalizeClient(cfg.Client)
 	raw, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
@@ -157,8 +154,8 @@ func Validate(cfg Config) error {
 	if cfg.APIBaseURL != "" && !strings.HasPrefix(cfg.APIBaseURL, "http://") && !strings.HasPrefix(cfg.APIBaseURL, "https://") {
 		return errors.New("api_base_url må starte med http:// eller https://")
 	}
-	if cfg.Client != "forever" && cfg.Client != "retail" {
-		return errors.New("client må være forever eller retail")
+	if !wowpath.ValidClient(cfg.Client) {
+		return errors.New("client må være forever, retail, classic_era eller classic")
 	}
 	return nil
 }
@@ -186,7 +183,7 @@ func Setup(r io.Reader, w io.Writer, current Config) (Config, error) {
 	if current.WowPath, err = ask("Mappe til WoW (tom = let automatisk, _retail_ når klient er retail)", current.WowPath); err != nil {
 		return current, err
 	}
-	client, err := ask("Klient: forever eller retail", orDefault(current.Client, "forever"))
+	client, err := ask("Klient: forever, retail, classic_era eller classic", orDefault(current.Client, "forever"))
 	if err != nil {
 		return current, err
 	}

@@ -72,7 +72,7 @@ The companion upserts the character the addon reported. BattleTag is taken from 
 
 | `type` | Fields |
 |---|---|
-| `location` | `zone`, `subzone` (client language), `map_id` (retail UiMapID, Elwynn Forest is 37), `x`, `y` (0–1), `radius` |
+| `location` | `zone`, `subzone` (client language), `map_id` (UiMapID, Elwynn Forest is 37 on retail and Classic), `x`, `y` (0–1), `radius` |
 | `interact` | `npc` and/or `object`. Matched to `UnitName`. Names follow the client language. |
 | `collect` | `item_id`, optional `item_name`, `count` (default 1) |
 | `kill` | `npc`, `count`. Experimental. A secret combat-log name does not count. |

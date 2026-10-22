@@ -8,8 +8,8 @@ dev:
 	$(MAKE) wait seed
 	@echo ""
 	@echo "API kjører på $(API_URL)"
-	@echo "Start følgeprogrammet mot retail:"
-	@echo "  go run ./cmd/gutsaga --api-url $(API_URL) --client retail"
+	@echo "Start følgeprogrammet mot Classic Era:"
+	@echo "  go run ./cmd/gutsaga --api-url $(API_URL) --client classic_era"
 
 wait:
 	@i=0; until curl -sf $(API_URL)/healthz >/dev/null; do \

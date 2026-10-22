@@ -1,0 +1,11 @@
+## Interface: 20506
+## Title: GutSaga
+## Notes: Egendefinerte oppdrag for Gutar
+## Author: Gutar
+## Version: 0.1.0
+## SavedVariablesPerCharacter: GutSagaDB
+## IconTexture: Interface\Icons\INV_Misc_Book_09
+
+GutSagaData.lua
+GutSagaObjectives.lua
+GutSaga.lua
