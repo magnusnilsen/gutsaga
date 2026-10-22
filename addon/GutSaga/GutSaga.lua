@@ -83,12 +83,21 @@ local function unixNow()
 end
 
 local function chat(line)
-    -- Visible in the chat UI. Classic Era does not write AddMessage into
-    -- WoWChatLog.txt; the companion also reads GutSagaDB.completions.
+    -- Visible in the chat UI.
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         DEFAULT_CHAT_FRAME:AddMessage(line)
     else
         print(line)
+    end
+    -- Classic Era does not write AddMessage into WoWChatLog.txt. Whispering
+    -- the machine line to yourself is logged so the companion sees it live
+    -- (SavedVariables only flush on /reload or logout).
+    if type(line) == "string" and line:find("%[GutSaga%]", 1, false)
+        and (line:find(" COMPLETE ", 1, true) or line:find(" CHARACTER ", 1, true) or line:find(" LEVELUP ", 1, true)) then
+        local name = UnitName and UnitName("player")
+        if name and name ~= "" and SendChatMessage then
+            pcall(SendChatMessage, line, "WHISPER", nil, name)
+        end
     end
 end
 
