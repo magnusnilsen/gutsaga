@@ -21,7 +21,6 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/install"
 	"github.com/magnusnilsen/gutsaga/internal/queue"
 	"github.com/magnusnilsen/gutsaga/internal/savedvars"
-	"github.com/magnusnilsen/gutsaga/internal/screenshot"
 	"github.com/magnusnilsen/gutsaga/internal/syncdata"
 	"github.com/magnusnilsen/gutsaga/internal/update"
 	"github.com/magnusnilsen/gutsaga/internal/version"
@@ -351,31 +350,11 @@ func (a *App) send(ctx context.Context, item queue.Item) error {
 			item.QuestTitle = q.Title
 		}
 	}
-	var image []byte
-	if item.ScreenshotPath == "" && a.WowDir != "" && item.Attempts < 4 {
-		at, _ := time.Parse(time.RFC3339, item.CompletedAt)
-		slack := 2 * time.Minute
-		if time.Since(at) < 2*time.Minute {
-			slack = 45 * time.Second
-		}
-		if path, ok := screenshot.Closest(wowpath.Screenshots(a.WowDir), at, slack); ok {
-			item.ScreenshotPath = path
-		} else if time.Since(at) < 2*time.Minute {
-			a.Queue.Update(item)
-			return errors.New("venter på skjermbilde")
-		}
-	}
-	if item.ScreenshotPath != "" {
-		b, err := os.ReadFile(item.ScreenshotPath)
-		if err == nil {
-			image = b
-		}
-	}
 	a.Queue.Update(item)
 	_, err := a.Client.Complete(ctx, contract.CompletionRequest{
 		CharacterID: item.CharacterID, QuestID: item.QuestID, QuestVersion: item.QuestVersion,
 		BattleTag: tag, Level: item.Level, CompletedAt: item.CompletedAt,
-	}, image)
+	}, nil)
 	if err != nil {
 		return err
 	}

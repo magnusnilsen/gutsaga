@@ -1,9 +1,7 @@
 -- GutSaga quest log for Forever, retail Midnight, Classic Era, and Classic (Mists).
 -- Interface numbers live in the .toc files (see addon/INTERFACE).
--- Machine-readable chat lines (ASCII, parsed by the companion):
---   [GutSaga] CHARACTER name|realm|level|race|class|battletag|unix
---   [GutSaga] COMPLETE <questId> <version> <character> <realm words> <level> <unix>
--- Realm in COMPLETE may contain spaces. Empty fields in CHARACTER are "-".
+-- Completions are stored in GutSagaDB (SavedVariables). On Classic Era the
+-- companion reads those after /reload or logout — live chat-log signaling is parked.
 -- There is no completion button. Objectives are checked in order.
 
 local PREFIX = "GutSaga"
@@ -82,62 +80,19 @@ local function unixNow()
     return time()
 end
 
-local function enableChatLog()
-    if C_CVar and C_CVar.SetCVar then
-        pcall(C_CVar.SetCVar, "chatLog", "1")
-    elseif SetCVar then
-        pcall(SetCVar, "chatLog", "1")
-    end
-    if LoggingChat then
-        pcall(LoggingChat, true)
-    end
-end
-
--- Classic Era does not write AddMessage into WoWChatLog.txt, and you cannot
--- whisper yourself. Machine lines go on a private "GutSaga" channel so the
--- companion can read them live (SavedVariables only flush on /reload/logout).
-local function ensureMachineChannel()
-    if not JoinPermanentChannel or not GetChannelName then
-        return 0
-    end
-    local id = GetChannelName("GutSaga")
-    if type(id) == "number" and id > 0 then
-        return id
-    end
-    local frameID = DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.GetID and DEFAULT_CHAT_FRAME:GetID() or 1
-    pcall(JoinPermanentChannel, "GutSaga", nil, frameID, 1)
-    id = GetChannelName("GutSaga")
-    if type(id) == "number" then
-        return id
-    end
-    return 0
-end
-
+-- Machine COMPLETE/CHARACTER/LEVELUP lines are parked on Classic Era: chat
+-- logging does not reliably accept addon SendChatMessage (taint / no flush).
+-- Completions go to GutSagaDB and reach Discord after /reload via the companion.
 local function chat(line)
     local machine = type(line) == "string" and line:find("[GutSaga]", 1, true)
         and (line:find(" COMPLETE ", 1, true) or line:find(" CHARACTER ", 1, true) or line:find(" LEVELUP ", 1, true))
     if machine then
-        -- Do not whisper or AddMessage: those either fail on Classic or spam the UI.
-        -- A private GutSaga channel is what WoWChatLog.txt actually records.
-        enableChatLog()
-        if SendChatMessage then
-            local id = ensureMachineChannel()
-            if id > 0 then
-                pcall(SendChatMessage, line, "CHANNEL", nil, id)
-            end
-        end
         return
     end
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         DEFAULT_CHAT_FRAME:AddMessage(line)
     else
         print(line)
-    end
-end
-
-local function takeScreenshot()
-    if Screenshot then
-        pcall(Screenshot)
     end
 end
 
@@ -1259,15 +1214,16 @@ finishQuest = function(entry)
         character = player.name,
         realm = player.realm,
     }
-    takeScreenshot()
-    local realm = player.realm
-    if realm == "" then
-        realm = "-"
-    end
-    chat(string.format("[GutSaga] COMPLETE %s %d %s %s %d %d", entry.quest_id, version, player.name, realm, level, ts))
-    showSagaToast(entry.title or "Saga", entry.quest_id)
-    broadcast(string.format("C|%s|%d|%d|%d", entry.quest_id, version, level, ts))
+    local title = entry.title or "Saga"
+    local questID = entry.quest_id
+    showSagaToast(title, questID)
+    broadcast(string.format("C|%s|%d|%d|%d", questID, version, level, ts))
     refresh()
+    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "|cffc9a227GutSaga|r: Fullført. Discord etter |cffffffff/reload|r."
+        )
+    end
 end
 
 local function onWorld()
@@ -1972,13 +1928,11 @@ events:SetScript("OnEvent", function(_, event, ...)
             return
         end
         initDB()
-        enableChatLog()
         registerPrefix(PREFIX)
         return
     end
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         initDB()
-        enableChatLog()
         cachePlayer()
         build()
         emitCharacter()
