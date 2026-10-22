@@ -64,4 +64,19 @@ assertTrue(steps.obj.done, "gossip name counts as object")
 steps, done = M.evaluate(objectives, { object = "Innkeeper Farley" }, { place = { done = true } })
 assertTrue(steps.talk.done, "current target counts as the npc")
 
+steps, done = M.evaluate({
+    { id = "place", type = "location", text = "Inn", subzone = "Goldshire|Lion's Pride Inn", map_id = 37, x = 0.438, y = 0.658, radius = 0.05 },
+}, { minimap = "Lion's Pride Inn" }, {})
+assertTrue(steps.place.done, "minimap label completes the inn when subzone text is empty")
+
+steps, done = M.evaluate({
+    { id = "place", type = "location", text = "Inn", subzone = "Goldshire|Lion's Pride Inn", map_id = 37, x = 0.438, y = 0.658, radius = 0.01 },
+}, { subzone = "Goldshire", map_id = 999, x = 0.1, y = 0.1 }, {})
+assertTrue(steps.place.done, "goldshire subzone completes just outside the inn")
+
+steps, done = M.evaluate({
+    { id = "place", type = "location", text = "Stå i eller rett utenfor Lion's Pride Inn i Goldshire", map_id = 37, x = 0.9, y = 0.9, radius = 0.01 },
+}, { minimap = "Lion's Pride Inn" }, {})
+assertTrue(steps.place.done, "objective wording matches the minimap when subzone is missing")
+
 print("objectives ok")

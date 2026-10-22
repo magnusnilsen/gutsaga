@@ -56,36 +56,85 @@ local function onPoint(obj, state)
     return math.sqrt(dx * dx + dy * dy) <= radius
 end
 
+local function key(s)
+    return (norm(s):gsub("[^%a%d]+", ""))
+end
+
+-- Split on "|" or ";" without a pattern. A "|" inside a Lua pattern is a
+-- WoW escape and can make the matcher throw, which freezes later checks.
+local function partsOf(want)
+    local pipe = string.char(124)
+    local out = {}
+    local startAt = 1
+    while startAt <= #want do
+        local pipeAt = string.find(want, pipe, startAt, true)
+        local semiAt = string.find(want, ";", startAt, true)
+        local cut = pipeAt
+        if semiAt and (not cut or semiAt < cut) then
+            cut = semiAt
+        end
+        if not cut then
+            table.insert(out, string.sub(want, startAt))
+            break
+        end
+        table.insert(out, string.sub(want, startAt, cut - 1))
+        startAt = cut + 1
+    end
+    return out
+end
+
+local function listed(want, got)
+    if type(want) ~= "string" then
+        return false
+    end
+    local gotKey = key(got)
+    if want == "" or gotKey == "" then
+        return false
+    end
+    if key(want) == gotKey then
+        return true
+    end
+    local parts = partsOf(want)
+    for i = 1, #parts do
+        local partKey = key(parts[i])
+        if partKey ~= "" and (partKey == gotKey or string.find(gotKey, partKey, 1, true) or string.find(partKey, gotKey, 1, true)) then
+            return true
+        end
+    end
+    return false
+end
+
+local function placeHit(obj, state)
+    -- obj.text is the line the player sees. It stays usable even when the
+    -- subzone field never arrives in the loaded quest table.
+    local wants = { obj.subzone, obj.zone, obj.text }
+    local names = { state.subzone, state.zone, state.minimap }
+    for i = 1, #names do
+        for j = 1, #wants do
+            if listed(wants[j], names[i]) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function locationOK(obj, state)
-    local any = false
+    -- A coordinate hit counts even when Classic and retail disagree on map id.
+    -- The minimap label counts too: indoors, GetSubZoneText is often empty
+    -- while the minimap still says "Lion's Pride Inn".
     local here = onPoint(obj, state)
-    if norm(obj.zone) ~= "" then
-        any = true
-        if norm(obj.zone) ~= norm(state.zone) then
-            return false
-        end
+    if here or placeHit(obj, state) then
+        return true
     end
-    if norm(obj.subzone) ~= "" then
-        any = true
-        if norm(obj.subzone) ~= norm(state.subzone) then
-            return false
-        end
+    local zoneOnly = norm(obj.zone) ~= "" and obj.x == nil and obj.map_id == nil and norm(obj.subzone) == ""
+    if zoneOnly and norm(obj.zone) == norm(state.zone) then
+        return true
     end
-    if obj.map_id ~= nil then
-        any = true
-        -- Retail Elwynn is uiMap 37. Classic Era uses 1429 for the same zone,
-        -- with the same 0–1 coordinates. A coordinate hit is enough.
-        if tonumber(obj.map_id) ~= tonumber(state.map_id) and not here then
-            return false
-        end
+    if obj.map_id ~= nil and obj.x == nil and norm(obj.subzone) == "" and norm(obj.zone) == "" then
+        return tonumber(obj.map_id) == tonumber(state.map_id)
     end
-    if obj.x ~= nil and obj.y ~= nil then
-        any = true
-        if not here then
-            return false
-        end
-    end
-    return any
+    return false
 end
 
 local function interactOK(obj, state)

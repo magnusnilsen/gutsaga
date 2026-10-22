@@ -34,6 +34,7 @@ read_globals = {
     "date",
     "GetZoneText",
     "GetSubZoneText",
+    "GetMinimapZoneText",
     "C_Map",
     "C_Item",
     "C_Container",

@@ -29,7 +29,7 @@ func seedQuests() []QuestInput {
 			PartyQuest:  true,
 			CreatedBy:   "seed",
 			Objectives: []contract.Objective{
-				{ID: "goldshire", Type: contract.ObjectiveLocation, Text: "Stå i eller rett utenfor Lion's Pride Inn i Goldshire", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
+				{ID: "goldshire", Type: contract.ObjectiveLocation, Text: "Stå i eller rett utenfor Lion's Pride Inn i Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
 				{ID: "farley", Type: contract.ObjectiveInteract, Text: "Snakk med Innkeeper Farley", NPC: "Innkeeper Farley"},
 				{ID: "water", Type: contract.ObjectiveCollect, Text: "Ha 1 Refreshing Spring Water (kjøpes av Farley)", ItemID: &water, ItemName: "Refreshing Spring Water", Count: one},
 			},
@@ -51,7 +51,7 @@ func seedQuests() []QuestInput {
 			PartyQuest:  true,
 			CreatedBy:   "seed",
 			Objectives: []contract.Objective{
-				{ID: "square", Type: contract.ObjectiveLocation, Text: "Stå i Goldshire", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
+				{ID: "square", Type: contract.ObjectiveLocation, Text: "Stå i Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
 				{ID: "milk", Type: contract.ObjectiveCollect, Text: "Ha 1 Ice Cold Milk", ItemID: &milk, ItemName: "Ice Cold Milk", Count: one},
 			},
 		},

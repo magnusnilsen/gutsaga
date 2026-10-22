@@ -8,7 +8,7 @@
 
 local PREFIX = "GutSaga"
 local player = { name = "", realm = "", level = 1, race = "", class = "", battletag = "" }
-local world = { zone = "", subzone = "", mapID = nil, x = nil, y = nil, npc = "", object = "", killName = nil, killSecret = false }
+local world = { zone = "", subzone = "", minimap = "", mapID = nil, x = nil, y = nil, npc = "", object = "", killName = nil, killSecret = false }
 local frame
 local listChild
 local listScroll
@@ -337,6 +337,18 @@ local function objectiveText(entry)
                 locked = true
             end
             local label = obj.text or "Mål"
+            if obj.type == "location" and not step.done then
+                local where = world.minimap
+                if where == "" then
+                    where = world.subzone
+                end
+                if where == "" then
+                    where = world.zone
+                end
+                if where ~= "" then
+                    label = label .. " (" .. where .. ")"
+                end
+            end
             if (obj.type == "collect" or obj.type == "kill") and not step.done then
                 local need = tonumber(obj.count) or 1
                 local have = tonumber(step.count) or 0
@@ -481,6 +493,13 @@ local function readLocation()
             world.subzone = s
         end
     end
+    if GetMinimapZoneText then
+        local ok, v = pcall(GetMinimapZoneText)
+        local s = ok and plainString(v) or nil
+        if s then
+            world.minimap = s
+        end
+    end
     local id
     if C_Map and C_Map.GetBestMapForUnit then
         local ok, mapID = pcall(C_Map.GetBestMapForUnit, "player")
@@ -489,20 +508,37 @@ local function readLocation()
     if id then
         world.mapID = id
     end
-    local function xyOf(v, extra)
-        if type(v) == "number" and type(extra) == "number" then
-            return v, extra
+    local function asNumber(v)
+        if type(v) == "number" then
+            return v
         end
-        if type(v) == "table" then
-            if type(v.GetXY) == "function" then
-                local ok, px, py = pcall(v.GetXY, v)
-                if ok and type(px) == "number" and type(py) == "number" then
+        if type(v) == "string" then
+            return tonumber(v)
+        end
+        return nil
+    end
+    -- Classic returns the position as a mixin object. That object is not
+    -- always a plain table, so .x/.y and GetXY have to be read off it directly.
+    local function xyOf(v, extra)
+        local a, b = asNumber(v), asNumber(extra)
+        if a and b then
+            return a, b
+        end
+        if v == nil then
+            return nil, nil
+        end
+        if type(v.GetXY) == "function" then
+            local ok, px, py = pcall(v.GetXY, v)
+            if ok then
+                px, py = asNumber(px), asNumber(py)
+                if px and py then
                     return px, py
                 end
             end
-            if type(v.x) == "number" and type(v.y) == "number" then
-                return v.x, v.y
-            end
+        end
+        local px, py = asNumber(v.x), asNumber(v.y)
+        if px and py then
+            return px, py
         end
         return nil, nil
     end
@@ -560,7 +596,7 @@ end
 
 local refresh
 local finishQuest
-local itemCount
+local lastCheckError = ""
 
 local function objectiveState(entries)
     local items = {}
@@ -579,6 +615,7 @@ local function objectiveState(entries)
     return {
         zone = world.zone,
         subzone = world.subzone,
+        minimap = world.minimap,
         map_id = world.mapID,
         x = world.x,
         y = world.y,
@@ -595,21 +632,29 @@ local function checkAll()
         return
     end
     checking = true
-    local entries = currentEntries()
-    local state = objectiveState(entries)
-    for _, entry in ipairs(entries) do
-        if not isComplete(entry) and type(entry.objectives) == "table" and #entry.objectives > 0 then
-            local bucket = savedSteps(entry)
-            local steps, done = GutSagaObjectives.evaluate(entry.objectives, state, bucket.steps)
-            bucket.steps = steps
-            if done then
-                finishQuest(entry)
+    local ok, err = pcall(function()
+        local entries = currentEntries()
+        local state = objectiveState(entries)
+        for _, entry in ipairs(entries) do
+            if not isComplete(entry) and type(entry.objectives) == "table" and #entry.objectives > 0 then
+                local bucket = savedSteps(entry)
+                local steps, done = GutSagaObjectives.evaluate(entry.objectives, state, bucket.steps)
+                bucket.steps = steps
+                if done then
+                    finishQuest(entry)
+                end
             end
         end
-    end
-    world.killName = nil
-    world.killSecret = false
+        world.killName = nil
+        world.killSecret = false
+    end)
     checking = false
+    if not ok and err ~= lastCheckError then
+        lastCheckError = err
+        chat("[GutSaga] feil: " .. tostring(err))
+    elseif ok then
+        lastCheckError = ""
+    end
 end
 
 refresh = function()
@@ -747,6 +792,8 @@ end
 
 local function onWorld()
     readLocation()
+    readNPC()
+    readObject()
     checkAll()
     if frame and frame:IsShown() then
         refresh()
