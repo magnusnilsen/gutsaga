@@ -11,7 +11,7 @@ import (
 //go:embed icon.png
 var iconPNGBytes []byte
 
-// Icon is the menu-bar and notification-area mark (the round map pin).
+// Icon is the menu-bar and notification-area mark (the round map emblem).
 func Icon() []byte {
 	if runtime.GOOS == "windows" {
 		return icoFromPNG(iconPNGBytes)

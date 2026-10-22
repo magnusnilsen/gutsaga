@@ -10,9 +10,17 @@ local PREFIX = "GutSaga"
 local player = { name = "", realm = "", level = 1, race = "", class = "", battletag = "" }
 local world = { zone = "", subzone = "", minimap = "", mapID = nil, x = nil, y = nil, npc = "", object = "", killName = nil, killSecret = false }
 local frame
+local toast
+local showSagaToast = function() end
+local sectionOpen
+local sectionDone
+local listPanel
+local detailPanel
+local GOLD = { r = 0.90, g = 0.70, b = 0.27 }
 local listChild
 local listScroll
 local detailFS
+local detailTitle
 local detailChild
 local detailScroll
 local subtitle
@@ -235,19 +243,6 @@ local function isComplete(entry)
         and type(GutSagaDB.completions) == "table" and GutSagaDB.completions[id] ~= nil
 end
 
-local function statusText(entry)
-    if isComplete(entry) then
-        return "Fullført"
-    end
-    if entry.status == "active" then
-        return "Aktiv"
-    end
-    if entry.status == "offered" then
-        return "Tilbudt"
-    end
-    return "Ikke startet"
-end
-
 local function currentEntries()
     local out = {}
     if player.name == "" or type(GutSagaData) ~= "table" or type(GutSagaData.entries) ~= "table" then
@@ -315,6 +310,99 @@ local function savedSteps(entry)
     return bucket
 end
 
+local function itemQualityHex(quality)
+    local row = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+    if type(row) == "table" and type(row.hex) == "string" and row.hex ~= "" then
+        return row.hex
+    end
+    local fallback = {
+        [0] = "|cff9d9d9d",
+        [1] = "|cffffffff",
+        [2] = "|cff1eff00",
+        [3] = "|cff0070dd",
+        [4] = "|cffa335ee",
+        [5] = "|cffff8000",
+        [6] = "|cffe6cc80",
+        [7] = "|cff00ccff",
+    }
+    return fallback[quality] or "|cffffffff"
+end
+
+local function itemLink(id, fallbackName)
+    local name, link, quality
+    if GetItemInfo then
+        local ok, a, b, c = pcall(GetItemInfo, id)
+        if ok then
+            name, link, quality = a, b, c
+        end
+    end
+    if (type(name) ~= "string" or name == "") and C_Item and C_Item.GetItemInfo then
+        local ok, a, b, c = pcall(C_Item.GetItemInfo, id)
+        if ok then
+            name, link, quality = a, b, c
+        end
+    end
+    if type(name) ~= "string" or name == "" then
+        if C_Item and C_Item.RequestLoadItemDataByID then
+            pcall(C_Item.RequestLoadItemDataByID, id)
+        end
+        if type(fallbackName) == "string" and fallbackName ~= "" then
+            return "|cffffffff[" .. fallbackName .. "]|r"
+        end
+        return ""
+    end
+    if type(link) == "string" and string.find(link, "|H", 1, true) then
+        return link
+    end
+    return itemQualityHex(quality) .. "[" .. name .. "]|r"
+end
+
+local function applyItemLink(text, obj)
+    local id = tonumber(obj.item_id)
+    if not id then
+        return text
+    end
+    local link = itemLink(id, obj.item_name)
+    if link == "" then
+        return text
+    end
+    local plain = obj.item_name
+    if type(plain) == "string" and plain ~= "" then
+        local i, j = string.find(text, plain, 1, true)
+        if i then
+            return string.sub(text, 1, i - 1) .. link .. string.sub(text, j + 1)
+        end
+    end
+    return text .. " " .. link
+end
+
+local function creatorName(entry)
+    if type(entry.created_by) == "string" and entry.created_by ~= "" then
+        return entry.created_by
+    end
+    return "Ukjent"
+end
+
+local function sectionExpanded(key, defaultOpen)
+    initDB()
+    if type(GutSagaDB.sections) ~= "table" then
+        GutSagaDB.sections = {}
+    end
+    local v = GutSagaDB.sections[key]
+    if v == nil then
+        return defaultOpen
+    end
+    return v and true or false
+end
+
+local function setSectionExpanded(key, open)
+    initDB()
+    if type(GutSagaDB.sections) ~= "table" then
+        GutSagaDB.sections = {}
+    end
+    GutSagaDB.sections[key] = open and true or false
+end
+
 local function objectiveText(entry)
     local objs = entry.objectives
     if type(objs) ~= "table" then
@@ -327,16 +415,18 @@ local function objectiveText(entry)
         if type(obj) == "table" then
             local id = obj.id or tostring(i)
             local step = bucket.steps[id] or {}
-            local mark = "·"
+            local mark = "|cff888888-|r"
             if step.done then
-                mark = "✓"
+                mark = "|cff20ff20+|r"
             elseif locked then
-                mark = "–"
+                mark = "|cff666666-|r"
+            else
+                mark = "|cffffffff>|r"
             end
             if not step.done then
                 locked = true
             end
-            local label = obj.text or "Mål"
+            local label = applyItemLink(obj.text or "Mål", obj)
             if obj.type == "location" and not step.done then
                 local where = world.minimap
                 if where == "" then
@@ -657,103 +747,175 @@ local function checkAll()
     end
 end
 
+local function ensureRow(i)
+    local row = rows[i]
+    if row then
+        return row
+    end
+    row = CreateFrame("Button", nil, listChild)
+    row:SetSize(210, 38)
+    local bg = row:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    bg:SetBlendMode("ADD")
+    bg:SetAlpha(0)
+    row.bg = bg
+    local title = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 8, -4)
+    title:SetPoint("TOPRIGHT", -8, -4)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
+    row.title = title
+    local sub = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    sub:SetPoint("BOTTOMLEFT", 8, 4)
+    sub:SetPoint("BOTTOMRIGHT", -8, 4)
+    sub:SetJustifyH("LEFT")
+    row.sub = sub
+    row:SetScript("OnClick", function(self)
+        selectedID = self.questID
+        refresh()
+    end)
+    rows[i] = row
+    return row
+end
+
+local function placeSectionHeader(header, y, label, expanded, onToggle)
+    header:ClearAllPoints()
+    header:SetPoint("TOPLEFT", listChild, "TOPLEFT", 0, -y)
+    header:SetPoint("TOPRIGHT", listChild, "TOPRIGHT", 0, -y)
+    header:Show()
+    local arrow = expanded and "[-]" or "[+]"
+    header.label:SetText(arrow .. "  " .. label)
+    header:SetScript("OnClick", onToggle)
+    return y + 24
+end
+
 refresh = function()
     if not built then
         return
     end
     local entries = currentEntries()
-    local syncAt = ""
-    if type(GutSagaData) == "table" and type(GutSagaData.generated_at) == "string" then
-        syncAt = GutSagaData.generated_at
-    end
     if player.name == "" then
-        subtitle:SetText("Venter på karakterinformasjon")
-    elseif syncAt ~= "" then
-        subtitle:SetText(player.name .. "  ·  sist synkronisert " .. syncAt)
+        subtitle:SetText("")
     else
-        subtitle:SetText(player.name .. "  ·  ingen oppdragsdata ennå")
+        subtitle:SetText(player.name)
     end
+
+    local openList, doneList = {}, {}
     for i = 1, #entries do
-        local row = rows[i]
-        if not row then
-            row = CreateFrame("Button", nil, listChild)
-            row:SetSize(220, 36)
-            row:SetPoint("TOPLEFT", 0, -((i - 1) * 38))
-            local bg = row:CreateTexture(nil, "BACKGROUND")
-            bg:SetAllPoints()
-            row.bg = bg
-            local title = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            title:SetPoint("TOPLEFT", 8, -4)
-            title:SetPoint("TOPRIGHT", -8, -4)
-            title:SetJustifyH("LEFT")
-            title:SetWordWrap(false)
-            row.title = title
-            local sub = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            sub:SetPoint("BOTTOMLEFT", 8, 4)
-            sub:SetPoint("BOTTOMRIGHT", -8, 4)
-            sub:SetJustifyH("LEFT")
-            row.sub = sub
-            row:SetScript("OnClick", function(self)
-                selectedID = self.questID
-                refresh()
-            end)
-            rows[i] = row
-        end
-        local entry = entries[i]
-        row.questID = entry.quest_id
-        row:Show()
-        row.title:SetText(entry.title or "Oppdrag")
-        row.sub:SetText(statusText(entry))
-        if entry.quest_id == selectedID then
-            row.bg:SetColorTexture(0.42, 0.3, 0.08, 1)
-        elseif isComplete(entry) then
-            row.bg:SetColorTexture(0.12, 0.16, 0.12, 1)
+        if isComplete(entries[i]) then
+            table.insert(doneList, entries[i])
         else
-            row.bg:SetColorTexture(0.16, 0.13, 0.1, 1)
+            table.insert(openList, entries[i])
         end
     end
-    for i = #entries + 1, #rows do
+
+    local openExpanded = sectionExpanded("open", true)
+    local doneExpanded = sectionExpanded("done", true)
+    local y = 0
+    local rowIndex = 0
+
+    y = placeSectionHeader(sectionOpen, y, "Ikke startet (" .. #openList .. ")", openExpanded, function()
+        setSectionExpanded("open", not openExpanded)
+        refresh()
+    end)
+    if openExpanded then
+        for i = 1, #openList do
+            rowIndex = rowIndex + 1
+            local row = ensureRow(rowIndex)
+            local entry = openList[i]
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", listChild, "TOPLEFT", 4, -y)
+            row:Show()
+            row.questID = entry.quest_id
+            row.title:SetText(entry.title or "Saga")
+            row.title:SetTextColor(GOLD.r, GOLD.g, GOLD.b)
+            row.sub:SetText(creatorName(entry))
+            row.sub:SetTextColor(0.72, 0.68, 0.58)
+            if entry.quest_id == selectedID then
+                row.bg:SetAlpha(0.7)
+            else
+                row.bg:SetAlpha(0)
+            end
+            y = y + 40
+        end
+    end
+
+    y = y + 6
+    y = placeSectionHeader(sectionDone, y, "Fullførte (" .. #doneList .. ")", doneExpanded, function()
+        setSectionExpanded("done", not doneExpanded)
+        refresh()
+    end)
+    if doneExpanded then
+        for i = 1, #doneList do
+            rowIndex = rowIndex + 1
+            local row = ensureRow(rowIndex)
+            local entry = doneList[i]
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", listChild, "TOPLEFT", 4, -y)
+            row:Show()
+            row.questID = entry.quest_id
+            row.title:SetText(entry.title or "Saga")
+            row.title:SetTextColor(0.55, 0.75, 0.45)
+            row.sub:SetText(creatorName(entry))
+            row.sub:SetTextColor(0.55, 0.52, 0.45)
+            if entry.quest_id == selectedID then
+                row.bg:SetAlpha(0.55)
+            else
+                row.bg:SetAlpha(0)
+            end
+            y = y + 40
+        end
+    end
+
+    for i = rowIndex + 1, #rows do
         rows[i]:Hide()
     end
-    listChild:SetHeight(math.max(#entries * 38, 10))
+    listChild:SetHeight(math.max(y + 8, 10))
 
     local entry = selectedID and findEntry(selectedID) or nil
-    if not entry and entries[1] then
-        entry = entries[1]
-        selectedID = entry.quest_id
-    end
     if not entry then
+        if openList[1] then
+            entry = openList[1]
+        elseif doneList[1] then
+            entry = doneList[1]
+        end
+        if entry then
+            selectedID = entry.quest_id
+        end
+    end
+    local width = detailScroll:GetWidth() - 12
+    if not entry then
+        detailTitle:SetText("")
         if player.name == "" then
             detailFS:SetText("Logg inn på en karakter.")
         elseif type(GutSagaData) ~= "table" or type(GutSagaData.entries) ~= "table" or #GutSagaData.entries == 0 then
-            detailFS:SetText("Ingen oppdragsdata.\n\nStart GutSaga på maskinen, logg inn med Smia, og skriv /reload.")
+            detailFS:SetText("Ingen sagaer ennå.\n\nStart GutSaga på maskinen og skriv /reload.")
         else
-            detailFS:SetText("Ingen oppdrag for " .. player.name .. ".\n\nNye oppdrag vises etter synkronisering og /reload.")
+            detailFS:SetText("Ingen sagaer for " .. player.name .. ".")
         end
     else
-        local minLevel = tonumber(entry.min_level) and tostring(entry.min_level) or "–"
         local description = (type(entry.description) == "string" and entry.description ~= "") and entry.description or "Ingen"
-        local reward = (type(entry.reward) == "string" and entry.reward ~= "") and entry.reward or "Ingen"
+        detailTitle:SetText(entry.title or "Saga")
         detailFS:SetText(table.concat({
-            entry.title or "Oppdrag",
-            "",
-            "Status: " .. statusText(entry),
-            "Versjon: " .. tostring(tonumber(entry.quest_version) or 0),
-            "Minste nivå: " .. minLevel,
-            "",
-            "Beskrivelse",
+            "|cff3f2a14Beskrivelse|r",
             description,
             "",
-            "Mål",
+            "|cff3f2a14Mål|r",
             objectiveText(entry),
-            "",
-            "Belønning",
-            reward,
         }, "\n"))
     end
-    detailFS:SetWidth(detailScroll:GetWidth() - 8)
-    local height = detailFS:GetStringHeight()
-    detailChild:SetHeight(math.max((height or 10) + 16, 10))
+    detailTitle:SetWidth(width)
+    detailFS:SetWidth(width)
+    local titleH = detailTitle:GetStringHeight() or 0
+    if detailTitle:GetText() == "" then
+        titleH = 0
+        detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -6)
+    else
+        detailFS:SetPoint("TOPLEFT", detailTitle, "BOTTOMLEFT", 0, -10)
+    end
+    local height = titleH + (detailFS:GetStringHeight() or 10) + 24
+    detailChild:SetHeight(math.max(height, 10))
 end
 
 finishQuest = function(entry)
@@ -785,7 +947,7 @@ finishQuest = function(entry)
         realm = "-"
     end
     chat(string.format("[GutSaga] COMPLETE %s %d %s %s %d %d", entry.quest_id, version, player.name, realm, level, ts))
-    chat("|cffc9a227GutSaga|r: Fullført – " .. (entry.title or "oppdrag"))
+    showSagaToast(entry.title or "Saga")
     broadcast(string.format("C|%s|%d|%d|%d", entry.quest_id, version, level, ts))
     refresh()
 end
@@ -821,33 +983,93 @@ local function toggle()
     end
 end
 
+local function scrollBy(self, delta, step)
+    local nxt = self:GetVerticalScroll() - delta * step
+    local maxScroll = self:GetVerticalScrollRange()
+    if nxt < 0 then
+        nxt = 0
+    end
+    if nxt > maxScroll then
+        nxt = maxScroll
+    end
+    self:SetVerticalScroll(nxt)
+end
+
+local function useBackdrop(f, info, border)
+    if BackdropTemplateMixin and not f.SetBackdrop then
+        Mixin(f, BackdropTemplateMixin)
+    end
+    if f.SetBackdrop then
+        f:SetBackdrop(info)
+    end
+    if border and f.SetBackdropBorderColor then
+        f:SetBackdropBorderColor(border.r, border.g, border.b, 1)
+    end
+end
+
+local function makeSectionHeader(parent)
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetHeight(22)
+    local bg = btn:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.18, 0.12, 0.05, 0.85)
+    btn.bg = bg
+    local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("LEFT", 6, 0)
+    label:SetTextColor(GOLD.r, GOLD.g, GOLD.b)
+    btn.label = label
+    return btn
+end
+
 local function build()
     if built then
         return
     end
     built = true
-    frame = CreateFrame("Frame", "GutSagaFrame", UIParent)
-    frame:SetSize(720, 480)
+    local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
+    frame = CreateFrame("Frame", "GutSagaFrame", UIParent, backdropTemplate)
+    frame:SetSize(720, 500)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("HIGH")
     frame:SetMovable(true)
     frame:SetClampedToScreen(true)
+    frame:EnableMouse(true)
     frame:Hide()
     table.insert(UISpecialFrames, "GutSagaFrame")
+    useBackdrop(frame, {
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true,
+        tileSize = 32,
+        edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    }, GOLD)
 
-    local bg = frame:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.07, 0.06, 0.05, 0.96)
-    local bar = frame:CreateTexture(nil, "BORDER")
-    bar:SetPoint("TOPLEFT")
-    bar:SetPoint("TOPRIGHT")
-    bar:SetHeight(44)
-    bar:SetColorTexture(0.30, 0.20, 0.07, 1)
+    local header = frame:CreateTexture(nil, "ARTWORK")
+    header:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Header")
+    header:SetSize(300, 64)
+    header:SetPoint("TOP", frame, "TOP", 0, 12)
+    header:SetVertexColor(GOLD.r, GOLD.g, GOLD.b)
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOP", header, "TOP", 0, -14)
+    title:SetText("GutSaga")
+    title:SetTextColor(1, 0.92, 0.65)
+    subtitle = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    subtitle:SetPoint("TOP", frame, "TOP", 0, -34)
+    subtitle:SetTextColor(0.92, 0.82, 0.55)
+
+    local mark = frame:CreateTexture(nil, "OVERLAY")
+    mark:SetSize(58, 58)
+    mark:SetPoint("TOPLEFT", frame, "TOPLEFT", -10, 14)
+    mark:SetTexture("Interface\\AddOns\\GutSaga\\GutSaga")
+
+    local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
 
     local drag = CreateFrame("Frame", nil, frame)
-    drag:SetPoint("TOPLEFT")
-    drag:SetPoint("TOPRIGHT", -28, 0)
-    drag:SetHeight(44)
+    drag:SetPoint("TOPLEFT", frame, "TOPLEFT", 56, 10)
+    drag:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -46, 10)
+    drag:SetHeight(36)
     drag:EnableMouse(true)
     drag:RegisterForDrag("LeftButton")
     drag:SetScript("OnDragStart", function()
@@ -866,81 +1088,250 @@ local function build()
         frame:SetPoint(GutSagaDB.point[1], UIParent, GutSagaDB.point[2], GutSagaDB.point[3], GutSagaDB.point[4])
     end
 
-    local mark = frame:CreateTexture(nil, "ARTWORK")
-    mark:SetSize(32, 32)
-    mark:SetPoint("TOPLEFT", 8, -6)
-    mark:SetTexture("Interface\\AddOns\\GutSaga\\GutSaga")
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("LEFT", mark, "RIGHT", 8, 0)
-    title:SetText("GutSaga")
-    title:SetTextColor(1, 0.86, 0.45)
-    subtitle = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    subtitle:SetPoint("LEFT", title, "RIGHT", 14, 0)
-    subtitle:SetTextColor(0.9, 0.82, 0.65)
+    listPanel = CreateFrame("Frame", nil, frame, backdropTemplate)
+    listPanel:SetPoint("TOPLEFT", 22, -48)
+    listPanel:SetPoint("BOTTOMLEFT", 22, 18)
+    listPanel:SetWidth(236)
+    useBackdrop(listPanel, {
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 8,
+        edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    }, GOLD)
+    if listPanel.SetBackdropColor then
+        listPanel:SetBackdropColor(0.07, 0.05, 0.03, 0.92)
+    end
 
-    local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", 0, 0)
-
-    listScroll = CreateFrame("ScrollFrame", nil, frame)
-    listScroll:SetPoint("TOPLEFT", 12, -56)
-    listScroll:SetSize(230, 360)
+    listScroll = CreateFrame("ScrollFrame", nil, listPanel)
+    listScroll:SetPoint("TOPLEFT", 6, -6)
+    listScroll:SetPoint("BOTTOMRIGHT", -6, 6)
     listChild = CreateFrame("Frame", nil, listScroll)
-    listChild:SetSize(230, 360)
+    listChild:SetSize(210, 360)
     listScroll:SetScrollChild(listChild)
     listScroll:EnableMouseWheel(true)
     listScroll:SetScript("OnMouseWheel", function(self, delta)
-        local nxt = self:GetVerticalScroll() - delta * 36
-        local maxScroll = self:GetVerticalScrollRange()
-        if nxt < 0 then
-            nxt = 0
-        end
-        if nxt > maxScroll then
-            nxt = maxScroll
-        end
-        self:SetVerticalScroll(nxt)
+        scrollBy(self, delta, 36)
     end)
+    sectionOpen = makeSectionHeader(listChild)
+    sectionDone = makeSectionHeader(listChild)
 
-    detailScroll = CreateFrame("ScrollFrame", nil, frame)
-    detailScroll:SetPoint("TOPLEFT", 254, -56)
-    detailScroll:SetPoint("BOTTOMRIGHT", -16, 36)
+    detailPanel = CreateFrame("Frame", nil, frame, backdropTemplate)
+    detailPanel:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 14, 0)
+    detailPanel:SetPoint("BOTTOMLEFT", listPanel, "BOTTOMRIGHT", 14, 0)
+    detailPanel:SetWidth(400)
+    useBackdrop(detailPanel, {
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 8,
+        edgeSize = 14,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    }, GOLD)
+    if detailPanel.SetBackdropColor then
+        detailPanel:SetBackdropColor(0.86, 0.78, 0.58, 0.97)
+    end
+    local parchment = detailPanel:CreateTexture(nil, "BACKGROUND", nil, 1)
+    parchment:SetPoint("TOPLEFT", 5, -5)
+    parchment:SetPoint("BOTTOMRIGHT", -5, 5)
+    parchment:SetTexture("Interface\\QuestFrame\\QuestBG")
+    parchment:SetTexCoord(0, 0.72, 0.02, 0.72)
+    parchment:SetVertexColor(1, 0.97, 0.9)
+
+    detailScroll = CreateFrame("ScrollFrame", nil, detailPanel)
+    detailScroll:SetPoint("TOPLEFT", 12, -12)
+    detailScroll:SetPoint("BOTTOMRIGHT", -12, 12)
     detailChild = CreateFrame("Frame", nil, detailScroll)
-    detailChild:SetSize(430, 200)
+    detailChild:SetSize(360, 200)
     detailScroll:SetScrollChild(detailChild)
     detailScroll:EnableMouseWheel(true)
     detailScroll:SetScript("OnMouseWheel", function(self, delta)
-        local nxt = self:GetVerticalScroll() - delta * 28
-        local maxScroll = self:GetVerticalScrollRange()
-        if nxt < 0 then
-            nxt = 0
-        end
-        if nxt > maxScroll then
-            nxt = maxScroll
-        end
-        self:SetVerticalScroll(nxt)
+        scrollBy(self, delta, 28)
     end)
+    local titleFont = "GameFontNormalLarge"
+    if QuestTitleFont then
+        titleFont = "QuestTitleFont"
+    end
+    detailTitle = detailChild:CreateFontString(nil, "OVERLAY", titleFont)
+    detailTitle:SetPoint("TOPLEFT", 6, -4)
+    detailTitle:SetJustifyH("LEFT")
+    detailTitle:SetJustifyV("TOP")
+    detailTitle:SetWordWrap(true)
+    detailTitle:SetTextColor(0.22, 0.12, 0.04)
     detailFS = detailChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    detailFS:SetPoint("TOPLEFT", 4, -4)
+    detailFS:SetPoint("TOPLEFT", detailTitle, "BOTTOMLEFT", 0, -10)
     detailFS:SetJustifyH("LEFT")
     detailFS:SetJustifyV("TOP")
     detailFS:SetWordWrap(true)
     detailFS:SetSpacing(2)
+    detailFS:SetTextColor(0.22, 0.12, 0.04)
+    if detailFS.SetHyperlinksEnabled then
+        detailFS:SetHyperlinksEnabled(true)
+    end
+    detailChild:EnableMouse(true)
+    local function linkClick(_, link, text, button)
+        if IsModifiedClick and IsModifiedClick("DRESSUP") and DressUpItemLink then
+            pcall(DressUpItemLink, link)
+            return
+        end
+        if SetItemRef then
+            pcall(SetItemRef, link, text, button or "LeftButton")
+        end
+    end
+    local function linkEnter(owner, link)
+        if not GameTooltip or type(link) ~= "string" then
+            return
+        end
+        GameTooltip:SetOwner(owner, "ANCHOR_CURSOR")
+        local ok = pcall(GameTooltip.SetHyperlink, GameTooltip, link)
+        if ok then
+            GameTooltip:Show()
+        end
+    end
+    local function linkLeave()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end
+    pcall(function()
+        detailFS:SetScript("OnHyperlinkClick", linkClick)
+        detailFS:SetScript("OnHyperlinkEnter", linkEnter)
+        detailFS:SetScript("OnHyperlinkLeave", linkLeave)
+    end)
 
-    local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    hint:SetPoint("BOTTOMLEFT", 16, 12)
-    hint:SetPoint("BOTTOMRIGHT", -16, 12)
-    hint:SetJustifyH("LEFT")
-    hint:SetText("Målene sjekkes av spillet. Når alle er grønne, tar GutSaga skjermbilde selv.")
-    hint:SetTextColor(0.75, 0.7, 0.6)
+    toast = CreateFrame("Frame", "GutSagaToast", UIParent, backdropTemplate)
+    toast:SetSize(390, 92)
+    toast:SetFrameStrata("DIALOG")
+    toast:SetPoint("TOP", UIParent, "TOP", 0, -30)
+    toast:Hide()
+    useBackdrop(toast, {
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true,
+        tileSize = 32,
+        edgeSize = 24,
+        insets = { left = 6, right = 6, top = 6, bottom = 6 },
+    }, GOLD)
+    local toastIcon = toast:CreateTexture(nil, "ARTWORK")
+    toastIcon:SetSize(58, 58)
+    toastIcon:SetPoint("LEFT", 18, 0)
+    toastIcon:SetTexture("Interface\\AddOns\\GutSaga\\GutSaga")
+    local toastHeading = toast:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    toastHeading:SetPoint("TOPLEFT", toastIcon, "TOPRIGHT", 14, -8)
+    toastHeading:SetText("SAGA FULLFØRT")
+    local toastTitle = toast:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    toastTitle:SetPoint("TOPLEFT", toastHeading, "BOTTOMLEFT", 0, -4)
+    toastTitle:SetPoint("RIGHT", toast, "RIGHT", -18, 0)
+    toastTitle:SetJustifyH("LEFT")
+    toastTitle:SetWordWrap(false)
+    toastTitle:SetTextColor(1, 0.95, 0.8)
+    toast:SetScript("OnUpdate", function(self, elapsed)
+        if not self:IsShown() then
+            return
+        end
+        self.age = (self.age or 0) + (elapsed or 0)
+        local age = self.age
+        local alpha, y = 1, -30
+        if age < 0.35 then
+            local t = age / 0.35
+            alpha = t
+            y = 16 - 46 * t
+        elseif age < 4.2 then
+            alpha = 1
+            y = -30
+        elseif age < 5 then
+            local t = (age - 4.2) / 0.8
+            alpha = 1 - t
+            y = -30 - 18 * t
+        else
+            self:Hide()
+            return
+        end
+        self:SetAlpha(alpha)
+        self:ClearAllPoints()
+        self:SetPoint("TOP", UIParent, "TOP", 0, y)
+    end)
+    showSagaToast = function(titleText)
+        toastTitle:SetText(titleText or "Saga")
+        toast.age = 0
+        toast:SetAlpha(0)
+        toast:Show()
+        if PlaySound then
+            local played = false
+            if SOUNDKIT and SOUNDKIT.ACHIEVEMENT_EARNED then
+                played = pcall(PlaySound, SOUNDKIT.ACHIEVEMENT_EARNED)
+            end
+            if not played then
+                pcall(PlaySound, 888)
+            end
+        end
+    end
 
     if Minimap then
         local btn = CreateFrame("Button", "GutSagaMinimapButton", Minimap)
-        btn:SetSize(28, 28)
-        btn:SetPoint("TOPLEFT", Minimap, "TOPLEFT", -8, 8)
+        btn:SetSize(32, 32)
         btn:SetFrameStrata("MEDIUM")
+        btn:RegisterForClicks("LeftButtonUp")
+        btn:RegisterForDrag("LeftButton")
+        btn.angle = math.pi * 0.75
+        if type(GutSagaDB) == "table" and type(GutSagaDB.minimapAngle) == "number" then
+            btn.angle = GutSagaDB.minimapAngle
+        end
         local icon = btn:CreateTexture(nil, "ARTWORK")
         icon:SetAllPoints()
         icon:SetTexture("Interface\\AddOns\\GutSaga\\GutSaga")
-        btn:SetScript("OnClick", toggle)
+        local function placeMinimap(self)
+            local angle = self.angle or (math.pi * 0.75)
+            local radius = (Minimap:GetWidth() / 2) + 5
+            self:ClearAllPoints()
+            self:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+        end
+        placeMinimap(btn)
+        btn:SetScript("OnDragStart", function(self)
+            self.dragging = true
+            self.moved = true
+        end)
+        btn:SetScript("OnDragStop", function(self)
+            self.dragging = false
+            initDB()
+            GutSagaDB.minimapAngle = self.angle
+        end)
+        btn:SetScript("OnUpdate", function(self)
+            if not self.dragging then
+                return
+            end
+            local mx, my = Minimap:GetCenter()
+            local scale = Minimap:GetEffectiveScale()
+            if not mx or not scale or scale == 0 then
+                return
+            end
+            local cx, cy = GetCursorPosition()
+            cx, cy = cx / scale, cy / scale
+            self.angle = math.atan2(cy - my, cx - mx)
+            placeMinimap(self)
+        end)
+        btn:SetScript("OnClick", function(self)
+            if self.moved then
+                self.moved = false
+                return
+            end
+            toggle()
+        end)
+        btn:SetScript("OnEnter", function(self)
+            if not GameTooltip then
+                return
+            end
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText("GutSaga")
+            GameTooltip:AddLine("Dra for å flytte. Klikk for å åpne.", 0.9, 0.8, 0.6)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", function()
+            if GameTooltip then
+                GameTooltip:Hide()
+            end
+        end)
     end
 end
 
@@ -972,6 +1363,7 @@ events:RegisterEvent("QUEST_COMPLETE")
 events:RegisterEvent("MERCHANT_SHOW")
 events:RegisterEvent("PLAYER_TARGET_CHANGED")
 events:RegisterEvent("BAG_UPDATE")
+events:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 events:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 events:SetScript("OnUpdate", function(_, elapsed)
     tick = tick + (elapsed or 0)
@@ -1029,6 +1421,12 @@ events:SetScript("OnEvent", function(_, event, ...)
         onWorld()
         return
     end
+    if event == "GET_ITEM_INFO_RECEIVED" then
+        if frame and frame:IsShown() then
+            refresh()
+        end
+        return
+    end
     if event == "BAG_UPDATE" or event == "ZONE_CHANGED" or event == "ZONE_CHANGED_INDOORS" or event == "ZONE_CHANGED_NEW_AREA" then
         onWorld()
         return
@@ -1067,6 +1465,6 @@ events:SetScript("OnEvent", function(_, event, ...)
         if player.name ~= "" and same(short, player.name) then
             return
         end
-        chat("|cffc9a227GutSaga|r: " .. short .. " fullførte et oppdrag.")
+        chat("|cffc9a227GutSaga|r: " .. short .. " fullførte en saga.")
     end
 end)

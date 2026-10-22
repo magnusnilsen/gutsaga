@@ -7,11 +7,21 @@ import "time"
 // the server does not pre-filter eligibility (except that it omits inactive
 // quests that this player has no progress on).
 type SyncResponse struct {
-	BattleTag   string      `json:"battletag"`
-	GeneratedAt string      `json:"generated_at"`
-	Characters  []Character `json:"characters"`
-	Quests      []Quest     `json:"quests"`
-	Progress    []Progress  `json:"progress"`
+	BattleTag   string            `json:"battletag"`
+	GeneratedAt string            `json:"generated_at"`
+	Characters  []Character       `json:"characters"`
+	Quests      []Quest           `json:"quests"`
+	Progress    []Progress        `json:"progress"`
+	Completions []QuestCompletion `json:"completions,omitempty"`
+}
+
+// QuestCompletion is one character who has finished a saga. Sync includes
+// every character in the database, not only the signed-in player.
+type QuestCompletion struct {
+	QuestID     string `json:"quest_id"`
+	Character   string `json:"character"`
+	Realm       string `json:"realm"`
+	CompletedAt string `json:"completed_at,omitempty"`
 }
 
 type Character struct {

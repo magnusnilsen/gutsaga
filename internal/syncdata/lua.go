@@ -41,6 +41,8 @@ func WriteLua(battletag, generatedAt string, entries []Entry) string {
 		} else {
 			b.WriteString("      party_quest = false,\n")
 		}
+		fmt.Fprintf(&b, "      created_by = %s,\n", luaString(e.CreatedBy))
+		fmt.Fprintf(&b, "      completed_by = %s,\n", luaCompleters(e.CompletedBy))
 		b.WriteString("    },\n")
 	}
 	b.WriteString("  },\n}\n")
@@ -76,6 +78,21 @@ func luaObjectives(list []contract.Objective) string {
 			fmt.Fprintf(&b, "          count = %d,\n", o.Count)
 		}
 		b.WriteString("        },\n")
+	}
+	b.WriteString("      }")
+	return b.String()
+}
+
+func luaCompleters(list []Completer) string {
+	if len(list) == 0 {
+		return "{}"
+	}
+	var b strings.Builder
+	b.WriteString("{\n")
+	for _, c := range list {
+		b.WriteString("        { ")
+		fmt.Fprintf(&b, "character = %s, realm = %s, completed_at = %s", luaString(c.Character), luaString(c.Realm), luaString(c.CompletedAt))
+		b.WriteString(" },\n")
 	}
 	b.WriteString("      }")
 	return b.String()

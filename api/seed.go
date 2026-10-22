@@ -27,7 +27,7 @@ func seedQuests() []QuestInput {
 			Description: "Gå til Lion's Pride Inn, snakk med verten, og ha kildevann i sekken.",
 			Reward:      "Et notat i eventyrloggen",
 			PartyQuest:  true,
-			CreatedBy:   "seed",
+			CreatedBy:   "GutSaga#0000",
 			Objectives: []contract.Objective{
 				{ID: "goldshire", Type: contract.ObjectiveLocation, Text: "Stå i eller rett utenfor Lion's Pride Inn i Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
 				{ID: "farley", Type: contract.ObjectiveInteract, Text: "Snakk med Innkeeper Farley", NPC: "Innkeeper Farley"},
@@ -39,7 +39,7 @@ func seedQuests() []QuestInput {
 			Description: "Stå på veien sør for Northshire, der Falkhaan Isenstrider pleier å stå.",
 			Reward:      "Oversikt over veien",
 			PartyQuest:  true,
-			CreatedBy:   "seed",
+			CreatedBy:   "GutSaga#0000",
 			Objectives: []contract.Objective{
 				{ID: "road", Type: contract.ObjectiveLocation, Text: "Stå på veien sør for Northshire", MapID: intPtr(37), X: &roadX, Y: &roadY, Radius: &roadR},
 			},
@@ -49,7 +49,7 @@ func seedQuests() []QuestInput {
 			Description: "Tilbake i Goldshire. Ice Cold Milk selges av Innkeeper Farley.",
 			Reward:      "Kald melk",
 			PartyQuest:  true,
-			CreatedBy:   "seed",
+			CreatedBy:   "GutSaga#0000",
 			Objectives: []contract.Objective{
 				{ID: "square", Type: contract.ObjectiveLocation, Text: "Stå i Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
 				{ID: "milk", Type: contract.ObjectiveCollect, Text: "Ha 1 Ice Cold Milk", ItemID: &milk, ItemName: "Ice Cold Milk", Count: one},
@@ -61,6 +61,9 @@ func seedQuests() []QuestInput {
 func intPtr(n int) *int { return &n }
 
 func seed(ctx context.Context, store *Store) (created, updated int, err error) {
+	if _, err = store.EnsurePlayer(ctx, "GutSaga#0000", "GutSaga"); err != nil {
+		return 0, 0, fmt.Errorf("system creator: %w", err)
+	}
 	for _, q := range seedQuests() {
 		id, findErr := store.QuestIDByTitle(ctx, q.Title)
 		if errors.Is(findErr, ErrNotFound) {

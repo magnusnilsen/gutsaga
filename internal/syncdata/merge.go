@@ -22,6 +22,15 @@ type Entry struct {
 	Status       string               `json:"status"`
 	CompletedAt  string               `json:"completed_at"`
 	PartyQuest   bool                 `json:"party_quest"`
+	CreatedBy    string               `json:"created_by"`
+	CompletedBy  []Completer          `json:"completed_by"`
+}
+
+// Completer is a character who has finished this saga.
+type Completer struct {
+	Character   string `json:"character"`
+	Realm       string `json:"realm"`
+	CompletedAt string `json:"completed_at"`
 }
 
 // Merge applies the companion rule: a character sees an active quest when
@@ -33,6 +42,7 @@ func Merge(sync contract.SyncResponse) []Entry {
 	for _, p := range sync.Progress {
 		progress[p.CharacterID+"\n"+p.QuestID] = p
 	}
+	completers := completersByQuest(sync)
 	var out []Entry
 	for _, ch := range sync.Characters {
 		for _, q := range sync.Quests {
@@ -46,6 +56,7 @@ func Merge(sync contract.SyncResponse) []Entry {
 				QuestID: q.ID, QuestVersion: q.Version, Title: q.Title,
 				Description: q.Description, Objectives: q.Objectives, Reward: q.Reward,
 				MinLevel: q.MinLevel, PartyQuest: q.PartyQuest,
+				CreatedBy: q.CreatedBy, CompletedBy: completers[q.ID],
 			}
 			if has {
 				e.Status = p.Status
@@ -82,6 +93,40 @@ func Merge(sync contract.SyncResponse) []Entry {
 }
 
 // FindCharacter matches name and, when both sides have a realm, the realm.
+func completersByQuest(sync contract.SyncResponse) map[string][]Completer {
+	type key struct{ quest, name, realm string }
+	seen := map[key]bool{}
+	out := map[string][]Completer{}
+	add := func(questID, name, realm, at string) {
+		name = strings.TrimSpace(name)
+		realm = strings.TrimSpace(realm)
+		if questID == "" || name == "" {
+			return
+		}
+		k := key{questID, strings.ToLower(name), strings.ToLower(realm)}
+		if seen[k] {
+			return
+		}
+		seen[k] = true
+		out[questID] = append(out[questID], Completer{Character: name, Realm: realm, CompletedAt: at})
+	}
+	known := map[string]contract.Character{}
+	for _, ch := range sync.Characters {
+		known[ch.ID] = ch
+	}
+	for _, p := range sync.Progress {
+		if p.Status != "completed" {
+			continue
+		}
+		ch := known[p.CharacterID]
+		add(p.QuestID, ch.Name, ch.Realm, p.CompletedAt)
+	}
+	for _, c := range sync.Completions {
+		add(c.QuestID, c.Character, c.Realm, c.CompletedAt)
+	}
+	return out
+}
+
 func FindCharacter(sync contract.SyncResponse, name, realm string) (contract.Character, bool) {
 	var matches []contract.Character
 	for _, c := range sync.Characters {

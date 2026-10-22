@@ -173,14 +173,14 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 			{"id": "meet", "type": "interact", "text": "Møt opp", "npc": "Vakt"},
 			{"id": "stay", "type": "location", "text": "Hold ut", "zone": "Elwynn Forest"},
 		},
-		"reward": "Ære", "min_level": 10, "party_quest": false, "created_by": "Magnus",
+		"reward": "Ære", "min_level": 10, "party_quest": false, "created_by": "Magnus#2231",
 		"assigned_character_ids": []string{magni.ID},
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("quest %d %v", resp.StatusCode, err)
 	}
-	if quest.Version != 1 {
-		t.Fatalf("version %d", quest.Version)
+	if quest.Version != 1 || quest.CreatedBy != "Magnus#2231" {
+		t.Fatalf("quest %+v", quest)
 	}
 
 	player := apiClient{base: srv.URL, token: created.APIKey, http: srv.Client()}
@@ -300,6 +300,9 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	}
 	if syncOut.Progress[0].ScreenshotURL != "https://cdn.example/shot.png" {
 		t.Fatalf("screenshot url %q", syncOut.Progress[0].ScreenshotURL)
+	}
+	if len(syncOut.Completions) != 1 || syncOut.Completions[0].Character != "Magni" || syncOut.Completions[0].QuestID != quest.ID {
+		t.Fatalf("completions %+v", syncOut.Completions)
 	}
 
 	var logs struct {

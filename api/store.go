@@ -474,6 +474,50 @@ type QuestPatch struct {
 	AssignedCharacterIDs *[]string
 }
 
+func resolveCreator(ctx context.Context, q querier, createdBy string) (tag, playerID string, err error) {
+	createdBy = strings.TrimSpace(createdBy)
+	if err := validateBattleTag(createdBy); err != nil {
+		return "", "", fmt.Errorf("%w: created_by must be a BattleTag", ErrInvalid)
+	}
+	err = q.QueryRow(ctx, `
+		SELECT id::text, battletag FROM players WHERE battletag=$1`, createdBy).Scan(&playerID, &tag)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", fmt.Errorf("%w: created_by player not found", ErrInvalid)
+	}
+	if err != nil {
+		return "", "", err
+	}
+	return tag, playerID, nil
+}
+
+func (s *Store) EnsurePlayer(ctx context.Context, battletag, displayName string) (contract.Player, error) {
+	battletag = strings.TrimSpace(battletag)
+	displayName = strings.TrimSpace(displayName)
+	if err := validateBattleTag(battletag); err != nil {
+		return contract.Player{}, err
+	}
+	if displayName == "" {
+		displayName = battletag
+	}
+	var p contract.Player
+	var created time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT id::text, COALESCE(battletag, ''), display_name, created_at
+		FROM players WHERE battletag=$1`, battletag).Scan(&p.ID, &p.BattleTag, &p.DisplayName, &created)
+	if err == nil {
+		p.CreatedAt = contract.FormatTime(created)
+		return p, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return contract.Player{}, err
+	}
+	out, err := s.CreatePlayer(ctx, battletag, displayName)
+	if err != nil {
+		return contract.Player{}, err
+	}
+	return out.Player, nil
+}
+
 func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest, error) {
 	objectives, err := contract.NormalizeObjectives(in.Objectives, false)
 	if err != nil {
@@ -495,6 +539,10 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 		return contract.Quest{}, err
 	}
 	defer tx.Rollback(ctx)
+	creatorTag, creatorID, err := resolveCreator(ctx, tx, in.CreatedBy)
+	if err != nil {
+		return contract.Quest{}, err
+	}
 	if err := ensureCharacters(ctx, tx, in.AssignedCharacterIDs); err != nil {
 		return contract.Quest{}, err
 	}
@@ -504,10 +552,10 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	}
 	var id string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO quests (title, description, objectives, reward, min_level, party, active, version, created_by)
-		VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,1,$8)
+		INSERT INTO quests (title, description, objectives, reward, min_level, party, active, version, created_by, created_by_player_id)
+		VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,1,$8,$9)
 		RETURNING id::text`,
-		strings.TrimSpace(in.Title), in.Description, objJSON, in.Reward, nullableInt(in.MinLevel), in.PartyQuest, active, strings.TrimSpace(in.CreatedBy),
+		strings.TrimSpace(in.Title), in.Description, objJSON, in.Reward, nullableInt(in.MinLevel), in.PartyQuest, active, creatorTag, creatorID,
 	).Scan(&id)
 	if err != nil {
 		return contract.Quest{}, err
@@ -515,7 +563,7 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	q := contract.Quest{
 		ID: id, Title: strings.TrimSpace(in.Title), Description: in.Description, Objectives: in.Objectives,
 		Reward: in.Reward, MinLevel: in.MinLevel, PartyQuest: in.PartyQuest, Active: active, Version: 1,
-		CreatedBy: strings.TrimSpace(in.CreatedBy), AssignedTo: refs(in.AssignedCharacterIDs),
+		CreatedBy: creatorTag, AssignedTo: refs(in.AssignedCharacterIDs),
 	}
 	if err := replaceAssignments(ctx, tx, id, in.AssignedCharacterIDs); err != nil {
 		return contract.Quest{}, err
@@ -558,8 +606,22 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 	if p.Reward != nil {
 		q.Reward = *p.Reward
 	}
+	var creatorID any
 	if p.CreatedBy != nil {
-		q.CreatedBy = strings.TrimSpace(*p.CreatedBy)
+		tag, pid, err := resolveCreator(ctx, tx, *p.CreatedBy)
+		if err != nil {
+			return contract.Quest{}, err
+		}
+		q.CreatedBy = tag
+		creatorID = pid
+	} else {
+		var existing sql.NullString
+		if err := tx.QueryRow(ctx, `SELECT created_by_player_id::text FROM quests WHERE id=$1`, id).Scan(&existing); err != nil {
+			return contract.Quest{}, err
+		}
+		if existing.Valid {
+			creatorID = existing.String
+		}
 	}
 	if p.PartyQuest != nil {
 		q.PartyQuest = *p.PartyQuest
@@ -589,9 +651,9 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 	}
 	_, err = tx.Exec(ctx, `
 		UPDATE quests
-		SET title=$2, description=$3, objectives=$4::jsonb, reward=$5, min_level=$6, party=$7, active=$8, version=$9, created_by=$10, updated_at=now()
+		SET title=$2, description=$3, objectives=$4::jsonb, reward=$5, min_level=$6, party=$7, active=$8, version=$9, created_by=$10, created_by_player_id=$11, updated_at=now()
 		WHERE id=$1`,
-		id, q.Title, q.Description, objJSON, q.Reward, nullableInt(q.MinLevel), q.PartyQuest, q.Active, q.Version, q.CreatedBy)
+		id, q.Title, q.Description, objJSON, q.Reward, nullableInt(q.MinLevel), q.PartyQuest, q.Active, q.Version, q.CreatedBy, creatorID)
 	if err != nil {
 		return contract.Quest{}, err
 	}
@@ -727,10 +789,14 @@ func scanQuest(scan func(dest ...any) error) (contract.Quest, error) {
 	return q, nil
 }
 
+const questSelect = `
+		SELECT q.id::text, q.title, q.description, q.objectives::text, q.reward, q.min_level, q.party, q.active, q.version,
+			COALESCE(NULLIF(p.battletag, ''), q.created_by)
+		FROM quests q
+		LEFT JOIN players p ON p.id = q.created_by_player_id`
+
 func loadQuest(ctx context.Context, q querier, id string) (contract.Quest, error) {
-	quest, err := scanQuest(q.QueryRow(ctx, `
-		SELECT id::text, title, description, objectives::text, reward, min_level, party, active, version, created_by
-		FROM quests WHERE id=$1`, id).Scan)
+	quest, err := scanQuest(q.QueryRow(ctx, questSelect+` WHERE q.id=$1`, id).Scan)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.Quest{}, ErrNotFound
 	}
@@ -825,9 +891,7 @@ func (s *Store) ListQuests(ctx context.Context, characterID string) ([]contract.
 		}
 		charKnown = true
 	}
-	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, title, description, objectives::text, reward, min_level, party, active, version, created_by
-		FROM quests ORDER BY active DESC, title`)
+	rows, err := s.pool.Query(ctx, questSelect+` ORDER BY q.active DESC, q.title`)
 	if err != nil {
 		return nil, err
 	}
@@ -910,15 +974,13 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	if chars == nil {
 		chars = []contract.Character{}
 	}
-	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, title, description, objectives::text, reward, min_level, party, active, version, created_by
-		FROM quests
-		WHERE active OR id IN (
+	rows, err := s.pool.Query(ctx, questSelect+`
+		WHERE q.active OR q.id IN (
 			SELECT p.quest_id FROM progress p
 			JOIN characters c ON c.id = p.character_id
 			WHERE c.player_id=$1
 		)
-		ORDER BY min_level NULLS FIRST, title`, playerID)
+		ORDER BY q.min_level NULLS FIRST, q.title`, playerID)
 	if err != nil {
 		return contract.SyncResponse{}, err
 	}
@@ -977,10 +1039,53 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	if progress == nil {
 		progress = []contract.Progress{}
 	}
+	if err := prows.Err(); err != nil {
+		return contract.SyncResponse{}, err
+	}
+	completions, err := s.sagaCompletions(ctx, ids)
+	if err != nil {
+		return contract.SyncResponse{}, err
+	}
 	return contract.SyncResponse{
 		BattleTag: tag, GeneratedAt: contract.FormatTime(time.Now()),
-		Characters: chars, Quests: quests, Progress: progress,
-	}, prows.Err()
+		Characters: chars, Quests: quests, Progress: progress, Completions: completions,
+	}, nil
+}
+
+func (s *Store) sagaCompletions(ctx context.Context, questIDs []string) ([]contract.QuestCompletion, error) {
+	want := map[string]bool{}
+	for _, id := range questIDs {
+		want[id] = true
+	}
+	if len(want) == 0 {
+		return []contract.QuestCompletion{}, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT p.quest_id::text, c.name, COALESCE(c.realm, ''), p.completed_at
+		FROM progress p
+		JOIN characters c ON c.id = p.character_id
+		WHERE p.status = 'completed'
+		ORDER BY c.name, c.realm`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []contract.QuestCompletion{}
+	for rows.Next() {
+		var c contract.QuestCompletion
+		var completed sql.NullTime
+		if err := rows.Scan(&c.QuestID, &c.Character, &c.Realm, &completed); err != nil {
+			return nil, err
+		}
+		if !want[c.QuestID] || strings.TrimSpace(c.Character) == "" {
+			continue
+		}
+		if completed.Valid {
+			c.CompletedAt = contract.FormatTime(completed.Time)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 func scanCharactersMust(ctx context.Context, q querier, sql string, args ...any) ([]contract.Character, error) {

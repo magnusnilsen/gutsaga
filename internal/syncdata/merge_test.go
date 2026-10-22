@@ -59,6 +59,32 @@ func TestMergeRules(t *testing.T) {
 	}
 }
 
+func TestSagaAuthorAndCompleters(t *testing.T) {
+	sync := contract.SyncResponse{
+		Characters: []contract.Character{
+			{ID: "c1", Name: "Magni", Realm: "Celebras", Level: 1},
+		},
+		Quests: []contract.Quest{
+			{ID: "q1", Title: "En kveld", Active: true, PartyQuest: true, Version: 1, CreatedBy: "GutSaga#0000"},
+		},
+		Progress: []contract.Progress{
+			{QuestID: "q1", CharacterID: "c1", Status: "completed", CompletedAt: "2026-10-22T17:00:00Z"},
+		},
+		Completions: []contract.QuestCompletion{
+			{QuestID: "q1", Character: "Magni", Realm: "Celebras", CompletedAt: "2026-10-22T17:00:00Z"},
+			{QuestID: "q1", Character: "Mira", Realm: "Celebras", CompletedAt: "2026-10-22T18:00:00Z"},
+		},
+	}
+	entries := Merge(sync)
+	if len(entries) != 1 || entries[0].CreatedBy != "GutSaga#0000" || len(entries[0].CompletedBy) != 2 {
+		t.Fatalf("%+v", entries)
+	}
+	lua := WriteLua("", "t", entries)
+	if !strings.Contains(lua, `created_by = "GutSaga#0000"`) || !strings.Contains(lua, `character = "Mira"`) {
+		t.Fatal(lua)
+	}
+}
+
 func TestLuaEscapes(t *testing.T) {
 	lua := WriteLua(`Magnus#2231`, "t", []Entry{{
 		Character: "Magni", Title: `Si "hei"`, Description: "linje\nto", QuestVersion: 1, QuestID: "q",
