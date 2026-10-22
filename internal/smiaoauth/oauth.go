@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,9 @@ import (
 	"strings"
 	"time"
 )
+
+//go:embed logo.png
+var logoPNG []byte
 
 const (
 	DefaultResourceMetadata   = "https://smia.tools/.well-known/oauth-protected-resource/wow/mcp"
@@ -176,7 +180,7 @@ func (c *Client) loginHost(ctx context.Context, meta asMeta, resource, host stri
 			http.NotFound(w, r)
 			return
 		}
-		_, _ = io.WriteString(w, "<!doctype html><meta charset=utf-8><title>GutSaga</title><p>Du er logget inn. Du kan lukke dette vinduet.</p>")
+		_, _ = io.WriteString(w, loggedInPage())
 		codeCh <- q.Get("code")
 	})}
 	go func() { _ = srv.Serve(ln) }()
@@ -371,6 +375,13 @@ func (c *Client) http() *http.Client {
 		return c.HTTP
 	}
 	return &http.Client{Timeout: 30 * time.Second}
+}
+
+func loggedInPage() string {
+	return `<!doctype html><meta charset=utf-8><title>GutSaga</title>` +
+		`<body style="margin:0;background:#120e0a;color:#f4e7cf;font-family:Georgia,serif;text-align:center;padding:48px 16px">` +
+		`<img alt="GutSaga" width="240" src="data:image/png;base64,` + base64.StdEncoding.EncodeToString(logoPNG) + `">` +
+		`<p>Du er logget inn. Du kan lukke dette vinduet.</p>`
 }
 
 func authorizeURL(endpoint string, q url.Values) string {

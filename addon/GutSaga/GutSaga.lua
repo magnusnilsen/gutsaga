@@ -340,6 +340,15 @@ local function objectiveText(entry)
             if (obj.type == "collect" or obj.type == "kill") and not step.done then
                 local need = tonumber(obj.count) or 1
                 local have = tonumber(step.count) or 0
+                if obj.type == "collect" then
+                    local id = tonumber(obj.item_id)
+                    if id then
+                        local live = itemCount(id)
+                        if live > have then
+                            have = live
+                        end
+                    end
+                end
                 label = string.format("%s (%d/%d)", label, have, need)
             end
             if obj.type == "kill" then
@@ -430,26 +439,28 @@ local function bagItemCount(id)
     return total
 end
 
-local function itemCount(id)
+itemCount = function(id)
+    local best = 0
+    local function consider(n)
+        local v = plainNumber(n)
+        if v and v > best then
+            best = v
+        end
+    end
     if C_Item and C_Item.GetItemCount then
         local ok, n = pcall(C_Item.GetItemCount, id)
-        local v = ok and plainNumber(n) or nil
-        if v then
-            return v
+        if ok then
+            consider(n)
         end
     end
     if GetItemCount then
         local ok, n = pcall(GetItemCount, id)
-        local v = ok and plainNumber(n) or nil
-        if v then
-            return v
+        if ok then
+            consider(n)
         end
     end
-    local bags = bagItemCount(id)
-    if bags then
-        return bags
-    end
-    return 0
+    consider(bagItemCount(id))
+    return best
 end
 
 local function readLocation()
@@ -478,15 +489,28 @@ local function readLocation()
     if id then
         world.mapID = id
     end
+    local function xyOf(v, extra)
+        if type(v) == "number" and type(extra) == "number" then
+            return v, extra
+        end
+        if type(v) == "table" then
+            if type(v.GetXY) == "function" then
+                local ok, px, py = pcall(v.GetXY, v)
+                if ok and type(px) == "number" and type(py) == "number" then
+                    return px, py
+                end
+            end
+            if type(v.x) == "number" and type(v.y) == "number" then
+                return v.x, v.y
+            end
+        end
+        return nil, nil
+    end
     local x, y
     if id and C_Map and C_Map.GetPlayerMapPosition then
         local posOK, a, b = pcall(C_Map.GetPlayerMapPosition, id, "player")
         if posOK then
-            if type(a) == "number" and type(b) == "number" then
-                x, y = a, b
-            elseif type(a) == "table" then
-                x, y = a.x, a.y
-            end
+            x, y = xyOf(a, b)
         end
     end
     if (not x or not y) and GetPlayerMapPosition then
@@ -536,6 +560,7 @@ end
 
 local refresh
 local finishQuest
+local itemCount
 
 local function objectiveState(entries)
     local items = {}
@@ -794,12 +819,16 @@ local function build()
         frame:SetPoint(GutSagaDB.point[1], UIParent, GutSagaDB.point[2], GutSagaDB.point[3], GutSagaDB.point[4])
     end
 
+    local mark = frame:CreateTexture(nil, "ARTWORK")
+    mark:SetSize(32, 32)
+    mark:SetPoint("TOPLEFT", 8, -6)
+    mark:SetTexture("Interface\\AddOns\\GutSaga\\GutSaga")
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 16, -8)
+    title:SetPoint("LEFT", mark, "RIGHT", 8, 0)
     title:SetText("GutSaga")
     title:SetTextColor(1, 0.86, 0.45)
     subtitle = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    subtitle:SetPoint("TOPLEFT", 110, -14)
+    subtitle:SetPoint("LEFT", title, "RIGHT", 14, 0)
     subtitle:SetTextColor(0.9, 0.82, 0.65)
 
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
@@ -861,13 +890,9 @@ local function build()
         btn:SetSize(28, 28)
         btn:SetPoint("TOPLEFT", Minimap, "TOPLEFT", -8, 8)
         btn:SetFrameStrata("MEDIUM")
-        local icon = btn:CreateTexture(nil, "BACKGROUND")
+        local icon = btn:CreateTexture(nil, "ARTWORK")
         icon:SetAllPoints()
-        icon:SetColorTexture(0.45, 0.30, 0.08, 1)
-        local letter = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        letter:SetPoint("CENTER")
-        letter:SetText("G")
-        letter:SetTextColor(1, 0.9, 0.55)
+        icon:SetTexture("Interface\\AddOns\\GutSaga\\GutSaga")
         btn:SetScript("OnClick", toggle)
     end
 end

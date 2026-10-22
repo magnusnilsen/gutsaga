@@ -16,6 +16,12 @@ local objectives = {
 
 local steps, done = M.evaluate(objectives, { map_id = 37, x = 0.44, y = 0.66 }, {})
 assertTrue(steps.place.done, "location should match")
+
+steps, done = M.evaluate(objectives, { map_id = 1429, x = 0.44, y = 0.66 }, {})
+assertTrue(steps.place.done, "classic era map id still matches the same coordinates")
+
+steps, done = M.evaluate(objectives, { map_id = 1429, x = 44, y = 66 }, {})
+assertTrue(steps.place.done, "percent coordinates match")
 assertTrue(not steps.talk.done, "talk is still locked until we pass saved done")
 assertTrue(not done, "not finished")
 
@@ -54,5 +60,8 @@ steps = M.evaluate({
     { id = "obj", type = "interact", object = "Mailbox" },
 }, { npc = "Mailbox" }, {})
 assertTrue(steps.obj.done, "gossip name counts as object")
+
+steps, done = M.evaluate(objectives, { object = "Innkeeper Farley" }, { place = { done = true } })
+assertTrue(steps.talk.done, "current target counts as the npc")
 
 print("objectives ok")

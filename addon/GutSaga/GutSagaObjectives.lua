@@ -26,8 +26,39 @@ local function needCount(obj)
     return n
 end
 
+local function playerXY(state)
+    local x = tonumber(state.x)
+    local y = tonumber(state.y)
+    if not x or not y then
+        return nil, nil
+    end
+    -- Some clients report map percents (0–100) instead of fractions.
+    if x > 1 or y > 1 then
+        x = x / 100
+        y = y / 100
+    end
+    return x, y
+end
+
+local function onPoint(obj, state)
+    if obj.x == nil or obj.y == nil then
+        return false
+    end
+    local x, y = playerXY(state)
+    local ox = tonumber(obj.x)
+    local oy = tonumber(obj.y)
+    if not x or not y or not ox or not oy then
+        return false
+    end
+    local radius = tonumber(obj.radius) or 0.02
+    local dx = x - ox
+    local dy = y - oy
+    return math.sqrt(dx * dx + dy * dy) <= radius
+end
+
 local function locationOK(obj, state)
     local any = false
+    local here = onPoint(obj, state)
     if norm(obj.zone) ~= "" then
         any = true
         if norm(obj.zone) ~= norm(state.zone) then
@@ -42,23 +73,15 @@ local function locationOK(obj, state)
     end
     if obj.map_id ~= nil then
         any = true
-        if tonumber(obj.map_id) ~= tonumber(state.map_id) then
+        -- Retail Elwynn is uiMap 37. Classic Era uses 1429 for the same zone,
+        -- with the same 0–1 coordinates. A coordinate hit is enough.
+        if tonumber(obj.map_id) ~= tonumber(state.map_id) and not here then
             return false
         end
     end
     if obj.x ~= nil and obj.y ~= nil then
         any = true
-        local x = tonumber(state.x)
-        local y = tonumber(state.y)
-        local ox = tonumber(obj.x)
-        local oy = tonumber(obj.y)
-        if not x or not y or not ox or not oy then
-            return false
-        end
-        local radius = tonumber(obj.radius) or 0.02
-        local dx = x - ox
-        local dy = y - oy
-        if math.sqrt(dx * dx + dy * dy) > radius then
+        if not here then
             return false
         end
     end
@@ -71,7 +94,8 @@ local function interactOK(obj, state)
     if not wantNPC and not wantObject then
         return false
     end
-    local npc = wantNPC and same(obj.npc, state.npc)
+    -- state.npc is the gossip/merchant unit. state.object is the current target.
+    local npc = wantNPC and (same(obj.npc, state.npc) or same(obj.npc, state.object))
     local object = wantObject and (same(obj.object, state.object) or same(obj.object, state.npc))
     return npc or object
 end

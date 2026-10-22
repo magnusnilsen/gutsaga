@@ -4,7 +4,7 @@
 ## Author: Gutar
 ## Version: 0.1.0
 ## SavedVariablesPerCharacter: GutSagaDB
-## IconTexture: Interface\Icons\INV_Misc_Book_09
+## IconTexture: Interface\AddOns\GutSaga\GutSagaList
 
 GutSagaData.lua
 GutSagaObjectives.lua
