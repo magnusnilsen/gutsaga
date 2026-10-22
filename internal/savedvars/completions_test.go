@@ -1,0 +1,46 @@
+package savedvars
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestParseCompletions(t *testing.T) {
+	body := `
+GutSagaDB = {
+["completions"] = {
+["4cc34091-0e9b-4c18-800a-3162c90acc56"] = {
+["quest_id"] = "4cc34091-0e9b-4c18-800a-3162c90acc56",
+["character"] = "Magní",
+["version"] = 3,
+["level"] = 2,
+["completed_at"] = 1792698415,
+["realm"] = "Celebras",
+},
+["81006099-ddf8-4bc3-9ba0-b78a2614ba30"] = {
+["quest_id"] = "81006099-ddf8-4bc3-9ba0-b78a2614ba30",
+["character"] = "Magní",
+["version"] = 3,
+["level"] = 2,
+["completed_at"] = 1792698415,
+["realm"] = "Celebras",
+},
+},
+["objectives"] = {
+},
+}
+`
+	got := ParseCompletions("x.lua", body)
+	if len(got) != 2 {
+		t.Fatalf("got %d: %+v", len(got), got)
+	}
+	if got[0].Character != "Magní" || got[0].Realm != "Celebras" || got[0].QuestVersion != 3 || got[0].Level != 2 {
+		t.Fatalf("%+v", got[0])
+	}
+	if !strings.Contains(got[0].QuestID, "4cc34091") {
+		t.Fatalf("%s", got[0].QuestID)
+	}
+	if got[0].At.Unix() != 1792698415 {
+		t.Fatalf("at %v", got[0].At)
+	}
+}

@@ -19,28 +19,34 @@ func TestHandleLineFlushPostsQuestVersion(t *testing.T) {
 	var version, auth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth = r.Header.Get("Authorization")
-		if r.URL.Path != "/v1/complete" {
-			t.Fatalf("path %s", r.URL.Path)
-		}
-		_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		mr := multipart.NewReader(r.Body, params["boundary"])
-		for {
-			p, err := mr.NextPart()
-			if err == io.EOF {
-				break
-			}
+		switch r.URL.Path {
+		case "/v1/sync":
+			_, _ = w.Write([]byte(`{"battletag":"Magnus#2231","generated_at":"t","characters":[{"id":"char-1","name":"Magni","realm":"Argent Dawn","level":12}],"quests":[{"id":"quest-1","title":"Første vakt","version":3,"active":true,"objectives":[]}],"progress":[],"completions":[]}`))
+			return
+		case "/v1/complete":
+			_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			b, _ := io.ReadAll(p)
-			if p.FormName() == "quest_version" {
-				version = string(b)
+			mr := multipart.NewReader(r.Body, params["boundary"])
+			for {
+				p, err := mr.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				b, _ := io.ReadAll(p)
+				if p.FormName() == "quest_version" {
+					version = string(b)
+				}
 			}
+			_, _ = w.Write([]byte(`{"allowed":true,"completed":true,"quest_version":3}`))
+			return
+		default:
+			t.Fatalf("path %s", r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"allowed":true,"completed":true,"quest_version":3}`))
 	}))
 	defer srv.Close()
 

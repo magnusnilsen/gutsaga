@@ -1,10 +1,9 @@
 -- GutSaga quest log for Forever, retail Midnight, Classic Era, and Classic (Mists).
 -- Interface numbers live in the .toc files (see addon/INTERFACE).
--- Machine-readable chat lines (ASCII, parsed by the companion):
---   [GutSaga] CHARACTER name|realm|level|race|class|battletag|unix
---   [GutSaga] COMPLETE <questId> <version> <character> <realm words> <level> <unix>
--- Realm in COMPLETE may contain spaces. Empty fields in CHARACTER are "-".
--- There is no completion button. Objectives are checked in order.
+-- Completions are stored in GutSagaDB (SavedVariables). On Classic Era the
+-- companion reads those after /reload or logout — live chat-log signaling is parked.
+-- There is no completion button. Goals may complete in any order unless
+-- objectives_ordered is true on the saga.
 
 local PREFIX = "GutSaga"
 local player = { name = "", realm = "", level = 1, race = "", class = "", battletag = "" }
@@ -20,12 +19,15 @@ local GOLD = { r = 0.99, g = 0.93, b = 0.59 }
 local listChild
 local listScroll
 local detailFS
+local detailImage
 local detailTitle
 local detailGoalsHeader
+local detailActivityHeader
 local detailChild
 local detailScroll
 local rows = {}
 local goalRows = {}
+local activityRows = {}
 local INK = { r = 0.22, g = 0.12, b = 0.04 }
 local INK_MUTED = { r = 0.42, g = 0.35, b = 0.25 }
 local lastDetailID
@@ -69,6 +71,13 @@ local function same(a, b)
     return a:lower() == b:lower()
 end
 
+local function norm(s)
+    if type(s) ~= "string" then
+        return ""
+    end
+    return (s:lower():gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
 local function unixNow()
     if GetServerTime then
         local ok, v = pcall(GetServerTime)
@@ -80,28 +89,19 @@ local function unixNow()
     return time()
 end
 
+-- Machine COMPLETE/CHARACTER/LEVELUP lines are parked on Classic Era: chat
+-- logging does not reliably accept addon SendChatMessage (taint / no flush).
+-- Completions go to GutSagaDB and reach Discord after /reload via the companion.
 local function chat(line)
+    local machine = type(line) == "string" and line:find("[GutSaga]", 1, true)
+        and (line:find(" COMPLETE ", 1, true) or line:find(" CHARACTER ", 1, true) or line:find(" LEVELUP ", 1, true))
+    if machine then
+        return
+    end
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         DEFAULT_CHAT_FRAME:AddMessage(line)
     else
         print(line)
-    end
-end
-
-local function enableChatLog()
-    if C_CVar and C_CVar.SetCVar then
-        pcall(C_CVar.SetCVar, "chatLog", "1")
-    elseif SetCVar then
-        pcall(SetCVar, "chatLog", "1")
-    end
-    if LoggingChat then
-        pcall(LoggingChat, true)
-    end
-end
-
-local function takeScreenshot()
-    if Screenshot then
-        pcall(Screenshot)
     end
 end
 
@@ -292,18 +292,217 @@ local function findEntry(id)
     return nil
 end
 
-local function bullets(text)
+local function formatDescription(text)
     if type(text) ~= "string" or text == "" then
         return "Ingen"
     end
-    local lines = {}
-    for line in string.gmatch(text, "[^\n]+") do
-        table.insert(lines, "• " .. line)
-    end
-    if #lines == 0 then
+    text = text:gsub("\r\n", "\n"):gsub("\r", "\n")
+    text = text:gsub("\\n", "\n")
+    text = text:gsub("[ \t]+\n", "\n"):gsub("\n[ \t]+", "\n")
+    text = text:match("^%s*(.-)%s*$") or text
+    if text == "" then
         return "Ingen"
     end
-    return table.concat(lines, "\n")
+    return text
+end
+
+local NO_MONTHS = {
+    "januar", "februar", "mars", "april", "mai", "juni",
+    "juli", "august", "september", "oktober", "november", "desember",
+}
+
+local function isLeapYear(y)
+    return (y % 4 == 0 and y % 100 ~= 0) or (y % 400 == 0)
+end
+
+local function utcUnix(y, m, d, hh, mm, ss)
+    local mdays = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
+    local days = 0
+    for yr = 1970, y - 1 do
+        days = days + (isLeapYear(yr) and 366 or 365)
+    end
+    for mo = 1, m - 1 do
+        local dim = mdays[mo]
+        if mo == 2 and isLeapYear(y) then
+            dim = 29
+        end
+        days = days + dim
+    end
+    days = days + d - 1
+    return days * 86400 + hh * 3600 + mm * 60 + ss
+end
+
+local function lastSundayUTC(year, month)
+    local mdays = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
+    local dim = mdays[month]
+    if month == 2 and isLeapYear(year) then
+        dim = 29
+    end
+    for d = dim, dim - 6, -1 do
+        local t = date("!*t", utcUnix(year, month, d, 12, 0, 0))
+        if t and t.wday == 1 then
+            return d
+        end
+    end
+    return dim
+end
+
+-- Europe/Oslo: last Sunday of March 01:00 UTC → CEST; last Sunday of October 01:00 UTC → CET.
+local function osloOffset(sec)
+    local t = date("!*t", sec)
+    if not t then
+        return 3600
+    end
+    local start = utcUnix(t.year, 3, lastSundayUTC(t.year, 3), 1, 0, 0)
+    local finish = utcUnix(t.year, 10, lastSundayUTC(t.year, 10), 1, 0, 0)
+    if sec >= start and sec < finish then
+        return 7200
+    end
+    return 3600
+end
+
+local function formatOsloWhen(raw)
+    if type(raw) == "string" and raw ~= "" and not tonumber(raw) then
+        -- Companion already formatted "dd mmmm yyyy hh:mm".
+        if raw:find("%d%d %a+ %d%d%d%d %d%d:%d%d") then
+            return raw
+        end
+    end
+    local sec = plainNumber(raw)
+    if not sec and type(raw) == "string" then
+        local y, mo, d, hh, mm, ss = raw:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)T(%d%d):(%d%d):(%d%d)")
+        if y then
+            sec = utcUnix(tonumber(y), tonumber(mo), tonumber(d), tonumber(hh), tonumber(mm), tonumber(ss) or 0)
+        end
+    end
+    if not sec or sec < 1 then
+        return ""
+    end
+    sec = math.floor(sec)
+    local localSec = sec + osloOffset(sec)
+    local t = date("!*t", localSec)
+    if not t then
+        return ""
+    end
+    local month = NO_MONTHS[t.month] or ""
+    return string.format("%02d %s %d %02d:%02d", t.day, month, t.year, t.hour, t.min)
+end
+
+-- English class tokens for RAID_CLASS_COLORS (stored race/class are English from Unit*).
+local function classToken(className)
+    local s = norm(className):gsub("%s+", "")
+    if s == "" then
+        return ""
+    end
+    local aliases = {
+        deathknight = "DEATHKNIGHT",
+        demonhunter = "DEMONHUNTER",
+        kriger = "WARRIOR",
+        paladin = "PALADIN",
+        jeger = "HUNTER",
+        slyngel = "ROGUE",
+        prest = "PRIEST",
+        sjaman = "SHAMAN",
+        magiker = "MAGE",
+        hekser = "WARLOCK",
+        druide = "DRUID",
+    }
+    return aliases[s] or string.upper(s)
+end
+
+local function classRGB(className)
+    local token = classToken(className)
+    if token ~= "" and RAID_CLASS_COLORS and RAID_CLASS_COLORS[token] then
+        local c = RAID_CLASS_COLORS[token]
+        return c.r or 1, c.g or 1, c.b or 1
+    end
+    local fallback = {
+        WARRIOR = { 0.78, 0.61, 0.43 },
+        PALADIN = { 0.96, 0.55, 0.73 },
+        HUNTER = { 0.67, 0.83, 0.45 },
+        ROGUE = { 1.00, 0.96, 0.41 },
+        PRIEST = { 1.00, 1.00, 1.00 },
+        SHAMAN = { 0.00, 0.44, 0.87 },
+        MAGE = { 0.41, 0.80, 0.94 },
+        WARLOCK = { 0.58, 0.51, 0.79 },
+        DRUID = { 1.00, 0.49, 0.04 },
+        DEATHKNIGHT = { 0.77, 0.12, 0.23 },
+        MONK = { 0.00, 1.00, 0.59 },
+        DEMONHUNTER = { 0.64, 0.19, 0.79 },
+        EVOKER = { 0.20, 0.58, 0.50 },
+    }
+    local c = fallback[token]
+    if c then
+        return c[1], c[2], c[3]
+    end
+    return INK.r, INK.g, INK.b
+end
+
+local function activityList(entry)
+    local out = {}
+    local seen = {}
+    local function add(row)
+        if type(row) ~= "table" then
+            return
+        end
+        local character = plainString(row.character) or ""
+        if character == "" then
+            return
+        end
+        local realm = plainString(row.realm) or ""
+        local key = (character .. "\n" .. realm):lower()
+        if seen[key] then
+            return
+        end
+        seen[key] = true
+        local at = ""
+        if type(row.completed_at) == "string" then
+            at = row.completed_at
+        elseif type(row.completed_at) == "number" then
+            at = string.format("%014d", row.completed_at)
+        end
+        local when = plainString(row["when"]) or ""
+        if when == "" then
+            when = formatOsloWhen(row.completed_at)
+        end
+        table.insert(out, {
+            when = when,
+            character = character,
+            battletag = plainString(row.battletag) or "",
+            level = tonumber(row.level) or 0,
+            race = plainString(row.race) or "",
+            class = plainString(row.class) or "",
+            at = at,
+        })
+    end
+    if type(entry) == "table" and type(entry.completed_by) == "table" then
+        for i = 1, #entry.completed_by do
+            add(entry.completed_by[i])
+        end
+    end
+    -- Local finishes before the companion has synced them to the API.
+    if type(entry) == "table" and type(entry.quest_id) == "string" then
+        initDB()
+        local localDone = GutSagaDB.completions and GutSagaDB.completions[entry.quest_id]
+        if type(localDone) == "table" then
+            add({
+                character = localDone.character or player.name,
+                realm = localDone.realm or player.realm,
+                battletag = player.battletag,
+                level = localDone.level or player.level,
+                race = localDone.race or player.race,
+                class = localDone.class or player.class,
+                completed_at = localDone.completed_at,
+            })
+        end
+    end
+    table.sort(out, function(a, b)
+        if a.at ~= b.at then
+            return a.at < b.at
+        end
+        return a.character < b.character
+    end)
+    return out
 end
 
 local function savedSteps(entry)
@@ -736,7 +935,8 @@ local function checkAll()
         for _, entry in ipairs(entries) do
             if not isComplete(entry) and type(entry.objectives) == "table" and #entry.objectives > 0 then
                 local bucket = savedSteps(entry)
-                local steps, done = GutSagaObjectives.evaluate(entry.objectives, state, bucket.steps)
+                local ordered = entry.objectives_ordered and true or false
+                local steps, done = GutSagaObjectives.evaluate(entry.objectives, state, bucket.steps, ordered)
                 bucket.steps = steps
                 if done then
                     finishQuest(entry)
@@ -814,6 +1014,80 @@ local function ensureGoalRow(i)
     bindWheel(text, detailScroll, 28)
     row.text = text
     goalRows[i] = row
+    return row
+end
+
+local function activityTooltipBody(level, race, className)
+    local line = ""
+    local n = tonumber(level) or 0
+    if n > 0 then
+        line = "Level " .. tostring(n)
+    end
+    race = plainString(race) or ""
+    className = plainString(className) or ""
+    if race ~= "" then
+        if line ~= "" then
+            line = line .. " "
+        end
+        line = line .. race
+    end
+    if className ~= "" then
+        if line ~= "" then
+            line = line .. " "
+        end
+        line = line .. className
+    end
+    return line
+end
+
+local function ensureActivityRow(i)
+    local row = activityRows[i]
+    if row then
+        return row
+    end
+    row = CreateFrame("Frame", nil, detailChild)
+    row:SetHeight(36)
+    row:EnableMouse(true)
+    local whenFS = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    whenFS:SetPoint("TOPLEFT", 0, 0)
+    whenFS:SetJustifyH("LEFT")
+    whenFS:SetJustifyV("TOP")
+    whenFS:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+    local charFS = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    charFS:SetPoint("TOPLEFT", whenFS, "BOTTOMLEFT", 0, -2)
+    charFS:SetJustifyH("LEFT")
+    charFS:SetJustifyV("TOP")
+    charFS:SetTextColor(INK.r, INK.g, INK.b)
+    row.whenFS = whenFS
+    row.charFS = charFS
+    row:SetScript("OnEnter", function(self)
+        if not GameTooltip then
+            return
+        end
+        local name = self.tipName or ""
+        if name == "" then
+            return
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+        GameTooltip:ClearLines()
+        GameTooltip:AddLine(name, 1, 1, 1)
+        local tip = activityTooltipBody(self.tipLevel, self.tipRace, self.tipClass)
+        if tip ~= "" then
+            GameTooltip:AddLine(tip, 1, 1, 1)
+        end
+        local tag = plainString(self.tipTag)
+        if tag then
+            GameTooltip:AddLine(tag, 0.7, 0.7, 0.7)
+        end
+        GameTooltip:Show()
+    end)
+    row:SetScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
+    bindWheel(row, detailScroll, 28)
+    activityRows[i] = row
     return row
 end
 
@@ -991,6 +1265,12 @@ refresh = function()
         detailTitle:SetText("")
         detailTitle:Hide()
         detailGoalsHeader:Hide()
+        if detailImage then
+            detailImage:Hide()
+        end
+        if detailActivityHeader then
+            detailActivityHeader:Hide()
+        end
         if player.name == "" then
             detailFS:SetText("Logg inn på en karakter.")
         elseif type(GutSagaData) ~= "table" or type(GutSagaData.entries) ~= "table" or #GutSagaData.entries == 0 then
@@ -1004,8 +1284,6 @@ refresh = function()
         detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
         detailY = detailY + (detailFS:GetStringHeight() or 14) + 8
     else
-        local description = (type(selectedEntry.description) == "string" and selectedEntry.description ~= "")
-            and selectedEntry.description or "Ingen"
         detailTitle:Show()
         detailTitle:SetText(selectedEntry.title or "Saga")
         detailTitle:SetTextColor(INK.r, INK.g, INK.b)
@@ -1014,26 +1292,13 @@ refresh = function()
         detailTitle:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
         detailY = detailY + (detailTitle:GetStringHeight() or 20) + 12
 
-        detailFS:SetText(description)
-        detailFS:SetTextColor(INK.r, INK.g, INK.b)
-        detailFS:SetWidth(width)
-        detailFS:ClearAllPoints()
-        detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-        detailY = detailY + (detailFS:GetStringHeight() or 14) + 16
-
-        detailGoalsHeader:Show()
-        detailGoalsHeader:ClearAllPoints()
-        detailGoalsHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-        detailGoalsHeader:SetWidth(width)
-        detailGoalsHeader:SetTextColor(INK.r, INK.g, INK.b)
-        detailY = detailY + (detailGoalsHeader:GetStringHeight() or 20) + 10
-
         local okGoals, goalList = pcall(objectiveLines, selectedEntry)
         if okGoals and type(goalList) == "table" then
             goals = goalList
         end
     end
 
+    -- Goals sit under the title with no section header.
     local textWidth = width - 22
     for i, goal in ipairs(goals) do
         local row = ensureGoalRow(i)
@@ -1043,9 +1308,11 @@ refresh = function()
         row:Show()
         if goal.done then
             row.box:SetTexture("Interface\\AddOns\\GutSaga\\check")
+            row.box:SetVertexColor(INK.r, INK.g, INK.b)
             row.text:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
         else
             row.box:SetTexture("Interface\\AddOns\\GutSaga\\box")
+            row.box:SetVertexColor(1, 1, 1)
             row.text:SetTextColor(INK.r, INK.g, INK.b)
         end
         row.text:SetWidth(textWidth)
@@ -1057,6 +1324,120 @@ refresh = function()
     for i = #goals + 1, #goalRows do
         goalRows[i]:Hide()
     end
+
+    if selectedEntry then
+        if #goals > 0 then
+            detailY = detailY + 4
+        end
+        detailGoalsHeader:Show()
+        detailGoalsHeader:ClearAllPoints()
+        detailGoalsHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        detailGoalsHeader:SetWidth(width)
+        detailGoalsHeader:SetTextColor(INK.r, INK.g, INK.b)
+        detailY = detailY + (detailGoalsHeader:GetStringHeight() or 20) + 10
+
+        local description = formatDescription(selectedEntry.description)
+        detailFS:SetText(description)
+        detailFS:SetTextColor(INK.r, INK.g, INK.b)
+        detailFS:SetSpacing(4)
+        detailFS:SetWidth(width)
+        detailFS:ClearAllPoints()
+        detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        detailY = detailY + (detailFS:GetStringHeight() or 14) + 12
+
+        if detailImage then
+            local path = selectedEntry.image
+            if type(path) == "string" and path ~= "" then
+                detailImage:ClearAllPoints()
+                detailImage:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+                local aspect = tonumber(selectedEntry.image_aspect) or 1
+                if aspect < 0.2 then
+                    aspect = 1
+                elseif aspect > 5 then
+                    aspect = 5
+                end
+                local imgW = width
+                local imgH = math.floor(imgW / aspect + 0.5)
+                if imgH > 260 then
+                    imgH = 260
+                    imgW = math.floor(imgH * aspect + 0.5)
+                end
+                if imgH < 64 then
+                    imgH = 64
+                end
+                detailImage:SetSize(imgW, imgH)
+                detailImage:SetVertexColor(1, 1, 1, 1)
+                -- Classic loads AddOn textures as .tga; path is without extension.
+                detailImage:SetTexture(path)
+                detailImage:Show()
+                detailY = detailY + imgH + 14
+            else
+                detailImage:Hide()
+            end
+        end
+    end
+
+    local activities = {}
+    if selectedEntry then
+        local okAct, actList = pcall(activityList, selectedEntry)
+        if okAct and type(actList) == "table" then
+            activities = actList
+        end
+    end
+    if detailActivityHeader then
+        if #activities > 0 then
+            detailY = detailY + 8
+            detailActivityHeader:Show()
+            detailActivityHeader:ClearAllPoints()
+            detailActivityHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+            detailActivityHeader:SetWidth(width)
+            detailActivityHeader:SetTextColor(INK.r, INK.g, INK.b)
+            detailY = detailY + (detailActivityHeader:GetStringHeight() or 20) + 10
+        else
+            detailActivityHeader:Hide()
+        end
+    end
+    for i, act in ipairs(activities) do
+        local okRow, errRow = pcall(function()
+            local row = ensureActivityRow(i)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+            row:SetWidth(width)
+            row:Show()
+            if row.userFS then
+                row.userFS:Hide()
+            end
+            local whenText = act.when or ""
+            local charText = act.character or ""
+            local line = charText
+            if line ~= "" then
+                line = line .. " fullførte"
+            end
+            row.whenFS:SetWidth(width)
+            row.charFS:SetWidth(width)
+            row.whenFS:SetText(whenText)
+            row.charFS:SetText(line)
+            row.charFS:SetTextColor(INK.r, INK.g, INK.b)
+            row.whenFS:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+            row.tipName = charText
+            row.tipLevel = act.level or 0
+            row.tipRace = act.race or ""
+            row.tipClass = act.class or ""
+            row.tipTag = act.battletag or ""
+            local h = (row.whenFS:GetStringHeight() or 12) + 2
+                + (row.charFS:GetStringHeight() or 14)
+            h = math.max(28, h + 4)
+            row:SetHeight(h)
+            detailY = detailY + h + 10
+        end)
+        if not okRow then
+            chat("[GutSaga] aktivitet: " .. tostring(errRow))
+        end
+    end
+    for i = #activities + 1, #activityRows do
+        activityRows[i]:Hide()
+    end
+
     local detailH = math.max(detailY + 8, 10)
     detailChild:SetHeight(detailH)
     if detailScroll.UpdateScrollChildRect then
@@ -1089,16 +1470,19 @@ finishQuest = function(entry)
         completed_at = ts,
         character = player.name,
         realm = player.realm,
+        race = player.race,
+        class = player.class,
     }
-    takeScreenshot()
-    local realm = player.realm
-    if realm == "" then
-        realm = "-"
-    end
-    chat(string.format("[GutSaga] COMPLETE %s %d %s %s %d %d", entry.quest_id, version, player.name, realm, level, ts))
-    showSagaToast(entry.title or "Saga")
-    broadcast(string.format("C|%s|%d|%d|%d", entry.quest_id, version, level, ts))
+    local title = entry.title or "Saga"
+    local questID = entry.quest_id
+    showSagaToast(title, questID)
+    broadcast(string.format("C|%s|%d|%d|%d", questID, version, level, ts))
     refresh()
+    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "|cffc9a227GutSaga|r: Fullført. Discord etter |cffffffff/reload|r."
+        )
+    end
 end
 
 local function onWorld()
@@ -1556,10 +1940,19 @@ local function build()
     if detailFS.SetHyperlinksEnabled then
         detailFS:SetHyperlinksEnabled(true)
     end
+    detailImage = detailChild:CreateTexture(nil, "ARTWORK")
+    detailImage:SetTexCoord(0, 1, 0, 1)
+    detailImage:SetVertexColor(1, 1, 1, 1)
+    detailImage:Hide()
     detailGoalsHeader = detailChild:CreateFontString(nil, "OVERLAY", titleFont)
     detailGoalsHeader:SetJustifyH("LEFT")
-    detailGoalsHeader:SetText("Mål")
+    detailGoalsHeader:SetText("Beskrivelse")
     detailGoalsHeader:SetTextColor(INK.r, INK.g, INK.b)
+    detailActivityHeader = detailChild:CreateFontString(nil, "OVERLAY", titleFont)
+    detailActivityHeader:SetJustifyH("LEFT")
+    detailActivityHeader:SetText("Aktivitet")
+    detailActivityHeader:SetTextColor(INK.r, INK.g, INK.b)
+    detailActivityHeader:Hide()
     pcall(function()
         detailFS:SetScript("OnHyperlinkClick", onGoalLinkClick)
         detailFS:SetScript("OnHyperlinkEnter", onGoalLinkEnter)
@@ -1568,6 +1961,7 @@ local function build()
     bindWheel(detailTitle, detailScroll, 28)
     bindWheel(detailFS, detailScroll, 28)
     bindWheel(detailGoalsHeader, detailScroll, 28)
+    bindWheel(detailActivityHeader, detailScroll, 28)
     attachScrollBar(detailPanel, detailScroll, 28)
 
     toast = CreateFrame("Frame", "GutSagaToast", UIParent, backdropTemplate)
@@ -1596,6 +1990,10 @@ local function build()
     toastTitle:SetJustifyH("LEFT")
     toastTitle:SetWordWrap(false)
     toastTitle:SetTextColor(1, 0.95, 0.8)
+    -- Ease in (~0.35s), hold longer, then a simple fade (no slide-out).
+    local TOAST_EASE = 0.35
+    local TOAST_HOLD = 7.0
+    local TOAST_FADE = 0.55
     toast:SetScript("OnUpdate", function(self, elapsed)
         if not self:IsShown() then
             return
@@ -1603,17 +2001,17 @@ local function build()
         self.age = (self.age or 0) + (elapsed or 0)
         local age = self.age
         local alpha, y = 1, -30
-        if age < 0.35 then
-            local t = age / 0.35
+        if age < TOAST_EASE then
+            local t = age / TOAST_EASE
             alpha = t
             y = 16 - 46 * t
-        elseif age < 4.2 then
+        elseif age < TOAST_HOLD then
             alpha = 1
             y = -30
-        elseif age < 5 then
-            local t = (age - 4.2) / 0.8
+        elseif age < TOAST_HOLD + TOAST_FADE then
+            local t = (age - TOAST_HOLD) / TOAST_FADE
             alpha = 1 - t
-            y = -30 - 18 * t
+            y = -30
         else
             self:Hide()
             return
@@ -1622,8 +2020,34 @@ local function build()
         self:ClearAllPoints()
         self:SetPoint("TOP", UIParent, "TOP", 0, y)
     end)
-    showSagaToast = function(titleText)
+    toast:EnableMouse(true)
+    toast:SetScript("OnMouseUp", function(self, button)
+        if button ~= "LeftButton" then
+            return
+        end
+        local questID = self.questID
+        self:Hide()
+        if type(questID) == "string" and questID ~= "" then
+            selectedID = questID
+            show()
+            refresh()
+        end
+    end)
+    toast:SetScript("OnEnter", function(self)
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText("Åpne saga-loggen", 1, 1, 1)
+            GameTooltip:Show()
+        end
+    end)
+    toast:SetScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
+    showSagaToast = function(titleText, questID)
         toastTitle:SetText(titleText or "Saga")
+        toast.questID = questID
         toast.age = 0
         toast:SetAlpha(0)
         toast:Show()
@@ -1707,11 +2131,27 @@ SlashCmdList.GUTSAGA = function(msg)
         hide()
         return
     end
-    if msg == "reset" or msg == "reset goldshire" then
+    if msg == "wipe" or msg == "clear" or msg == "reset" then
+        -- Must clear in-memory SavedVariables. Editing the file on disk while
+        -- logged in is overwritten on the next /reload or logout.
+        initDB()
+        GutSagaDB.completions = {}
+        GutSagaDB.objectives = {}
+        selectedID = nil
+        chat("|cffc9a227GutSaga|r: Alle lokale fullføringer er slettet.")
+        onWorld()
+        if frame and frame:IsShown() then
+            refresh()
+        end
+        return
+    end
+    if msg == "reset goldshire" then
         initDB()
         local id = "cf031479-7288-4508-b139-f23f1e322026"
         GutSagaDB.completions[id] = nil
-        GutSagaDB.objectives[id] = nil
+        if type(GutSagaDB.objectives) == "table" then
+            GutSagaDB.objectives[id] = nil
+        end
         selectedID = id
         chat("|cffc9a227GutSaga|r: «En kveld i Goldshire» er tilbakestilt.")
         onWorld()
@@ -1755,13 +2195,11 @@ events:SetScript("OnEvent", function(_, event, ...)
             return
         end
         initDB()
-        enableChatLog()
         registerPrefix(PREFIX)
         return
     end
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         initDB()
-        enableChatLog()
         cachePlayer()
         build()
         emitCharacter()
@@ -1807,17 +2245,40 @@ events:SetScript("OnEvent", function(_, event, ...)
         return
     end
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        -- Critters often never fire PARTY_KILL; count UNIT_DIED after we hit them.
         if CombatLogGetCurrentEventInfo then
-            local ok, _, subevent, _, _, _, _, _, _, destName = pcall(CombatLogGetCurrentEventInfo)
-            if ok and subevent == "PARTY_KILL" then
-                if secret(destName) then
-                    world.killSecret = true
-                    world.killName = nil
-                else
-                    world.killSecret = false
-                    world.killName = plainString(destName)
+            local ok, _, subevent, _, sourceGUID, _, _, _, destGUID, destName = pcall(CombatLogGetCurrentEventInfo)
+            if ok and type(subevent) == "string" then
+                local me = UnitGUID and UnitGUID("player")
+                if sourceGUID and me and sourceGUID == me and destGUID and (
+                    subevent == "SWING_DAMAGE" or subevent == "SPELL_DAMAGE" or subevent == "RANGE_DAMAGE"
+                    or subevent == "SPELL_PERIODIC_DAMAGE" or subevent == "DAMAGE_SHIELD"
+                ) then
+                    world.lastHitGUID = destGUID
+                    world.lastHitName = plainString(destName)
                 end
-                onWorld()
+                local counted = false
+                if subevent == "PARTY_KILL" then
+                    counted = true
+                elseif subevent == "UNIT_DIED" and destGUID and destGUID == world.lastHitGUID then
+                    counted = true
+                    if (not destName or destName == "") and world.lastHitName then
+                        destName = world.lastHitName
+                    end
+                    world.lastHitGUID = nil
+                end
+                if counted then
+                    if secret(destName) then
+                        world.killSecret = true
+                        world.killName = nil
+                    else
+                        world.killSecret = false
+                        world.killName = plainString(destName)
+                    end
+                    onWorld()
+                    world.killName = nil
+                    world.killSecret = false
+                end
             end
         end
         return

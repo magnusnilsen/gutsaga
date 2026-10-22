@@ -453,6 +453,7 @@ type QuestInput struct {
 	Title                string
 	Description          string
 	Objectives           []contract.Objective
+	ObjectivesOrdered    *bool
 	Reward               string
 	MinLevel             *int
 	PartyQuest           bool
@@ -465,6 +466,7 @@ type QuestPatch struct {
 	Title                *string
 	Description          *string
 	Objectives           *[]contract.Objective
+	ObjectivesOrdered    *bool
 	Reward               *string
 	MinLevel             *int
 	MinLevelSet          bool
@@ -534,6 +536,10 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	if in.Active != nil {
 		active = *in.Active
 	}
+	ordered := false
+	if in.ObjectivesOrdered != nil {
+		ordered = *in.ObjectivesOrdered
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return contract.Quest{}, err
@@ -552,17 +558,17 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	}
 	var id string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO quests (title, description, objectives, reward, min_level, party, active, version, created_by, created_by_player_id)
-		VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,1,$8,$9)
+		INSERT INTO quests (title, description, objectives, reward, min_level, party, active, version, created_by, created_by_player_id, objectives_ordered)
+		VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,1,$8,$9,$10)
 		RETURNING id::text`,
-		strings.TrimSpace(in.Title), in.Description, objJSON, in.Reward, nullableInt(in.MinLevel), in.PartyQuest, active, creatorTag, creatorID,
+		strings.TrimSpace(in.Title), in.Description, objJSON, in.Reward, nullableInt(in.MinLevel), in.PartyQuest, active, creatorTag, creatorID, ordered,
 	).Scan(&id)
 	if err != nil {
 		return contract.Quest{}, err
 	}
 	q := contract.Quest{
 		ID: id, Title: strings.TrimSpace(in.Title), Description: in.Description, Objectives: in.Objectives,
-		Reward: in.Reward, MinLevel: in.MinLevel, PartyQuest: in.PartyQuest, Active: active, Version: 1,
+		ObjectivesOrdered: ordered, Reward: in.Reward, MinLevel: in.MinLevel, PartyQuest: in.PartyQuest, Active: active, Version: 1,
 		CreatedBy: creatorTag, AssignedTo: refs(in.AssignedCharacterIDs),
 	}
 	if err := replaceAssignments(ctx, tx, id, in.AssignedCharacterIDs); err != nil {
@@ -602,6 +608,9 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 			return contract.Quest{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
 		}
 		q.Objectives = objectives
+	}
+	if p.ObjectivesOrdered != nil {
+		q.ObjectivesOrdered = *p.ObjectivesOrdered
 	}
 	if p.Reward != nil {
 		q.Reward = *p.Reward
@@ -651,9 +660,9 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 	}
 	_, err = tx.Exec(ctx, `
 		UPDATE quests
-		SET title=$2, description=$3, objectives=$4::jsonb, reward=$5, min_level=$6, party=$7, active=$8, version=$9, created_by=$10, created_by_player_id=$11, updated_at=now()
+		SET title=$2, description=$3, objectives=$4::jsonb, reward=$5, min_level=$6, party=$7, active=$8, version=$9, created_by=$10, created_by_player_id=$11, objectives_ordered=$12, updated_at=now()
 		WHERE id=$1`,
-		id, q.Title, q.Description, objJSON, q.Reward, nullableInt(q.MinLevel), q.PartyQuest, q.Active, q.Version, q.CreatedBy, creatorID)
+		id, q.Title, q.Description, objJSON, q.Reward, nullableInt(q.MinLevel), q.PartyQuest, q.Active, q.Version, q.CreatedBy, creatorID, q.ObjectivesOrdered)
 	if err != nil {
 		return contract.Quest{}, err
 	}
@@ -765,10 +774,10 @@ func insertSnapshot(ctx context.Context, q querier, quest contract.Quest) error 
 		return err
 	}
 	_, err = q.Exec(ctx, `
-		INSERT INTO quest_versions (quest_id, version, title, description, objectives, reward, min_level, party, active, assigned_to, created_by)
-		VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10::jsonb,$11)`,
+		INSERT INTO quest_versions (quest_id, version, title, description, objectives, reward, min_level, party, active, assigned_to, created_by, objectives_ordered)
+		VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10::jsonb,$11,$12)`,
 		quest.ID, quest.Version, quest.Title, quest.Description, objJSON, quest.Reward,
-		nullableInt(quest.MinLevel), quest.PartyQuest, quest.Active, string(raw), quest.CreatedBy)
+		nullableInt(quest.MinLevel), quest.PartyQuest, quest.Active, string(raw), quest.CreatedBy, quest.ObjectivesOrdered)
 	return err
 }
 
@@ -776,7 +785,7 @@ func scanQuest(scan func(dest ...any) error) (contract.Quest, error) {
 	var q contract.Quest
 	var ml sql.NullInt32
 	var obj string
-	err := scan(&q.ID, &q.Title, &q.Description, &obj, &q.Reward, &ml, &q.PartyQuest, &q.Active, &q.Version, &q.CreatedBy)
+	err := scan(&q.ID, &q.Title, &q.Description, &obj, &q.Reward, &ml, &q.PartyQuest, &q.Active, &q.Version, &q.CreatedBy, &q.ObjectivesOrdered, &q.HasImage)
 	if err != nil {
 		return q, err
 	}
@@ -791,7 +800,9 @@ func scanQuest(scan func(dest ...any) error) (contract.Quest, error) {
 
 const questSelect = `
 		SELECT q.id::text, q.title, q.description, q.objectives::text, q.reward, q.min_level, q.party, q.active, q.version,
-			COALESCE(NULLIF(p.battletag, ''), q.created_by)
+			COALESCE(NULLIF(p.battletag, ''), q.created_by),
+			q.objectives_ordered,
+			(q.image_bytes IS NOT NULL AND octet_length(q.image_bytes) > 0)
 		FROM quests q
 		LEFT JOIN players p ON p.id = q.created_by_player_id`
 
@@ -1010,6 +1021,9 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 		if quests[i].AssignedTo == nil {
 			quests[i].AssignedTo = []contract.IDRef{}
 		}
+		if quests[i].HasImage {
+			quests[i].ImageURL = "/v1/sagas/" + quests[i].ID + "/image"
+		}
 	}
 	prows, err := s.pool.Query(ctx, `
 		SELECT p.quest_id::text, p.character_id::text, p.quest_version, p.status, p.completed_at, p.discord_url
@@ -1061,11 +1075,15 @@ func (s *Store) sagaCompletions(ctx context.Context, questIDs []string) ([]contr
 		return []contract.QuestCompletion{}, nil
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT p.quest_id::text, c.name, COALESCE(c.realm, ''), p.completed_at
+		SELECT p.quest_id::text, c.name, COALESCE(c.realm, ''), COALESCE(pl.battletag, ''),
+			COALESCE(NULLIF(TRIM(pl.display_name), ''), ''),
+			COALESCE(p.level_at_completion, c.level), COALESCE(c.race, ''), COALESCE(c.class, ''),
+			p.completed_at
 		FROM progress p
 		JOIN characters c ON c.id = p.character_id
+		JOIN players pl ON pl.id = c.player_id
 		WHERE p.status = 'completed'
-		ORDER BY c.name, c.realm`)
+		ORDER BY p.completed_at ASC NULLS LAST, c.name, c.realm`)
 	if err != nil {
 		return nil, err
 	}
@@ -1074,7 +1092,8 @@ func (s *Store) sagaCompletions(ctx context.Context, questIDs []string) ([]contr
 	for rows.Next() {
 		var c contract.QuestCompletion
 		var completed sql.NullTime
-		if err := rows.Scan(&c.QuestID, &c.Character, &c.Realm, &completed); err != nil {
+		if err := rows.Scan(&c.QuestID, &c.Character, &c.Realm, &c.BattleTag, &c.DisplayName,
+			&c.Level, &c.Race, &c.Class, &completed); err != nil {
 			return nil, err
 		}
 		if !want[c.QuestID] || strings.TrimSpace(c.Character) == "" {
@@ -1511,6 +1530,153 @@ func (s *Store) QuestIDByTitle(ctx context.Context, title string) (string, error
 		return "", ErrNotFound
 	}
 	return id, err
+}
+
+func (s *Store) assertQuestOwner(ctx context.Context, questID, playerID string) error {
+	if err := validUUID(questID); err != nil {
+		return err
+	}
+	if err := validUUID(playerID); err != nil {
+		return err
+	}
+	var owner sql.NullString
+	err := s.pool.QueryRow(ctx, `SELECT created_by_player_id::text FROM quests WHERE id=$1`, questID).Scan(&owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if !owner.Valid || owner.String != playerID {
+		return ErrForbidden
+	}
+	return nil
+}
+
+// ListQuestsByPlayer returns sagas created by this player.
+func (s *Store) ListQuestsByPlayer(ctx context.Context, playerID string) ([]contract.Quest, error) {
+	if err := validUUID(playerID); err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx, questSelect+` WHERE q.created_by_player_id=$1 ORDER BY q.updated_at DESC, q.title`, playerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var quests []contract.Quest
+	var ids []string
+	for rows.Next() {
+		q, err := scanQuest(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		quests = append(quests, q)
+		ids = append(ids, q.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	assigned, err := loadAssignments(ctx, s.pool, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range quests {
+		quests[i].AssignedTo = assigned[quests[i].ID]
+		if quests[i].AssignedTo == nil {
+			quests[i].AssignedTo = []contract.IDRef{}
+		}
+	}
+	return quests, nil
+}
+
+// UpdateQuestForPlayer patches a saga only when the player owns it.
+func (s *Store) UpdateQuestForPlayer(ctx context.Context, playerID, questID string, p QuestPatch) (contract.Quest, error) {
+	if err := s.assertQuestOwner(ctx, questID, playerID); err != nil {
+		return contract.Quest{}, err
+	}
+	// Players cannot reassign authorship.
+	p.CreatedBy = nil
+	return s.UpdateQuest(ctx, questID, p)
+}
+
+// CreateQuestForPlayer creates a saga owned by the signed-in player.
+func (s *Store) CreateQuestForPlayer(ctx context.Context, playerID string, in QuestInput) (contract.Quest, error) {
+	if err := validUUID(playerID); err != nil {
+		return contract.Quest{}, err
+	}
+	var tag string
+	if err := s.pool.QueryRow(ctx, `SELECT COALESCE(battletag, '') FROM players WHERE id=$1`, playerID).Scan(&tag); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return contract.Quest{}, ErrNotFound
+		}
+		return contract.Quest{}, err
+	}
+	if tag == "" {
+		return contract.Quest{}, fmt.Errorf("%w: battletag required to create sagas", ErrInvalid)
+	}
+	in.CreatedBy = tag
+	return s.CreateQuest(ctx, in)
+}
+
+func (s *Store) SetQuestImage(ctx context.Context, playerID, questID, contentType string, image []byte) (contract.Quest, error) {
+	if err := s.assertQuestOwner(ctx, questID, playerID); err != nil {
+		return contract.Quest{}, err
+	}
+	if len(image) == 0 {
+		return contract.Quest{}, fmt.Errorf("%w: empty image", ErrInvalid)
+	}
+	if len(image) > 8<<20 {
+		return contract.Quest{}, fmt.Errorf("%w: image larger than 8 MiB", ErrInvalid)
+	}
+	ct := strings.TrimSpace(contentType)
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE quests SET image_bytes=$2, image_content_type=$3, updated_at=now() WHERE id=$1`,
+		questID, image, ct)
+	if err != nil {
+		return contract.Quest{}, err
+	}
+	detail, err := s.GetQuest(ctx, questID)
+	if err != nil {
+		return contract.Quest{}, err
+	}
+	return detail.Quest, nil
+}
+
+func (s *Store) ClearQuestImage(ctx context.Context, playerID, questID string) (contract.Quest, error) {
+	if err := s.assertQuestOwner(ctx, questID, playerID); err != nil {
+		return contract.Quest{}, err
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE quests SET image_bytes=NULL, image_content_type='', updated_at=now() WHERE id=$1`, questID)
+	if err != nil {
+		return contract.Quest{}, err
+	}
+	detail, err := s.GetQuest(ctx, questID)
+	if err != nil {
+		return contract.Quest{}, err
+	}
+	return detail.Quest, nil
+}
+
+func (s *Store) QuestImage(ctx context.Context, questID string) (contentType string, image []byte, err error) {
+	if err := validUUID(questID); err != nil {
+		return "", nil, err
+	}
+	err = s.pool.QueryRow(ctx, `
+		SELECT COALESCE(image_content_type, ''), image_bytes FROM quests WHERE id=$1`, questID).Scan(&contentType, &image)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil, ErrNotFound
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	if len(image) == 0 {
+		return "", nil, ErrNotFound
+	}
+	return contentType, image, nil
 }
 
 func (s *Store) CachedIdentity(ctx context.Context, tokenHash string) (subject, email, name, hub, server string, member, ok bool, err error) {

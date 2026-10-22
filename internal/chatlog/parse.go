@@ -33,26 +33,29 @@ type Event struct {
 }
 
 func Parse(line string) (Event, bool) {
-	i := strings.Index(line, "[GutSaga]")
-	if i < 0 {
-		return Event{}, false
+	// Prefer the machine payload. Channel traffic on "GutSaga" also contains
+	// "[GutSaga]" as the channel name before the player's message.
+	for _, marker := range []string{"[GutSaga] COMPLETE ", "[GutSaga] CHARACTER ", "[GutSaga] LEVELUP "} {
+		i := strings.Index(line, marker)
+		if i < 0 {
+			continue
+		}
+		rest := strings.TrimSpace(line[i+len("[GutSaga]"):])
+		if strings.HasPrefix(rest, "CHARACTER ") {
+			return parseCharacter(rest[len("CHARACTER "):])
+		}
+		fields := strings.Fields(rest)
+		if len(fields) == 0 {
+			return Event{}, false
+		}
+		switch fields[0] {
+		case "COMPLETE":
+			return parseComplete(fields)
+		case "LEVELUP":
+			return parseLevel(fields)
+		}
 	}
-	rest := strings.TrimSpace(line[i+len("[GutSaga]"):])
-	if strings.HasPrefix(rest, "CHARACTER ") {
-		return parseCharacter(rest[len("CHARACTER "):])
-	}
-	fields := strings.Fields(rest)
-	if len(fields) == 0 {
-		return Event{}, false
-	}
-	switch fields[0] {
-	case "COMPLETE":
-		return parseComplete(fields)
-	case "LEVELUP":
-		return parseLevel(fields)
-	default:
-		return Event{}, false
-	}
+	return Event{}, false
 }
 
 func parseComplete(fields []string) (Event, bool) {

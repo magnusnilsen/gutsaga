@@ -16,21 +16,31 @@ type Entry struct {
 	QuestVersion int                  `json:"quest_version"`
 	Title        string               `json:"title"`
 	Description  string               `json:"description"`
-	Objectives   []contract.Objective `json:"objectives"`
-	Reward       string               `json:"reward"`
-	MinLevel     *int                 `json:"min_level"`
-	Status       string               `json:"status"`
-	CompletedAt  string               `json:"completed_at"`
-	PartyQuest   bool                 `json:"party_quest"`
-	CreatedBy    string               `json:"created_by"`
-	CompletedBy  []Completer          `json:"completed_by"`
+	Objectives          []contract.Objective `json:"objectives"`
+	ObjectivesOrdered   bool                 `json:"objectives_ordered"`
+	Reward              string               `json:"reward"`
+	MinLevel            *int                 `json:"min_level"`
+	Status              string               `json:"status"`
+	CompletedAt         string               `json:"completed_at"`
+	PartyQuest          bool                 `json:"party_quest"`
+	CreatedBy           string               `json:"created_by"`
+	CompletedBy         []Completer          `json:"completed_by"`
+	Image               string               `json:"image,omitempty"` // Interface\\AddOns\\GutSaga\\media\\<id>
+	ImageAspect         float64              `json:"image_aspect,omitempty"` // width/height
+	HasImage            bool                 `json:"has_image"`
 }
 
 // Completer is a character who has finished this saga.
 type Completer struct {
 	Character   string `json:"character"`
 	Realm       string `json:"realm"`
+	BattleTag   string `json:"battletag"`
+	DisplayName string `json:"display_name,omitempty"`
+	Level       int    `json:"level,omitempty"`
+	Race        string `json:"race,omitempty"`
+	Class       string `json:"class,omitempty"`
 	CompletedAt string `json:"completed_at"`
+	When        string `json:"when,omitempty"` // "dd mmmm yyyy hh:mm" Europe/Oslo
 }
 
 // Merge applies the companion rule: a character sees an active quest when
@@ -54,9 +64,14 @@ func Merge(sync contract.SyncResponse) []Entry {
 			e := Entry{
 				Character: ch.Name, CharacterID: ch.ID, Realm: ch.Realm,
 				QuestID: q.ID, QuestVersion: q.Version, Title: q.Title,
-				Description: q.Description, Objectives: q.Objectives, Reward: q.Reward,
+				Description: q.Description, Objectives: q.Objectives,
+				ObjectivesOrdered: q.ObjectivesOrdered, Reward: q.Reward,
 				MinLevel: q.MinLevel, PartyQuest: q.PartyQuest,
 				CreatedBy: q.CreatedBy, CompletedBy: completers[q.ID],
+				HasImage: q.HasImage,
+			}
+			if q.HasImage {
+				e.Image = `Interface\AddOns\GutSaga\media\` + q.ID
 			}
 			if has {
 				e.Status = p.Status
@@ -97,18 +112,52 @@ func completersByQuest(sync contract.SyncResponse) map[string][]Completer {
 	type key struct{ quest, name, realm string }
 	seen := map[key]bool{}
 	out := map[string][]Completer{}
-	add := func(questID, name, realm, at string) {
+	add := func(questID, name, realm, tag, displayName, race, class string, level int, at string) {
 		name = strings.TrimSpace(name)
 		realm = strings.TrimSpace(realm)
+		tag = strings.TrimSpace(tag)
+		displayName = strings.TrimSpace(displayName)
+		race = strings.TrimSpace(race)
+		class = strings.TrimSpace(class)
 		if questID == "" || name == "" {
 			return
 		}
 		k := key{questID, strings.ToLower(name), strings.ToLower(realm)}
 		if seen[k] {
+			list := out[questID]
+			for i := range list {
+				if !strings.EqualFold(list[i].Character, name) || !strings.EqualFold(list[i].Realm, realm) {
+					continue
+				}
+				if list[i].BattleTag == "" && tag != "" {
+					list[i].BattleTag = tag
+				}
+				if list[i].DisplayName == "" && displayName != "" {
+					list[i].DisplayName = displayName
+				}
+				if list[i].Race == "" && race != "" {
+					list[i].Race = race
+				}
+				if list[i].Class == "" && class != "" {
+					list[i].Class = class
+				}
+				if list[i].Level < 1 && level > 0 {
+					list[i].Level = level
+				}
+				if list[i].CompletedAt == "" && at != "" {
+					list[i].CompletedAt = at
+					list[i].When = FormatOsloWhen(at)
+				}
+				break
+			}
 			return
 		}
 		seen[k] = true
-		out[questID] = append(out[questID], Completer{Character: name, Realm: realm, CompletedAt: at})
+		out[questID] = append(out[questID], Completer{
+			Character: name, Realm: realm, BattleTag: tag,
+			DisplayName: displayName, Level: level, Race: race, Class: class,
+			CompletedAt: at, When: FormatOsloWhen(at),
+		})
 	}
 	known := map[string]contract.Character{}
 	for _, ch := range sync.Characters {
@@ -119,10 +168,15 @@ func completersByQuest(sync contract.SyncResponse) map[string][]Completer {
 			continue
 		}
 		ch := known[p.CharacterID]
-		add(p.QuestID, ch.Name, ch.Realm, p.CompletedAt)
+		add(p.QuestID, ch.Name, ch.Realm, ch.BattleTag, "", ch.Race, ch.Class, ch.Level, p.CompletedAt)
 	}
 	for _, c := range sync.Completions {
-		add(c.QuestID, c.Character, c.Realm, c.CompletedAt)
+		add(c.QuestID, c.Character, c.Realm, c.BattleTag, c.DisplayName, c.Race, c.Class, c.Level, c.CompletedAt)
+	}
+	for id := range out {
+		sort.SliceStable(out[id], func(i, j int) bool {
+			return out[id][i].CompletedAt < out[id][j].CompletedAt
+		})
 	}
 	return out
 }

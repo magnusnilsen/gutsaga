@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
+	_ "image/gif"
+	_ "image/jpeg"
 	"image/png"
 )
 
@@ -109,6 +112,64 @@ func decodeTGA(data []byte) (image.Image, error) {
 		}
 	}
 	return img, nil
+}
+
+// EncodeAddonTGA writes an uncompressed 32-bit TGA that Classic Era can
+// load via SetTexture("Interface\\AddOns\\...\\name") (no PNG in AddOns).
+// Returns TGA bytes plus pixel width and height for UI aspect ratio.
+func EncodeAddonTGA(img image.Image) ([]byte, int, int, error) {
+	if img == nil {
+		return nil, 0, 0, fmt.Errorf("nil image")
+	}
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= 0 || h <= 0 || w > 4096 || h > 4096 {
+		return nil, 0, 0, fmt.Errorf("image size %dx%d", w, h)
+	}
+	nrgba, ok := img.(*image.NRGBA)
+	if !ok || !b.Min.Eq(image.Pt(0, 0)) {
+		nrgba = image.NewNRGBA(image.Rect(0, 0, w, h))
+		draw.Draw(nrgba, nrgba.Bounds(), img, b.Min, draw.Src)
+	}
+	out := make([]byte, 18+w*h*4)
+	out[2] = 2 // uncompressed true-color
+	binary.LittleEndian.PutUint16(out[12:14], uint16(w))
+	binary.LittleEndian.PutUint16(out[14:16], uint16(h))
+	out[16] = 32
+	// Match existing GutSaga.tga: 8-bit alpha, bottom-left origin (desc 0x08).
+	out[17] = 0x08
+	dst := out[18:]
+	for y := 0; y < h; y++ {
+		srcY := h - 1 - y
+		for x := 0; x < w; x++ {
+			i := srcY*nrgba.Stride + x*4
+			o := (y*w + x) * 4
+			r, g, bl, a := nrgba.Pix[i], nrgba.Pix[i+1], nrgba.Pix[i+2], nrgba.Pix[i+3]
+			dst[o], dst[o+1], dst[o+2], dst[o+3] = bl, g, r, a
+		}
+	}
+	return out, w, h, nil
+}
+
+// DecodeAny opens PNG/JPEG/GIF/WebP/TGA into an image for addon conversion.
+func DecodeAny(data []byte) (image.Image, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty image")
+	}
+	if isPNG(data) || isJPEG(data) || isGIF(data) || isWEBP(data) {
+		img, _, err := image.Decode(bytes.NewReader(data))
+		return img, err
+	}
+	return decodeTGA(data)
+}
+
+// ToAddonTexture converts upload bytes into a Classic-friendly TGA.
+func ToAddonTexture(data []byte) (tga []byte, width, height int, err error) {
+	img, err := DecodeAny(data)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	return EncodeAddonTGA(img)
 }
 
 // NormalizeUpload returns image bytes Discord can attach.

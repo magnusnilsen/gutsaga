@@ -28,6 +28,11 @@ func WriteLua(battletag, generatedAt string, entries []Entry) string {
 		fmt.Fprintf(&b, "      title = %s,\n", luaString(e.Title))
 		fmt.Fprintf(&b, "      description = %s,\n", luaString(e.Description))
 		fmt.Fprintf(&b, "      objectives = %s,\n", luaObjectives(e.Objectives))
+		if e.ObjectivesOrdered {
+			b.WriteString("      objectives_ordered = true,\n")
+		} else {
+			b.WriteString("      objectives_ordered = false,\n")
+		}
 		fmt.Fprintf(&b, "      reward = %s,\n", luaString(e.Reward))
 		if e.MinLevel == nil {
 			b.WriteString("      min_level = nil,\n")
@@ -43,6 +48,12 @@ func WriteLua(battletag, generatedAt string, entries []Entry) string {
 		}
 		fmt.Fprintf(&b, "      created_by = %s,\n", luaString(e.CreatedBy))
 		fmt.Fprintf(&b, "      completed_by = %s,\n", luaCompleters(e.CompletedBy))
+		if e.Image != "" {
+			fmt.Fprintf(&b, "      image = %s,\n", luaString(e.Image))
+			if e.ImageAspect > 0.05 {
+				fmt.Fprintf(&b, "      image_aspect = %s,\n", strconv.FormatFloat(e.ImageAspect, 'f', 4, 64))
+			}
+		}
 		b.WriteString("    },\n")
 	}
 	b.WriteString("  },\n}\n")
@@ -90,8 +101,15 @@ func luaCompleters(list []Completer) string {
 	var b strings.Builder
 	b.WriteString("{\n")
 	for _, c := range list {
+		when := c.When
+		if when == "" {
+			when = FormatOsloWhen(c.CompletedAt)
+		}
 		b.WriteString("        { ")
-		fmt.Fprintf(&b, "character = %s, realm = %s, completed_at = %s", luaString(c.Character), luaString(c.Realm), luaString(c.CompletedAt))
+		fmt.Fprintf(&b, "character = %s, realm = %s, battletag = %s, level = %d, race = %s, class = %s, completed_at = %s, when = %s",
+			luaString(c.Character), luaString(c.Realm), luaString(c.BattleTag),
+			c.Level, luaString(c.Race), luaString(c.Class),
+			luaString(c.CompletedAt), luaString(when))
 		b.WriteString(" },\n")
 	}
 	b.WriteString("      }")

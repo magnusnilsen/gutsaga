@@ -120,6 +120,14 @@ func (q *Queue) Enqueue(item Item) bool {
 	return true
 }
 
+// ForgetDone removes a finished key so the same event can be posted again
+// (e.g. after progress was cleared on the server).
+func (q *Queue) ForgetDone(key string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	delete(q.done, key)
+}
+
 func (q *Queue) Due(now time.Time) []Item {
 	q.mu.Lock()
 	defer q.mu.Unlock()

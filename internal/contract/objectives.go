@@ -8,9 +8,15 @@ import (
 	"unicode/utf8"
 )
 
-// Objective types the addon can verify, in order. A later objective is not
-// checked until every earlier one is done. kill is experimental: the combat
-// log may return secret values, and those hits are ignored.
+// Objective types the addon can verify.
+//
+//   - location: stand in a zone/subzone and/or near map coordinates (x/y are 0–1)
+//   - interact: select/talk to an NPC and/or world object (selection-based)
+//   - collect:  have N of an item in bags (inventory; item_id required)
+//   - kill:     defeat N creatures by name (experimental; secret combat-log names are ignored)
+//
+// By default goals may be completed in any order (quest.objectives_ordered=false).
+// When objectives_ordered is true, a later goal is not checked until earlier ones are done.
 const (
 	ObjectiveLocation = "location"
 	ObjectiveInteract = "interact"

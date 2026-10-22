@@ -40,6 +40,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sync", s.withPlayer(s.sync))
 	mux.HandleFunc("POST /v1/complete", s.withPlayer(s.complete))
 	mux.HandleFunc("POST /v1/level", s.withPlayer(s.level))
+	mux.HandleFunc("POST /v1/sagas", s.withPlayer(s.createSaga))
+	mux.HandleFunc("GET /v1/sagas", s.withPlayer(s.listSagas))
+	mux.HandleFunc("GET /v1/sagas/{id}", s.withPlayer(s.getSaga))
+	mux.HandleFunc("PATCH /v1/sagas/{id}", s.withPlayer(s.patchSaga))
+	mux.HandleFunc("PUT /v1/sagas/{id}/image", s.withPlayer(s.putSagaImage))
+	mux.HandleFunc("DELETE /v1/sagas/{id}/image", s.withPlayer(s.deleteSagaImage))
+	mux.HandleFunc("GET /v1/sagas/{id}/image", s.withPlayer(s.getSagaImage))
 	mux.HandleFunc("POST /v1/admin/players", s.withAdmin(s.createPlayer))
 	mux.HandleFunc("GET /v1/admin/players", s.withAdmin(s.listPlayers))
 	mux.HandleFunc("POST /v1/admin/players/{id}/rotate-key", s.withAdmin(s.rotateKey))
@@ -291,7 +298,8 @@ func (s *Server) createQuest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.store.CreateQuest(r.Context(), QuestInput{
-		Title: body.Title, Description: body.Description, Objectives: body.Objectives, Reward: body.Reward,
+		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
+		ObjectivesOrdered: body.ObjectivesOrdered, Reward: body.Reward,
 		MinLevel: body.MinLevel, PartyQuest: body.PartyQuest, Active: body.Active, CreatedBy: body.CreatedBy,
 		AssignedCharacterIDs: body.AssignedCharacterIDs,
 	})
@@ -299,7 +307,7 @@ func (s *Server) createQuest(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, out)
+	writeJSON(w, http.StatusCreated, withSagaImageURL(out))
 }
 
 func (s *Server) listQuests(w http.ResponseWriter, r *http.Request) {
@@ -317,6 +325,7 @@ func (s *Server) getQuest(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	out.Quest = withSagaImageURL(out.Quest)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -327,7 +336,8 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	patch := QuestPatch{
-		Title: body.Title, Description: body.Description, Objectives: body.Objectives, Reward: body.Reward,
+		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
+		ObjectivesOrdered: body.ObjectivesOrdered, Reward: body.Reward,
 		PartyQuest: body.PartyQuest, Active: body.Active, CreatedBy: body.CreatedBy,
 		AssignedCharacterIDs: body.AssignedCharacterIDs,
 	}
@@ -349,7 +359,7 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, withSagaImageURL(out))
 }
 
 func (s *Server) listLog(w http.ResponseWriter, r *http.Request) {
@@ -496,6 +506,7 @@ type questBody struct {
 	Title                string               `json:"title"`
 	Description          string               `json:"description"`
 	Objectives           []contract.Objective `json:"objectives"`
+	ObjectivesOrdered    *bool                `json:"objectives_ordered"`
 	Reward               string               `json:"reward"`
 	MinLevel             *int                 `json:"min_level"`
 	PartyQuest           bool                 `json:"party_quest"`
@@ -508,6 +519,7 @@ type questPatchBody struct {
 	Title                *string               `json:"title"`
 	Description          *string               `json:"description"`
 	Objectives           *[]contract.Objective `json:"objectives"`
+	ObjectivesOrdered    *bool                 `json:"objectives_ordered"`
 	Reward               *string               `json:"reward"`
 	MinLevel             json.RawMessage       `json:"min_level"`
 	PartyQuest           *bool                 `json:"party_quest"`

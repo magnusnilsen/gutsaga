@@ -1,5 +1,6 @@
 // Package app runs the GutSaga companion: install the addon, sync quests, and
-// report completions read from the chat log. It never sends input to the game.
+// report completions from the chat log and SavedVariables. It never sends input
+// to the game.
 package app
 
 import (
@@ -9,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 	"github.com/magnusnilsen/gutsaga/internal/install"
 	"github.com/magnusnilsen/gutsaga/internal/queue"
+	"github.com/magnusnilsen/gutsaga/internal/savedvars"
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
 	"github.com/magnusnilsen/gutsaga/internal/syncdata"
 	"github.com/magnusnilsen/gutsaga/internal/update"
@@ -86,6 +89,7 @@ func (a *App) Run(ctx context.Context) {
 			return
 		case <-tailTick.C:
 			a.pollChat()
+			a.pollSavedVars()
 		case <-flushTick.C:
 			a.Flush(ctx)
 		case <-syncTick.C:
@@ -159,8 +163,18 @@ func (a *App) pullSync(ctx context.Context) error {
 		return nil
 	}
 	entries := syncdata.Merge(sync)
+	addonDir := wowpath.AddonDir(a.WowDir)
+	aspects, err := a.writeSagaImages(ctx, sync, addonDir)
+	if err != nil {
+		a.Log.Warn("kunne ikke hente saga-bilder", "err", err)
+	}
+	for i := range entries {
+		if ar, ok := aspects[entries[i].QuestID]; ok && ar > 0.05 {
+			entries[i].ImageAspect = ar
+		}
+	}
 	body := syncdata.WriteLua(sync.BattleTag, sync.GeneratedAt, entries)
-	path := filepath.Join(wowpath.AddonDir(a.WowDir), "GutSagaData.lua")
+	path := filepath.Join(addonDir, "GutSagaData.lua")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -169,6 +183,51 @@ func (a *App) pullSync(ctx context.Context) error {
 	}
 	a.Log.Info("oppdrag oppdatert. Skriv /reload i spillet hvis du er innlogget.", "antall", len(entries))
 	return nil
+}
+
+func (a *App) writeSagaImages(ctx context.Context, sync contract.SyncResponse, addonDir string) (map[string]float64, error) {
+	media := filepath.Join(addonDir, "media")
+	if err := os.MkdirAll(media, 0o755); err != nil {
+		return nil, err
+	}
+	keep := map[string]bool{}
+	aspects := map[string]float64{}
+	for _, q := range sync.Quests {
+		if !q.HasImage {
+			continue
+		}
+		_, raw, err := a.Client.SagaImage(ctx, q.ID)
+		if err != nil {
+			a.Log.Warn("saga-bilde", "quest", q.ID, "err", err)
+			continue
+		}
+		tga, w, h, err := screenshot.ToAddonTexture(raw)
+		if err != nil {
+			a.Log.Warn("saga-bilde konvertering", "quest", q.ID, "err", err)
+			continue
+		}
+		name := q.ID + ".tga"
+		if err := os.WriteFile(filepath.Join(media, name), tga, 0o644); err != nil {
+			return aspects, err
+		}
+		keep[name] = true
+		if h > 0 {
+			aspects[q.ID] = float64(w) / float64(h)
+		}
+	}
+	entries, err := os.ReadDir(media)
+	if err != nil {
+		return aspects, nil
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if !keep[e.Name()] {
+			_ = os.Remove(filepath.Join(media, e.Name()))
+		}
+	}
+	return aspects, nil
 }
 
 // HandleLine enqueues a parsed chat line. Duplicate events return false.
@@ -217,6 +276,76 @@ func (a *App) pollChat() {
 			a.Log.Info("lest fra chatloggen", "line", trim(line))
 		}
 	}
+}
+
+// pollSavedVars enqueues completions the addon wrote locally. On Classic Era,
+// AddMessage lines never reach WoWChatLog.txt, so this is the reliable path.
+func (a *App) pollSavedVars() {
+	if a.WowDir == "" {
+		return
+	}
+	list, err := savedvars.ReadCompletions(a.WowDir)
+	if err != nil {
+		return
+	}
+	for _, c := range list {
+		if _, ok := syncdata.QuestByID(a.sync, c.QuestID); !ok {
+			continue
+		}
+		key := queue.CompletionKey(c.QuestID, c.Character, c.Realm)
+		if !a.serverHasCompletion(c.QuestID, c.Character, c.Realm) {
+			a.Queue.ForgetDone(key)
+		}
+		ok := a.Queue.Enqueue(queue.Item{
+			Kind: "completion", Key: key,
+			QuestID: c.QuestID, QuestVersion: c.QuestVersion, Character: c.Character, Realm: c.Realm,
+			Level: c.Level, CompletedAt: c.At.UTC().Format(time.RFC3339),
+		})
+		if ok {
+			a.Log.Info("lest fra SavedVariables", "character", c.Character, "quest", c.QuestID)
+		}
+	}
+}
+
+func (a *App) serverHasCompletion(questID, character, realm string) bool {
+	for _, c := range a.sync.Completions {
+		if c.QuestID != questID {
+			continue
+		}
+		if !strings.EqualFold(c.Character, character) {
+			continue
+		}
+		if realm != "" && c.Realm != "" && !strings.EqualFold(c.Realm, realm) {
+			continue
+		}
+		return true
+	}
+	for _, p := range a.sync.Progress {
+		if p.QuestID != questID || p.Status != "completed" {
+			continue
+		}
+		ch, ok := characterByID(a.sync, p.CharacterID)
+		if !ok {
+			continue
+		}
+		if !strings.EqualFold(ch.Name, character) {
+			continue
+		}
+		if realm != "" && ch.Realm != "" && !strings.EqualFold(ch.Realm, realm) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func characterByID(sync contract.SyncResponse, id string) (contract.Character, bool) {
+	for _, ch := range sync.Characters {
+		if ch.ID == id {
+			return ch, true
+		}
+	}
+	return contract.Character{}, false
 }
 
 func (a *App) Flush(ctx context.Context) {
@@ -277,32 +406,16 @@ func (a *App) send(ctx context.Context, item queue.Item) error {
 			item.QuestTitle = q.Title
 		}
 	}
-	var image []byte
-	if item.ScreenshotPath == "" && a.WowDir != "" && item.Attempts < 4 {
-		at, _ := time.Parse(time.RFC3339, item.CompletedAt)
-		slack := 2 * time.Minute
-		if time.Since(at) < 2*time.Minute {
-			slack = 45 * time.Second
-		}
-		if path, ok := screenshot.Closest(wowpath.Screenshots(a.WowDir), at, slack); ok {
-			item.ScreenshotPath = path
-		} else if time.Since(at) < 2*time.Minute {
-			a.Queue.Update(item)
-			return errors.New("venter på skjermbilde")
-		}
-	}
-	if item.ScreenshotPath != "" {
-		b, err := os.ReadFile(item.ScreenshotPath)
-		if err == nil {
-			image = b
-		}
-	}
 	a.Queue.Update(item)
 	_, err := a.Client.Complete(ctx, contract.CompletionRequest{
 		CharacterID: item.CharacterID, QuestID: item.QuestID, QuestVersion: item.QuestVersion,
 		BattleTag: tag, Level: item.Level, CompletedAt: item.CompletedAt,
-	}, image)
-	return err
+	}, nil)
+	if err != nil {
+		return err
+	}
+	_ = a.pullSync(ctx)
+	return nil
 }
 
 func (a *App) maybeUpdate(ctx context.Context) {
