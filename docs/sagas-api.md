@@ -96,7 +96,7 @@ Update fields (same shape as create, all optional). Only the owner may patch. Ca
 - `GET /v1/sagas/{id}/image` — download (any signed-in player; used by the companion)
 - `DELETE /v1/sagas/{id}/image` — clear
 
-When present, `has_image` is true and `image_url` points at the GET path. The companion writes `Interface/AddOns/GutSaga/media/<quest_id>.png` on sync; the addon shows it under the description, above goals.
+When present, `has_image` is true and `image_url` points at the GET path. The companion converts the cover to TGA and writes `Interface/AddOns/GutSaga/media/<quest_id>.tga` on sync (Classic Era cannot load loose PNGs as addon textures). The addon shows it under the description, above goals.
 
 ## After create / update
 

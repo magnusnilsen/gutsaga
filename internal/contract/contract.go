@@ -22,6 +22,10 @@ type QuestCompletion struct {
 	Character   string `json:"character"`
 	Realm       string `json:"realm"`
 	BattleTag   string `json:"battletag,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+	Level       int    `json:"level,omitempty"`
+	Race        string `json:"race,omitempty"`
+	Class       string `json:"class,omitempty"`
 	CompletedAt string `json:"completed_at,omitempty"`
 }
 

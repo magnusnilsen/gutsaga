@@ -71,6 +71,13 @@ local function same(a, b)
     return a:lower() == b:lower()
 end
 
+local function norm(s)
+    if type(s) ~= "string" then
+        return ""
+    end
+    return (s:lower():gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
 local function unixNow()
     if GetServerTime then
         local ok, v = pcall(GetServerTime)
@@ -299,47 +306,174 @@ local function formatDescription(text)
     return text
 end
 
-local function activityLine(row)
-    if type(row) ~= "table" then
+local NO_MONTHS = {
+    "januar", "februar", "mars", "april", "mai", "juni",
+    "juli", "august", "september", "oktober", "november", "desember",
+}
+
+local function isLeapYear(y)
+    return (y % 4 == 0 and y % 100 ~= 0) or (y % 400 == 0)
+end
+
+local function utcUnix(y, m, d, hh, mm, ss)
+    local mdays = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
+    local days = 0
+    for yr = 1970, y - 1 do
+        days = days + (isLeapYear(yr) and 366 or 365)
+    end
+    for mo = 1, m - 1 do
+        local dim = mdays[mo]
+        if mo == 2 and isLeapYear(y) then
+            dim = 29
+        end
+        days = days + dim
+    end
+    days = days + d - 1
+    return days * 86400 + hh * 3600 + mm * 60 + ss
+end
+
+local function lastSundayUTC(year, month)
+    local mdays = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
+    local dim = mdays[month]
+    if month == 2 and isLeapYear(year) then
+        dim = 29
+    end
+    for d = dim, dim - 6, -1 do
+        local t = date("!*t", utcUnix(year, month, d, 12, 0, 0))
+        if t and t.wday == 1 then
+            return d
+        end
+    end
+    return dim
+end
+
+-- Europe/Oslo: last Sunday of March 01:00 UTC → CEST; last Sunday of October 01:00 UTC → CET.
+local function osloOffset(sec)
+    local t = date("!*t", sec)
+    if not t then
+        return 3600
+    end
+    local start = utcUnix(t.year, 3, lastSundayUTC(t.year, 3), 1, 0, 0)
+    local finish = utcUnix(t.year, 10, lastSundayUTC(t.year, 10), 1, 0, 0)
+    if sec >= start and sec < finish then
+        return 7200
+    end
+    return 3600
+end
+
+local function formatOsloWhen(raw)
+    if type(raw) == "string" and raw ~= "" and not tonumber(raw) then
+        -- Companion already formatted "dd mmmm yyyy hh:mm".
+        if raw:find("%d%d %a+ %d%d%d%d %d%d:%d%d") then
+            return raw
+        end
+    end
+    local sec = plainNumber(raw)
+    if not sec and type(raw) == "string" then
+        local y, mo, d, hh, mm, ss = raw:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)T(%d%d):(%d%d):(%d%d)")
+        if y then
+            sec = utcUnix(tonumber(y), tonumber(mo), tonumber(d), tonumber(hh), tonumber(mm), tonumber(ss) or 0)
+        end
+    end
+    if not sec or sec < 1 then
         return ""
     end
-    local name = plainString(row.character) or ""
-    if name == "" then
+    sec = math.floor(sec)
+    local localSec = sec + osloOffset(sec)
+    local t = date("!*t", localSec)
+    if not t then
         return ""
     end
-    local tag = plainString(row.battletag)
-    if tag and tag ~= "" then
-        return name .. " — " .. tag
+    local month = NO_MONTHS[t.month] or ""
+    return string.format("%02d %s %d %02d:%02d", t.day, month, t.year, t.hour, t.min)
+end
+
+-- English class tokens for RAID_CLASS_COLORS (stored race/class are English from Unit*).
+local function classToken(className)
+    local s = norm(className):gsub("%s+", "")
+    if s == "" then
+        return ""
     end
-    local realm = plainString(row.realm)
-    if realm and realm ~= "" then
-        return name .. " — " .. realm
+    local aliases = {
+        deathknight = "DEATHKNIGHT",
+        demonhunter = "DEMONHUNTER",
+        kriger = "WARRIOR",
+        paladin = "PALADIN",
+        jeger = "HUNTER",
+        slyngel = "ROGUE",
+        prest = "PRIEST",
+        sjaman = "SHAMAN",
+        magiker = "MAGE",
+        hekser = "WARLOCK",
+        druide = "DRUID",
+    }
+    return aliases[s] or string.upper(s)
+end
+
+local function classRGB(className)
+    local token = classToken(className)
+    if token ~= "" and RAID_CLASS_COLORS and RAID_CLASS_COLORS[token] then
+        local c = RAID_CLASS_COLORS[token]
+        return c.r or 1, c.g or 1, c.b or 1
     end
-    return name
+    local fallback = {
+        WARRIOR = { 0.78, 0.61, 0.43 },
+        PALADIN = { 0.96, 0.55, 0.73 },
+        HUNTER = { 0.67, 0.83, 0.45 },
+        ROGUE = { 1.00, 0.96, 0.41 },
+        PRIEST = { 1.00, 1.00, 1.00 },
+        SHAMAN = { 0.00, 0.44, 0.87 },
+        MAGE = { 0.41, 0.80, 0.94 },
+        WARLOCK = { 0.58, 0.51, 0.79 },
+        DRUID = { 1.00, 0.49, 0.04 },
+        DEATHKNIGHT = { 0.77, 0.12, 0.23 },
+        MONK = { 0.00, 1.00, 0.59 },
+        DEMONHUNTER = { 0.64, 0.19, 0.79 },
+        EVOKER = { 0.20, 0.58, 0.50 },
+    }
+    local c = fallback[token]
+    if c then
+        return c[1], c[2], c[3]
+    end
+    return INK.r, INK.g, INK.b
 end
 
 local function activityList(entry)
     local out = {}
     local seen = {}
     local function add(row)
-        local line = activityLine(row)
-        if line == "" then
+        if type(row) ~= "table" then
             return
         end
-        local key = line:lower()
+        local character = plainString(row.character) or ""
+        if character == "" then
+            return
+        end
+        local realm = plainString(row.realm) or ""
+        local key = (character .. "\n" .. realm):lower()
         if seen[key] then
             return
         end
         seen[key] = true
         local at = ""
-        if type(row) == "table" then
-            if type(row.completed_at) == "string" then
-                at = row.completed_at
-            elseif type(row.completed_at) == "number" then
-                at = string.format("%014d", row.completed_at)
-            end
+        if type(row.completed_at) == "string" then
+            at = row.completed_at
+        elseif type(row.completed_at) == "number" then
+            at = string.format("%014d", row.completed_at)
         end
-        table.insert(out, { text = line, at = at })
+        local when = plainString(row["when"]) or ""
+        if when == "" then
+            when = formatOsloWhen(row.completed_at)
+        end
+        table.insert(out, {
+            when = when,
+            character = character,
+            battletag = plainString(row.battletag) or "",
+            level = tonumber(row.level) or 0,
+            race = plainString(row.race) or "",
+            class = plainString(row.class) or "",
+            at = at,
+        })
     end
     if type(entry) == "table" and type(entry.completed_by) == "table" then
         for i = 1, #entry.completed_by do
@@ -355,6 +489,9 @@ local function activityList(entry)
                 character = localDone.character or player.name,
                 realm = localDone.realm or player.realm,
                 battletag = player.battletag,
+                level = localDone.level or player.level,
+                race = localDone.race or player.race,
+                class = localDone.class or player.class,
                 completed_at = localDone.completed_at,
             })
         end
@@ -363,7 +500,7 @@ local function activityList(entry)
         if a.at ~= b.at then
             return a.at < b.at
         end
-        return a.text < b.text
+        return a.character < b.character
     end)
     return out
 end
@@ -880,23 +1017,76 @@ local function ensureGoalRow(i)
     return row
 end
 
+local function activityTooltipBody(level, race, className)
+    local line = ""
+    local n = tonumber(level) or 0
+    if n > 0 then
+        line = "Level " .. tostring(n)
+    end
+    race = plainString(race) or ""
+    className = plainString(className) or ""
+    if race ~= "" then
+        if line ~= "" then
+            line = line .. " "
+        end
+        line = line .. race
+    end
+    if className ~= "" then
+        if line ~= "" then
+            line = line .. " "
+        end
+        line = line .. className
+    end
+    return line
+end
+
 local function ensureActivityRow(i)
     local row = activityRows[i]
     if row then
         return row
     end
     row = CreateFrame("Frame", nil, detailChild)
-    row:SetHeight(16)
-    local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    text:SetPoint("TOPLEFT", 0, 0)
-    text:SetPoint("TOPRIGHT", 0, 0)
-    text:SetJustifyH("LEFT")
-    text:SetJustifyV("TOP")
-    text:SetWordWrap(true)
-    text:SetTextColor(INK.r, INK.g, INK.b)
-    row.text = text
+    row:SetHeight(36)
+    row:EnableMouse(true)
+    local whenFS = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    whenFS:SetPoint("TOPLEFT", 0, 0)
+    whenFS:SetJustifyH("LEFT")
+    whenFS:SetJustifyV("TOP")
+    whenFS:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+    local charFS = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    charFS:SetPoint("TOPLEFT", whenFS, "BOTTOMLEFT", 0, -2)
+    charFS:SetJustifyH("LEFT")
+    charFS:SetJustifyV("TOP")
+    charFS:SetTextColor(INK.r, INK.g, INK.b)
+    row.whenFS = whenFS
+    row.charFS = charFS
+    row:SetScript("OnEnter", function(self)
+        if not GameTooltip then
+            return
+        end
+        local name = self.tipName or ""
+        if name == "" then
+            return
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+        GameTooltip:ClearLines()
+        GameTooltip:AddLine(name, 1, 1, 1)
+        local tip = activityTooltipBody(self.tipLevel, self.tipRace, self.tipClass)
+        if tip ~= "" then
+            GameTooltip:AddLine(tip, 1, 1, 1)
+        end
+        local tag = plainString(self.tipTag)
+        if tag then
+            GameTooltip:AddLine(tag, 0.7, 0.7, 0.7)
+        end
+        GameTooltip:Show()
+    end)
+    row:SetScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
     bindWheel(row, detailScroll, 28)
-    bindWheel(text, detailScroll, 28)
     activityRows[i] = row
     return row
 end
@@ -1094,7 +1284,6 @@ refresh = function()
         detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
         detailY = detailY + (detailFS:GetStringHeight() or 14) + 8
     else
-        local description = formatDescription(selectedEntry.description)
         detailTitle:Show()
         detailTitle:SetText(selectedEntry.title or "Saga")
         detailTitle:SetTextColor(INK.r, INK.g, INK.b)
@@ -1103,46 +1292,13 @@ refresh = function()
         detailTitle:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
         detailY = detailY + (detailTitle:GetStringHeight() or 20) + 12
 
-        detailFS:SetText(description)
-        detailFS:SetTextColor(INK.r, INK.g, INK.b)
-        detailFS:SetSpacing(4)
-        detailFS:SetWidth(width)
-        detailFS:ClearAllPoints()
-        detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-        detailY = detailY + (detailFS:GetStringHeight() or 14) + 12
-
-        if detailImage then
-            local path = selectedEntry.image
-            if type(path) == "string" and path ~= "" then
-                detailImage:ClearAllPoints()
-                detailImage:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-                local imgW = width
-                local imgH = math.floor(imgW * 9 / 16)
-                if imgH < 80 then
-                    imgH = 80
-                end
-                detailImage:SetSize(imgW, imgH)
-                detailImage:SetTexture(path)
-                detailImage:Show()
-                detailY = detailY + imgH + 14
-            else
-                detailImage:Hide()
-            end
-        end
-
-        detailGoalsHeader:Show()
-        detailGoalsHeader:ClearAllPoints()
-        detailGoalsHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-        detailGoalsHeader:SetWidth(width)
-        detailGoalsHeader:SetTextColor(INK.r, INK.g, INK.b)
-        detailY = detailY + (detailGoalsHeader:GetStringHeight() or 20) + 10
-
         local okGoals, goalList = pcall(objectiveLines, selectedEntry)
         if okGoals and type(goalList) == "table" then
             goals = goalList
         end
     end
 
+    -- Goals sit under the title with no section header.
     local textWidth = width - 22
     for i, goal in ipairs(goals) do
         local row = ensureGoalRow(i)
@@ -1169,6 +1325,58 @@ refresh = function()
         goalRows[i]:Hide()
     end
 
+    if selectedEntry then
+        if #goals > 0 then
+            detailY = detailY + 4
+        end
+        detailGoalsHeader:Show()
+        detailGoalsHeader:ClearAllPoints()
+        detailGoalsHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        detailGoalsHeader:SetWidth(width)
+        detailGoalsHeader:SetTextColor(INK.r, INK.g, INK.b)
+        detailY = detailY + (detailGoalsHeader:GetStringHeight() or 20) + 10
+
+        local description = formatDescription(selectedEntry.description)
+        detailFS:SetText(description)
+        detailFS:SetTextColor(INK.r, INK.g, INK.b)
+        detailFS:SetSpacing(4)
+        detailFS:SetWidth(width)
+        detailFS:ClearAllPoints()
+        detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        detailY = detailY + (detailFS:GetStringHeight() or 14) + 12
+
+        if detailImage then
+            local path = selectedEntry.image
+            if type(path) == "string" and path ~= "" then
+                detailImage:ClearAllPoints()
+                detailImage:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+                local aspect = tonumber(selectedEntry.image_aspect) or 1
+                if aspect < 0.2 then
+                    aspect = 1
+                elseif aspect > 5 then
+                    aspect = 5
+                end
+                local imgW = width
+                local imgH = math.floor(imgW / aspect + 0.5)
+                if imgH > 260 then
+                    imgH = 260
+                    imgW = math.floor(imgH * aspect + 0.5)
+                end
+                if imgH < 64 then
+                    imgH = 64
+                end
+                detailImage:SetSize(imgW, imgH)
+                detailImage:SetVertexColor(1, 1, 1, 1)
+                -- Classic loads AddOn textures as .tga; path is without extension.
+                detailImage:SetTexture(path)
+                detailImage:Show()
+                detailY = detailY + imgH + 14
+            else
+                detailImage:Hide()
+            end
+        end
+    end
+
     local activities = {}
     if selectedEntry then
         local okAct, actList = pcall(activityList, selectedEntry)
@@ -1190,17 +1398,41 @@ refresh = function()
         end
     end
     for i, act in ipairs(activities) do
-        local row = ensureActivityRow(i)
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-        row:SetWidth(width)
-        row:Show()
-        row.text:SetWidth(width)
-        row.text:SetText(act.text or "")
-        row.text:SetTextColor(INK.r, INK.g, INK.b)
-        local h = math.max(14, (row.text:GetStringHeight() or 12) + 2)
-        row:SetHeight(h)
-        detailY = detailY + h + 6
+        local okRow, errRow = pcall(function()
+            local row = ensureActivityRow(i)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+            row:SetWidth(width)
+            row:Show()
+            if row.userFS then
+                row.userFS:Hide()
+            end
+            local whenText = act.when or ""
+            local charText = act.character or ""
+            local line = charText
+            if line ~= "" then
+                line = line .. " fullførte"
+            end
+            row.whenFS:SetWidth(width)
+            row.charFS:SetWidth(width)
+            row.whenFS:SetText(whenText)
+            row.charFS:SetText(line)
+            row.charFS:SetTextColor(INK.r, INK.g, INK.b)
+            row.whenFS:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+            row.tipName = charText
+            row.tipLevel = act.level or 0
+            row.tipRace = act.race or ""
+            row.tipClass = act.class or ""
+            row.tipTag = act.battletag or ""
+            local h = (row.whenFS:GetStringHeight() or 12) + 2
+                + (row.charFS:GetStringHeight() or 14)
+            h = math.max(28, h + 4)
+            row:SetHeight(h)
+            detailY = detailY + h + 10
+        end)
+        if not okRow then
+            chat("[GutSaga] aktivitet: " .. tostring(errRow))
+        end
     end
     for i = #activities + 1, #activityRows do
         activityRows[i]:Hide()
@@ -1238,6 +1470,8 @@ finishQuest = function(entry)
         completed_at = ts,
         character = player.name,
         realm = player.realm,
+        race = player.race,
+        class = player.class,
     }
     local title = entry.title or "Saga"
     local questID = entry.quest_id
@@ -1708,10 +1942,11 @@ local function build()
     end
     detailImage = detailChild:CreateTexture(nil, "ARTWORK")
     detailImage:SetTexCoord(0, 1, 0, 1)
+    detailImage:SetVertexColor(1, 1, 1, 1)
     detailImage:Hide()
     detailGoalsHeader = detailChild:CreateFontString(nil, "OVERLAY", titleFont)
     detailGoalsHeader:SetJustifyH("LEFT")
-    detailGoalsHeader:SetText("Mål")
+    detailGoalsHeader:SetText("Beskrivelse")
     detailGoalsHeader:SetTextColor(INK.r, INK.g, INK.b)
     detailActivityHeader = detailChild:CreateFontString(nil, "OVERLAY", titleFont)
     detailActivityHeader:SetJustifyH("LEFT")
@@ -2010,17 +2245,40 @@ events:SetScript("OnEvent", function(_, event, ...)
         return
     end
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        -- Critters often never fire PARTY_KILL; count UNIT_DIED after we hit them.
         if CombatLogGetCurrentEventInfo then
-            local ok, _, subevent, _, _, _, _, _, _, destName = pcall(CombatLogGetCurrentEventInfo)
-            if ok and subevent == "PARTY_KILL" then
-                if secret(destName) then
-                    world.killSecret = true
-                    world.killName = nil
-                else
-                    world.killSecret = false
-                    world.killName = plainString(destName)
+            local ok, _, subevent, _, sourceGUID, _, _, _, destGUID, destName = pcall(CombatLogGetCurrentEventInfo)
+            if ok and type(subevent) == "string" then
+                local me = UnitGUID and UnitGUID("player")
+                if sourceGUID and me and sourceGUID == me and destGUID and (
+                    subevent == "SWING_DAMAGE" or subevent == "SPELL_DAMAGE" or subevent == "RANGE_DAMAGE"
+                    or subevent == "SPELL_PERIODIC_DAMAGE" or subevent == "DAMAGE_SHIELD"
+                ) then
+                    world.lastHitGUID = destGUID
+                    world.lastHitName = plainString(destName)
                 end
-                onWorld()
+                local counted = false
+                if subevent == "PARTY_KILL" then
+                    counted = true
+                elseif subevent == "UNIT_DIED" and destGUID and destGUID == world.lastHitGUID then
+                    counted = true
+                    if (not destName or destName == "") and world.lastHitName then
+                        destName = world.lastHitName
+                    end
+                    world.lastHitGUID = nil
+                end
+                if counted then
+                    if secret(destName) then
+                        world.killSecret = true
+                        world.killName = nil
+                    else
+                        world.killSecret = false
+                        world.killName = plainString(destName)
+                    end
+                    onWorld()
+                    world.killName = nil
+                    world.killSecret = false
+                end
             end
         end
         return

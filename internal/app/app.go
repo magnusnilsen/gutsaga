@@ -163,8 +163,17 @@ func (a *App) pullSync(ctx context.Context) error {
 		return nil
 	}
 	entries := syncdata.Merge(sync)
-	body := syncdata.WriteLua(sync.BattleTag, sync.GeneratedAt, entries)
 	addonDir := wowpath.AddonDir(a.WowDir)
+	aspects, err := a.writeSagaImages(ctx, sync, addonDir)
+	if err != nil {
+		a.Log.Warn("kunne ikke hente saga-bilder", "err", err)
+	}
+	for i := range entries {
+		if ar, ok := aspects[entries[i].QuestID]; ok && ar > 0.05 {
+			entries[i].ImageAspect = ar
+		}
+	}
+	body := syncdata.WriteLua(sync.BattleTag, sync.GeneratedAt, entries)
 	path := filepath.Join(addonDir, "GutSagaData.lua")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -172,19 +181,17 @@ func (a *App) pullSync(ctx context.Context) error {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		return err
 	}
-	if err := a.writeSagaImages(ctx, sync, addonDir); err != nil {
-		a.Log.Warn("kunne ikke hente saga-bilder", "err", err)
-	}
 	a.Log.Info("oppdrag oppdatert. Skriv /reload i spillet hvis du er innlogget.", "antall", len(entries))
 	return nil
 }
 
-func (a *App) writeSagaImages(ctx context.Context, sync contract.SyncResponse, addonDir string) error {
+func (a *App) writeSagaImages(ctx context.Context, sync contract.SyncResponse, addonDir string) (map[string]float64, error) {
 	media := filepath.Join(addonDir, "media")
 	if err := os.MkdirAll(media, 0o755); err != nil {
-		return err
+		return nil, err
 	}
 	keep := map[string]bool{}
+	aspects := map[string]float64{}
 	for _, q := range sync.Quests {
 		if !q.HasImage {
 			continue
@@ -194,19 +201,23 @@ func (a *App) writeSagaImages(ctx context.Context, sync contract.SyncResponse, a
 			a.Log.Warn("saga-bilde", "quest", q.ID, "err", err)
 			continue
 		}
-		normalized, _, err := screenshot.NormalizeUpload(raw)
+		tga, w, h, err := screenshot.ToAddonTexture(raw)
 		if err != nil {
-			normalized = raw
+			a.Log.Warn("saga-bilde konvertering", "quest", q.ID, "err", err)
+			continue
 		}
-		name := q.ID + ".png"
-		if err := os.WriteFile(filepath.Join(media, name), normalized, 0o644); err != nil {
-			return err
+		name := q.ID + ".tga"
+		if err := os.WriteFile(filepath.Join(media, name), tga, 0o644); err != nil {
+			return aspects, err
 		}
 		keep[name] = true
+		if h > 0 {
+			aspects[q.ID] = float64(w) / float64(h)
+		}
 	}
 	entries, err := os.ReadDir(media)
 	if err != nil {
-		return nil
+		return aspects, nil
 	}
 	for _, e := range entries {
 		if e.IsDir() {
@@ -216,7 +227,7 @@ func (a *App) writeSagaImages(ctx context.Context, sync contract.SyncResponse, a
 			_ = os.Remove(filepath.Join(media, e.Name()))
 		}
 	}
-	return nil
+	return aspects, nil
 }
 
 // HandleLine enqueues a parsed chat line. Duplicate events return false.

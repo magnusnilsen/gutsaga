@@ -1075,7 +1075,10 @@ func (s *Store) sagaCompletions(ctx context.Context, questIDs []string) ([]contr
 		return []contract.QuestCompletion{}, nil
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT p.quest_id::text, c.name, COALESCE(c.realm, ''), COALESCE(pl.battletag, ''), p.completed_at
+		SELECT p.quest_id::text, c.name, COALESCE(c.realm, ''), COALESCE(pl.battletag, ''),
+			COALESCE(NULLIF(TRIM(pl.display_name), ''), ''),
+			COALESCE(p.level_at_completion, c.level), COALESCE(c.race, ''), COALESCE(c.class, ''),
+			p.completed_at
 		FROM progress p
 		JOIN characters c ON c.id = p.character_id
 		JOIN players pl ON pl.id = c.player_id
@@ -1089,7 +1092,8 @@ func (s *Store) sagaCompletions(ctx context.Context, questIDs []string) ([]contr
 	for rows.Next() {
 		var c contract.QuestCompletion
 		var completed sql.NullTime
-		if err := rows.Scan(&c.QuestID, &c.Character, &c.Realm, &c.BattleTag, &completed); err != nil {
+		if err := rows.Scan(&c.QuestID, &c.Character, &c.Realm, &c.BattleTag, &c.DisplayName,
+			&c.Level, &c.Race, &c.Class, &completed); err != nil {
 			return nil, err
 		}
 		if !want[c.QuestID] || strings.TrimSpace(c.Character) == "" {

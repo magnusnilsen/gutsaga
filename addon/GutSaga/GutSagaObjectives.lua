@@ -183,7 +183,7 @@ local function checkOne(obj, state, prev)
     elseif kind == "kill" then
         if state.kill_secret then
             row.count = tonumber(prev.count) or 0
-        elseif same(state.kill_name, obj.npc) then
+        elseif listed(obj.npc, state.kill_name) then
             row.count = (tonumber(prev.count) or 0) + 1
         else
             row.count = tonumber(prev.count) or 0

@@ -2,6 +2,7 @@ package screenshot
 
 import (
 	"bytes"
+	"image"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -42,6 +43,42 @@ func TestDecodeUncompressedTGA(t *testing.T) {
 	}
 	if _, err := png.Decode(bytes.NewReader(out)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEncodeAddonTGARoundTrip(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(0, 0, 4, 4))
+	for i := range img.Pix {
+		img.Pix[i] = 0xff
+	}
+	raw, w, h, err := EncodeAddonTGA(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != 4 || h != 4 {
+		t.Fatalf("meta %dx%d", w, h)
+	}
+	got, err := decodeTGA(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Bounds().Dx() != 4 || got.Bounds().Dy() != 4 {
+		t.Fatalf("size %v", got.Bounds())
+	}
+}
+
+func TestToAddonTextureFromPNG(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(0, 0, 8, 4))
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	tga, w, h, err := ToAddonTexture(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != 8 || h != 4 || len(tga) < 18+8*4*4 {
+		t.Fatalf("tga %dx%d len=%d", w, h, len(tga))
 	}
 }
 
