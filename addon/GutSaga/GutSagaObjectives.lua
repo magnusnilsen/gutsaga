@@ -1,5 +1,6 @@
 -- Pure objective checks. No WoW API calls, so lua5.1 can test this file.
--- Objectives are ordered: step n is checked only after 1..n-1 are done.
+-- By default goals may complete in any order (ordered=false).
+-- When ordered=true, step n is checked only after 1..n-1 are done.
 -- state = { zone, subzone, map_id, x, y, npc, object, items = { [id] = count },
 --           kill_name, kill_secret }
 -- saved = { [objective_id] = { done = bool, count = number } }
@@ -160,9 +161,48 @@ local function itemHave(state, id)
     return tonumber(n) or 0
 end
 
-function M.evaluate(objectives, state, saved)
+local function checkOne(obj, state, prev)
+    local row = {
+        done = prev.done and true or false,
+        count = tonumber(prev.count) or 0,
+        need = needCount(obj),
+        active = false,
+    }
+    if row.done then
+        return row
+    end
+    row.active = true
+    local kind = obj.type
+    if kind == "location" then
+        row.done = locationOK(obj, state)
+    elseif kind == "interact" then
+        row.done = interactOK(obj, state)
+    elseif kind == "collect" then
+        row.count = itemHave(state, obj.item_id)
+        row.done = row.count >= row.need
+    elseif kind == "kill" then
+        if state.kill_secret then
+            row.count = tonumber(prev.count) or 0
+        elseif same(state.kill_name, obj.npc) then
+            row.count = (tonumber(prev.count) or 0) + 1
+        else
+            row.count = tonumber(prev.count) or 0
+        end
+        row.done = row.count >= row.need
+    else
+        row.done = false
+    end
+    return row
+end
+
+-- ordered: when true (or omitted for backwards-compatible tests), gate later
+-- goals on earlier ones. Pass false for any-order sagas.
+function M.evaluate(objectives, state, saved, ordered)
     state = state or {}
     saved = saved or {}
+    if ordered == nil then
+        ordered = true
+    end
     local steps = {}
     local prevDone = true
     local allDone = type(objectives) == "table" and #objectives > 0
@@ -176,38 +216,17 @@ function M.evaluate(objectives, state, saved)
         else
             local id = obj.id or tostring(i)
             local prev = saved[id] or {}
-            local row = {
-                done = prev.done and true or false,
-                count = tonumber(prev.count) or 0,
-                need = needCount(obj),
-                active = false,
-            }
-            if row.done then
-                prevDone = true
-            elseif not prevDone then
+            local row
+            if ordered and not prevDone and not (prev.done and true or false) then
+                row = {
+                    done = false,
+                    count = tonumber(prev.count) or 0,
+                    need = needCount(obj),
+                    active = false,
+                }
                 allDone = false
             else
-                row.active = true
-                local kind = obj.type
-                if kind == "location" then
-                    row.done = locationOK(obj, state)
-                elseif kind == "interact" then
-                    row.done = interactOK(obj, state)
-                elseif kind == "collect" then
-                    row.count = itemHave(state, obj.item_id)
-                    row.done = row.count >= row.need
-                elseif kind == "kill" then
-                    if state.kill_secret then
-                        row.count = tonumber(prev.count) or 0
-                    elseif same(state.kill_name, obj.npc) then
-                        row.count = (tonumber(prev.count) or 0) + 1
-                    else
-                        row.count = tonumber(prev.count) or 0
-                    end
-                    row.done = row.count >= row.need
-                else
-                    row.done = false
-                end
+                row = checkOne(obj, state, prev)
                 if row.done then
                     prevDone = true
                 else

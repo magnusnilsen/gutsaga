@@ -42,17 +42,20 @@ type IDRef struct {
 }
 
 type Quest struct {
-	ID          string      `json:"id"`
-	Title       string      `json:"title"`
-	Description string      `json:"description"`
-	Objectives  []Objective `json:"objectives"`
-	MinLevel    *int        `json:"min_level"`
-	Reward      string      `json:"reward"`
-	PartyQuest  bool        `json:"party_quest"`
-	AssignedTo  []IDRef     `json:"assigned_to"`
-	CreatedBy   string      `json:"created_by"`
-	Active      bool        `json:"active"`
-	Version     int         `json:"version"`
+	ID                 string      `json:"id"`
+	Title              string      `json:"title"`
+	Description        string      `json:"description"`
+	Objectives         []Objective `json:"objectives"`
+	ObjectivesOrdered  bool        `json:"objectives_ordered"`
+	MinLevel           *int        `json:"min_level"`
+	Reward             string      `json:"reward"`
+	PartyQuest         bool        `json:"party_quest"`
+	AssignedTo         []IDRef     `json:"assigned_to"`
+	CreatedBy          string      `json:"created_by"`
+	Active             bool        `json:"active"`
+	Version            int         `json:"version"`
+	HasImage           bool        `json:"has_image"`
+	ImageURL           string      `json:"image_url,omitempty"`
 }
 
 type Progress struct {

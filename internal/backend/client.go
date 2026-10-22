@@ -69,6 +69,31 @@ func (c *Client) Sync(ctx context.Context) (contract.SyncResponse, error) {
 	return out, err
 }
 
+// SagaImage downloads a saga cover image for the addon media folder.
+func (c *Client) SagaImage(ctx context.Context, questID string) (contentType string, body []byte, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.BaseURL, "/")+"/v1/sagas/"+questID+"/image", nil)
+	if err != nil {
+		return "", nil, err
+	}
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	req.Header.Set("User-Agent", "GutSaga")
+	resp, err := c.http().Do(req)
+	if err != nil {
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20+1))
+	if err != nil {
+		return "", nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", nil, &HTTPError{Status: resp.StatusCode, Message: fmt.Sprintf("image status %d", resp.StatusCode)}
+	}
+	return resp.Header.Get("Content-Type"), raw, nil
+}
+
 func (c *Client) Level(ctx context.Context, req contract.LevelRequest) (contract.LevelResponse, error) {
 	raw, err := json.Marshal(req)
 	if err != nil {

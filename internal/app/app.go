@@ -21,6 +21,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/install"
 	"github.com/magnusnilsen/gutsaga/internal/queue"
 	"github.com/magnusnilsen/gutsaga/internal/savedvars"
+	"github.com/magnusnilsen/gutsaga/internal/screenshot"
 	"github.com/magnusnilsen/gutsaga/internal/syncdata"
 	"github.com/magnusnilsen/gutsaga/internal/update"
 	"github.com/magnusnilsen/gutsaga/internal/version"
@@ -163,14 +164,58 @@ func (a *App) pullSync(ctx context.Context) error {
 	}
 	entries := syncdata.Merge(sync)
 	body := syncdata.WriteLua(sync.BattleTag, sync.GeneratedAt, entries)
-	path := filepath.Join(wowpath.AddonDir(a.WowDir), "GutSagaData.lua")
+	addonDir := wowpath.AddonDir(a.WowDir)
+	path := filepath.Join(addonDir, "GutSagaData.lua")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		return err
 	}
+	if err := a.writeSagaImages(ctx, sync, addonDir); err != nil {
+		a.Log.Warn("kunne ikke hente saga-bilder", "err", err)
+	}
 	a.Log.Info("oppdrag oppdatert. Skriv /reload i spillet hvis du er innlogget.", "antall", len(entries))
+	return nil
+}
+
+func (a *App) writeSagaImages(ctx context.Context, sync contract.SyncResponse, addonDir string) error {
+	media := filepath.Join(addonDir, "media")
+	if err := os.MkdirAll(media, 0o755); err != nil {
+		return err
+	}
+	keep := map[string]bool{}
+	for _, q := range sync.Quests {
+		if !q.HasImage {
+			continue
+		}
+		_, raw, err := a.Client.SagaImage(ctx, q.ID)
+		if err != nil {
+			a.Log.Warn("saga-bilde", "quest", q.ID, "err", err)
+			continue
+		}
+		normalized, _, err := screenshot.NormalizeUpload(raw)
+		if err != nil {
+			normalized = raw
+		}
+		name := q.ID + ".png"
+		if err := os.WriteFile(filepath.Join(media, name), normalized, 0o644); err != nil {
+			return err
+		}
+		keep[name] = true
+	}
+	entries, err := os.ReadDir(media)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if !keep[e.Name()] {
+			_ = os.Remove(filepath.Join(media, e.Name()))
+		}
+	}
 	return nil
 }
 

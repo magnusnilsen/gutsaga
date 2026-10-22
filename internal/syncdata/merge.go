@@ -16,14 +16,17 @@ type Entry struct {
 	QuestVersion int                  `json:"quest_version"`
 	Title        string               `json:"title"`
 	Description  string               `json:"description"`
-	Objectives   []contract.Objective `json:"objectives"`
-	Reward       string               `json:"reward"`
-	MinLevel     *int                 `json:"min_level"`
-	Status       string               `json:"status"`
-	CompletedAt  string               `json:"completed_at"`
-	PartyQuest   bool                 `json:"party_quest"`
-	CreatedBy    string               `json:"created_by"`
-	CompletedBy  []Completer          `json:"completed_by"`
+	Objectives          []contract.Objective `json:"objectives"`
+	ObjectivesOrdered   bool                 `json:"objectives_ordered"`
+	Reward              string               `json:"reward"`
+	MinLevel            *int                 `json:"min_level"`
+	Status              string               `json:"status"`
+	CompletedAt         string               `json:"completed_at"`
+	PartyQuest          bool                 `json:"party_quest"`
+	CreatedBy           string               `json:"created_by"`
+	CompletedBy         []Completer          `json:"completed_by"`
+	Image               string               `json:"image,omitempty"` // Interface\\AddOns\\GutSaga\\media\\<id>
+	HasImage            bool                 `json:"has_image"`
 }
 
 // Completer is a character who has finished this saga.
@@ -55,9 +58,14 @@ func Merge(sync contract.SyncResponse) []Entry {
 			e := Entry{
 				Character: ch.Name, CharacterID: ch.ID, Realm: ch.Realm,
 				QuestID: q.ID, QuestVersion: q.Version, Title: q.Title,
-				Description: q.Description, Objectives: q.Objectives, Reward: q.Reward,
+				Description: q.Description, Objectives: q.Objectives,
+				ObjectivesOrdered: q.ObjectivesOrdered, Reward: q.Reward,
 				MinLevel: q.MinLevel, PartyQuest: q.PartyQuest,
 				CreatedBy: q.CreatedBy, CompletedBy: completers[q.ID],
+				HasImage: q.HasImage,
+			}
+			if q.HasImage {
+				e.Image = `Interface\AddOns\GutSaga\media\` + q.ID
 			}
 			if has {
 				e.Status = p.Status

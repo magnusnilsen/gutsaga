@@ -2,7 +2,8 @@
 -- Interface numbers live in the .toc files (see addon/INTERFACE).
 -- Completions are stored in GutSagaDB (SavedVariables). On Classic Era the
 -- companion reads those after /reload or logout — live chat-log signaling is parked.
--- There is no completion button. Objectives are checked in order.
+-- There is no completion button. Goals may complete in any order unless
+-- objectives_ordered is true on the saga.
 
 local PREFIX = "GutSaga"
 local player = { name = "", realm = "", level = 1, race = "", class = "", battletag = "" }
@@ -18,6 +19,7 @@ local GOLD = { r = 0.99, g = 0.93, b = 0.59 }
 local listChild
 local listScroll
 local detailFS
+local detailImage
 local detailTitle
 local detailGoalsHeader
 local detailActivityHeader
@@ -796,7 +798,8 @@ local function checkAll()
         for _, entry in ipairs(entries) do
             if not isComplete(entry) and type(entry.objectives) == "table" and #entry.objectives > 0 then
                 local bucket = savedSteps(entry)
-                local steps, done = GutSagaObjectives.evaluate(entry.objectives, state, bucket.steps)
+                local ordered = entry.objectives_ordered and true or false
+                local steps, done = GutSagaObjectives.evaluate(entry.objectives, state, bucket.steps, ordered)
                 bucket.steps = steps
                 if done then
                     finishQuest(entry)
@@ -1072,6 +1075,9 @@ refresh = function()
         detailTitle:SetText("")
         detailTitle:Hide()
         detailGoalsHeader:Hide()
+        if detailImage then
+            detailImage:Hide()
+        end
         if detailActivityHeader then
             detailActivityHeader:Hide()
         end
@@ -1103,7 +1109,26 @@ refresh = function()
         detailFS:SetWidth(width)
         detailFS:ClearAllPoints()
         detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-        detailY = detailY + (detailFS:GetStringHeight() or 14) + 16
+        detailY = detailY + (detailFS:GetStringHeight() or 14) + 12
+
+        if detailImage then
+            local path = selectedEntry.image
+            if type(path) == "string" and path ~= "" then
+                detailImage:ClearAllPoints()
+                detailImage:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+                local imgW = width
+                local imgH = math.floor(imgW * 9 / 16)
+                if imgH < 80 then
+                    imgH = 80
+                end
+                detailImage:SetSize(imgW, imgH)
+                detailImage:SetTexture(path)
+                detailImage:Show()
+                detailY = detailY + imgH + 14
+            else
+                detailImage:Hide()
+            end
+        end
 
         detailGoalsHeader:Show()
         detailGoalsHeader:ClearAllPoints()
@@ -1681,6 +1706,9 @@ local function build()
     if detailFS.SetHyperlinksEnabled then
         detailFS:SetHyperlinksEnabled(true)
     end
+    detailImage = detailChild:CreateTexture(nil, "ARTWORK")
+    detailImage:SetTexCoord(0, 1, 0, 1)
+    detailImage:Hide()
     detailGoalsHeader = detailChild:CreateFontString(nil, "OVERLAY", titleFont)
     detailGoalsHeader:SetJustifyH("LEFT")
     detailGoalsHeader:SetText("Mål")
@@ -1727,6 +1755,10 @@ local function build()
     toastTitle:SetJustifyH("LEFT")
     toastTitle:SetWordWrap(false)
     toastTitle:SetTextColor(1, 0.95, 0.8)
+    -- Ease in (~0.35s), hold longer, then a simple fade (no slide-out).
+    local TOAST_EASE = 0.35
+    local TOAST_HOLD = 7.0
+    local TOAST_FADE = 0.55
     toast:SetScript("OnUpdate", function(self, elapsed)
         if not self:IsShown() then
             return
@@ -1734,17 +1766,17 @@ local function build()
         self.age = (self.age or 0) + (elapsed or 0)
         local age = self.age
         local alpha, y = 1, -30
-        if age < 0.35 then
-            local t = age / 0.35
+        if age < TOAST_EASE then
+            local t = age / TOAST_EASE
             alpha = t
             y = 16 - 46 * t
-        elseif age < 4.2 then
+        elseif age < TOAST_HOLD then
             alpha = 1
             y = -30
-        elseif age < 5 then
-            local t = (age - 4.2) / 0.8
+        elseif age < TOAST_HOLD + TOAST_FADE then
+            local t = (age - TOAST_HOLD) / TOAST_FADE
             alpha = 1 - t
-            y = -30 - 18 * t
+            y = -30
         else
             self:Hide()
             return

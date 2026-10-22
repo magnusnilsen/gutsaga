@@ -64,6 +64,12 @@ assertTrue(steps.obj.done, "gossip name counts as object")
 steps, done = M.evaluate(objectives, { object = "Innkeeper Farley" }, { place = { done = true } })
 assertTrue(steps.talk.done, "current target counts as the npc")
 
+-- Any-order: later goals can complete without earlier ones.
+steps, done = M.evaluate(objectives, { npc = "Innkeeper Farley", items = { [159] = 1 } }, {}, false)
+assertTrue(not steps.place.done, "location still open")
+assertTrue(steps.talk.done and steps.water.done, "interact and collect without place")
+assertTrue(not done, "saga not finished until every goal is done")
+
 steps, done = M.evaluate({
     { id = "place", type = "location", text = "Inn", subzone = "Goldshire|Lion's Pride Inn", map_id = 37, x = 0.438, y = 0.658, radius = 0.05 },
 }, { minimap = "Lion's Pride Inn" }, {})
