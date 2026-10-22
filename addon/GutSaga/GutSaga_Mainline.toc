@@ -1,0 +1,11 @@
+## Interface: 120000
+## Title: GutSaga
+## Notes: Egendefinerte oppdrag for Gutar
+## Author: Gutar
+## Version: 0.1.0
+## SavedVariablesPerCharacter: GutSagaDB
+## IconTexture: Interface\AddOns\GutSaga\GutSagaList
+
+GutSagaData.lua
+GutSagaObjectives.lua
+GutSaga.lua

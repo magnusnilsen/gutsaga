@@ -1,0 +1,8 @@
+/gutsaga
+/gutsaga-api
+/dist/
+*.exe
+.env
+config.json
+/api/tmp/
+.DS_Store

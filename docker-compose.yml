@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: gutsaga
+      POSTGRES_PASSWORD: gutsaga
+      POSTGRES_DB: gutsaga
+    ports:
+      - "5432:5432"
+    volumes:
+      - gutsaga-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gutsaga -d gutsaga"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      DATABASE_URL: postgres://gutsaga:gutsaga@postgres:5432/gutsaga?sslmode=disable
+      ADMIN_TOKEN: dev-admin-token
+      SMIA_AUTH_MODE: smia
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  gutsaga-pg:
