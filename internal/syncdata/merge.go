@@ -30,6 +30,7 @@ type Entry struct {
 type Completer struct {
 	Character   string `json:"character"`
 	Realm       string `json:"realm"`
+	BattleTag   string `json:"battletag"`
 	CompletedAt string `json:"completed_at"`
 }
 
@@ -97,18 +98,34 @@ func completersByQuest(sync contract.SyncResponse) map[string][]Completer {
 	type key struct{ quest, name, realm string }
 	seen := map[key]bool{}
 	out := map[string][]Completer{}
-	add := func(questID, name, realm, at string) {
+	add := func(questID, name, realm, tag, at string) {
 		name = strings.TrimSpace(name)
 		realm = strings.TrimSpace(realm)
+		tag = strings.TrimSpace(tag)
 		if questID == "" || name == "" {
 			return
 		}
 		k := key{questID, strings.ToLower(name), strings.ToLower(realm)}
 		if seen[k] {
+			list := out[questID]
+			for i := range list {
+				if !strings.EqualFold(list[i].Character, name) || !strings.EqualFold(list[i].Realm, realm) {
+					continue
+				}
+				if list[i].BattleTag == "" && tag != "" {
+					list[i].BattleTag = tag
+				}
+				if list[i].CompletedAt == "" && at != "" {
+					list[i].CompletedAt = at
+				}
+				break
+			}
 			return
 		}
 		seen[k] = true
-		out[questID] = append(out[questID], Completer{Character: name, Realm: realm, CompletedAt: at})
+		out[questID] = append(out[questID], Completer{
+			Character: name, Realm: realm, BattleTag: tag, CompletedAt: at,
+		})
 	}
 	known := map[string]contract.Character{}
 	for _, ch := range sync.Characters {
@@ -119,10 +136,15 @@ func completersByQuest(sync contract.SyncResponse) map[string][]Completer {
 			continue
 		}
 		ch := known[p.CharacterID]
-		add(p.QuestID, ch.Name, ch.Realm, p.CompletedAt)
+		add(p.QuestID, ch.Name, ch.Realm, ch.BattleTag, p.CompletedAt)
 	}
 	for _, c := range sync.Completions {
-		add(c.QuestID, c.Character, c.Realm, c.CompletedAt)
+		add(c.QuestID, c.Character, c.Realm, c.BattleTag, c.CompletedAt)
+	}
+	for id := range out {
+		sort.SliceStable(out[id], func(i, j int) bool {
+			return out[id][i].CompletedAt < out[id][j].CompletedAt
+		})
 	}
 	return out
 }

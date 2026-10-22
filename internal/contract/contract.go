@@ -21,6 +21,7 @@ type QuestCompletion struct {
 	QuestID     string `json:"quest_id"`
 	Character   string `json:"character"`
 	Realm       string `json:"realm"`
+	BattleTag   string `json:"battletag,omitempty"`
 	CompletedAt string `json:"completed_at,omitempty"`
 }
 

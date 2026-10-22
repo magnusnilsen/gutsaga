@@ -22,10 +22,12 @@ local listScroll
 local detailFS
 local detailTitle
 local detailGoalsHeader
+local detailActivityHeader
 local detailChild
 local detailScroll
 local rows = {}
 local goalRows = {}
+local activityRows = {}
 local INK = { r = 0.22, g = 0.12, b = 0.04 }
 local INK_MUTED = { r = 0.42, g = 0.35, b = 0.25 }
 local lastDetailID
@@ -292,18 +294,61 @@ local function findEntry(id)
     return nil
 end
 
-local function bullets(text)
+local function formatDescription(text)
     if type(text) ~= "string" or text == "" then
         return "Ingen"
     end
-    local lines = {}
-    for line in string.gmatch(text, "[^\n]+") do
-        table.insert(lines, "• " .. line)
-    end
-    if #lines == 0 then
+    text = text:gsub("\r\n", "\n"):gsub("\r", "\n")
+    text = text:gsub("\\n", "\n")
+    text = text:gsub("[ \t]+\n", "\n"):gsub("\n[ \t]+", "\n")
+    text = text:match("^%s*(.-)%s*$") or text
+    if text == "" then
         return "Ingen"
     end
-    return table.concat(lines, "\n")
+    return text
+end
+
+local function activityLine(row)
+    if type(row) ~= "table" then
+        return ""
+    end
+    local name = plainString(row.character) or ""
+    if name == "" then
+        return ""
+    end
+    local tag = plainString(row.battletag)
+    if tag and tag ~= "" then
+        return name .. " — " .. tag
+    end
+    local realm = plainString(row.realm)
+    if realm and realm ~= "" then
+        return name .. " — " .. realm
+    end
+    return name
+end
+
+local function activityList(entry)
+    local out = {}
+    if type(entry) ~= "table" or type(entry.completed_by) ~= "table" then
+        return out
+    end
+    for i = 1, #entry.completed_by do
+        local row = entry.completed_by[i]
+        local line = activityLine(row)
+        if line ~= "" then
+            table.insert(out, {
+                text = line,
+                at = (type(row) == "table" and type(row.completed_at) == "string") and row.completed_at or "",
+            })
+        end
+    end
+    table.sort(out, function(a, b)
+        if a.at ~= b.at then
+            return a.at < b.at
+        end
+        return a.text < b.text
+    end)
+    return out
 end
 
 local function savedSteps(entry)
@@ -817,6 +862,27 @@ local function ensureGoalRow(i)
     return row
 end
 
+local function ensureActivityRow(i)
+    local row = activityRows[i]
+    if row then
+        return row
+    end
+    row = CreateFrame("Frame", nil, detailChild)
+    row:SetHeight(16)
+    local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    text:SetPoint("TOPLEFT", 0, 0)
+    text:SetPoint("TOPRIGHT", 0, 0)
+    text:SetJustifyH("LEFT")
+    text:SetJustifyV("TOP")
+    text:SetWordWrap(true)
+    text:SetTextColor(INK.r, INK.g, INK.b)
+    row.text = text
+    bindWheel(row, detailScroll, 28)
+    bindWheel(text, detailScroll, 28)
+    activityRows[i] = row
+    return row
+end
+
 local function ensureRow(i)
     local row = rows[i]
     if row then
@@ -991,6 +1057,9 @@ refresh = function()
         detailTitle:SetText("")
         detailTitle:Hide()
         detailGoalsHeader:Hide()
+        if detailActivityHeader then
+            detailActivityHeader:Hide()
+        end
         if player.name == "" then
             detailFS:SetText("Logg inn på en karakter.")
         elseif type(GutSagaData) ~= "table" or type(GutSagaData.entries) ~= "table" or #GutSagaData.entries == 0 then
@@ -1004,8 +1073,7 @@ refresh = function()
         detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
         detailY = detailY + (detailFS:GetStringHeight() or 14) + 8
     else
-        local description = (type(selectedEntry.description) == "string" and selectedEntry.description ~= "")
-            and selectedEntry.description or "Ingen"
+        local description = formatDescription(selectedEntry.description)
         detailTitle:Show()
         detailTitle:SetText(selectedEntry.title or "Saga")
         detailTitle:SetTextColor(INK.r, INK.g, INK.b)
@@ -1016,6 +1084,7 @@ refresh = function()
 
         detailFS:SetText(description)
         detailFS:SetTextColor(INK.r, INK.g, INK.b)
+        detailFS:SetSpacing(4)
         detailFS:SetWidth(width)
         detailFS:ClearAllPoints()
         detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
@@ -1043,9 +1112,11 @@ refresh = function()
         row:Show()
         if goal.done then
             row.box:SetTexture("Interface\\AddOns\\GutSaga\\check")
+            row.box:SetVertexColor(INK.r, INK.g, INK.b)
             row.text:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
         else
             row.box:SetTexture("Interface\\AddOns\\GutSaga\\box")
+            row.box:SetVertexColor(1, 1, 1)
             row.text:SetTextColor(INK.r, INK.g, INK.b)
         end
         row.text:SetWidth(textWidth)
@@ -1057,6 +1128,44 @@ refresh = function()
     for i = #goals + 1, #goalRows do
         goalRows[i]:Hide()
     end
+
+    local activities = {}
+    if selectedEntry then
+        local okAct, actList = pcall(activityList, selectedEntry)
+        if okAct and type(actList) == "table" then
+            activities = actList
+        end
+    end
+    if detailActivityHeader then
+        if #activities > 0 then
+            detailY = detailY + 8
+            detailActivityHeader:Show()
+            detailActivityHeader:ClearAllPoints()
+            detailActivityHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+            detailActivityHeader:SetWidth(width)
+            detailActivityHeader:SetTextColor(INK.r, INK.g, INK.b)
+            detailY = detailY + (detailActivityHeader:GetStringHeight() or 20) + 10
+        else
+            detailActivityHeader:Hide()
+        end
+    end
+    for i, act in ipairs(activities) do
+        local row = ensureActivityRow(i)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        row:SetWidth(width)
+        row:Show()
+        row.text:SetWidth(width)
+        row.text:SetText(act.text or "")
+        row.text:SetTextColor(INK.r, INK.g, INK.b)
+        local h = math.max(14, (row.text:GetStringHeight() or 12) + 2)
+        row:SetHeight(h)
+        detailY = detailY + h + 6
+    end
+    for i = #activities + 1, #activityRows do
+        activityRows[i]:Hide()
+    end
+
     local detailH = math.max(detailY + 8, 10)
     detailChild:SetHeight(detailH)
     if detailScroll.UpdateScrollChildRect then
@@ -1096,7 +1205,7 @@ finishQuest = function(entry)
         realm = "-"
     end
     chat(string.format("[GutSaga] COMPLETE %s %d %s %s %d %d", entry.quest_id, version, player.name, realm, level, ts))
-    showSagaToast(entry.title or "Saga")
+    showSagaToast(entry.title or "Saga", entry.quest_id)
     broadcast(string.format("C|%s|%d|%d|%d", entry.quest_id, version, level, ts))
     refresh()
 end
@@ -1560,6 +1669,11 @@ local function build()
     detailGoalsHeader:SetJustifyH("LEFT")
     detailGoalsHeader:SetText("Mål")
     detailGoalsHeader:SetTextColor(INK.r, INK.g, INK.b)
+    detailActivityHeader = detailChild:CreateFontString(nil, "OVERLAY", titleFont)
+    detailActivityHeader:SetJustifyH("LEFT")
+    detailActivityHeader:SetText("Aktivitet")
+    detailActivityHeader:SetTextColor(INK.r, INK.g, INK.b)
+    detailActivityHeader:Hide()
     pcall(function()
         detailFS:SetScript("OnHyperlinkClick", onGoalLinkClick)
         detailFS:SetScript("OnHyperlinkEnter", onGoalLinkEnter)
@@ -1568,6 +1682,7 @@ local function build()
     bindWheel(detailTitle, detailScroll, 28)
     bindWheel(detailFS, detailScroll, 28)
     bindWheel(detailGoalsHeader, detailScroll, 28)
+    bindWheel(detailActivityHeader, detailScroll, 28)
     attachScrollBar(detailPanel, detailScroll, 28)
 
     toast = CreateFrame("Frame", "GutSagaToast", UIParent, backdropTemplate)
@@ -1622,8 +1737,34 @@ local function build()
         self:ClearAllPoints()
         self:SetPoint("TOP", UIParent, "TOP", 0, y)
     end)
-    showSagaToast = function(titleText)
+    toast:EnableMouse(true)
+    toast:SetScript("OnMouseUp", function(self, button)
+        if button ~= "LeftButton" then
+            return
+        end
+        local questID = self.questID
+        self:Hide()
+        if type(questID) == "string" and questID ~= "" then
+            selectedID = questID
+            show()
+            refresh()
+        end
+    end)
+    toast:SetScript("OnEnter", function(self)
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText("Åpne saga-loggen", 1, 1, 1)
+            GameTooltip:Show()
+        end
+    end)
+    toast:SetScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
+    showSagaToast = function(titleText, questID)
         toastTitle:SetText(titleText or "Saga")
+        toast.questID = questID
         toast.age = 0
         toast:SetAlpha(0)
         toast:Show()

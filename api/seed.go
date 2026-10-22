@@ -23,11 +23,12 @@ func seedQuests() []QuestInput {
 	one := 1
 	return []QuestInput{
 		{
-			Title:       "En kveld i Goldshire",
-			Description: "Gå til Lion's Pride Inn, snakk med verten, og ha kildevann i sekken.",
-			Reward:      "Et notat i eventyrloggen",
-			PartyQuest:  true,
-			CreatedBy:   "GutSaga#0000",
+			Title: "En kveld i Goldshire",
+			Description: "Gå til Lion's Pride Inn i hjertet av Goldshire.\n\n" +
+				"Snakk med verten Farley om dagens rykter, og sørg for at du har kildevann i sekken før du setter deg ned ved peisen.",
+			Reward:     "Et notat i eventyrloggen",
+			PartyQuest: true,
+			CreatedBy:  "GutSaga#0000",
 			Objectives: []contract.Objective{
 				{ID: "goldshire", Type: contract.ObjectiveLocation, Text: "Stå i eller rett utenfor Lion's Pride Inn i Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
 				{ID: "farley", Type: contract.ObjectiveInteract, Text: "Snakk med Innkeeper Farley", NPC: "Innkeeper Farley"},
@@ -35,21 +36,23 @@ func seedQuests() []QuestInput {
 			},
 		},
 		{
-			Title:       "Veien fra Northshire",
-			Description: "Stå på veien sør for Northshire, der Falkhaan Isenstrider pleier å stå.",
-			Reward:      "Oversikt over veien",
-			PartyQuest:  true,
-			CreatedBy:   "GutSaga#0000",
+			Title: "Veien fra Northshire",
+			Description: "Nord for Goldshire ligger veien ut av Northshire Abbey.\n\n" +
+				"Stå der Falkhaan Isenstrider pleier å stå, der skogen åpner seg mot Elwynn.",
+			Reward:     "Oversikt over veien",
+			PartyQuest: true,
+			CreatedBy:  "GutSaga#0000",
 			Objectives: []contract.Objective{
 				{ID: "road", Type: contract.ObjectiveLocation, Text: "Stå på veien sør for Northshire", MapID: intPtr(37), X: &roadX, Y: &roadY, Radius: &roadR},
 			},
 		},
 		{
-			Title:       "Melk til vaktlaget",
-			Description: "Tilbake i Goldshire. Ice Cold Milk selges av Innkeeper Farley.",
-			Reward:      "Kald melk",
-			PartyQuest:  true,
-			CreatedBy:   "GutSaga#0000",
+			Title: "Melk til vaktlaget",
+			Description: "Vaktene i Goldshire trenger noe kaldt å drikke.\n\n" +
+				"Ice Cold Milk selges av Innkeeper Farley — kjøp én og møt opp på plassen foran innstedet.",
+			Reward:     "Kald melk",
+			PartyQuest: true,
+			CreatedBy:  "GutSaga#0000",
 			Objectives: []contract.Objective{
 				{ID: "square", Type: contract.ObjectiveLocation, Text: "Stå i Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
 				{ID: "milk", Type: contract.ObjectiveCollect, Text: "Ha 1 Ice Cold Milk", ItemID: &milk, ItemName: "Ice Cold Milk", Count: one},

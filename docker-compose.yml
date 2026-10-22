@@ -22,6 +22,8 @@ services:
       DATABASE_URL: postgres://gutsaga:gutsaga@postgres:5432/gutsaga?sslmode=disable
       ADMIN_TOKEN: dev-admin-token
       SMIA_AUTH_MODE: smia
+      # Optional: Discord incoming webhook for completion posts (username GutSaga).
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
       PORT: "8080"
     ports:
       - "8080:8080"

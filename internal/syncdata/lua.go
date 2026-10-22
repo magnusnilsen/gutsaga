@@ -91,7 +91,8 @@ func luaCompleters(list []Completer) string {
 	b.WriteString("{\n")
 	for _, c := range list {
 		b.WriteString("        { ")
-		fmt.Fprintf(&b, "character = %s, realm = %s, completed_at = %s", luaString(c.Character), luaString(c.Realm), luaString(c.CompletedAt))
+		fmt.Fprintf(&b, "character = %s, realm = %s, battletag = %s, completed_at = %s",
+			luaString(c.Character), luaString(c.Realm), luaString(c.BattleTag), luaString(c.CompletedAt))
 		b.WriteString(" },\n")
 	}
 	b.WriteString("      }")

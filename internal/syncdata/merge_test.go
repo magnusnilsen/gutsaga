@@ -71,16 +71,23 @@ func TestSagaAuthorAndCompleters(t *testing.T) {
 			{QuestID: "q1", CharacterID: "c1", Status: "completed", CompletedAt: "2026-10-22T17:00:00Z"},
 		},
 		Completions: []contract.QuestCompletion{
-			{QuestID: "q1", Character: "Magni", Realm: "Celebras", CompletedAt: "2026-10-22T17:00:00Z"},
-			{QuestID: "q1", Character: "Mira", Realm: "Celebras", CompletedAt: "2026-10-22T18:00:00Z"},
+			{QuestID: "q1", Character: "Mira", Realm: "Celebras", BattleTag: "Mira#1234", CompletedAt: "2026-10-22T18:00:00Z"},
+			{QuestID: "q1", Character: "Magni", Realm: "Celebras", BattleTag: "Magnus#2231", CompletedAt: "2026-10-22T17:00:00Z"},
 		},
 	}
 	entries := Merge(sync)
 	if len(entries) != 1 || entries[0].CreatedBy != "GutSaga#0000" || len(entries[0].CompletedBy) != 2 {
 		t.Fatalf("%+v", entries)
 	}
+	if entries[0].CompletedBy[0].Character != "Magni" || entries[0].CompletedBy[1].Character != "Mira" {
+		t.Fatalf("expected chronological completers, got %+v", entries[0].CompletedBy)
+	}
+	if entries[0].CompletedBy[0].BattleTag != "Magnus#2231" {
+		t.Fatalf("battletag %+v", entries[0].CompletedBy[0])
+	}
 	lua := WriteLua("", "t", entries)
-	if !strings.Contains(lua, `created_by = "GutSaga#0000"`) || !strings.Contains(lua, `character = "Mira"`) {
+	if !strings.Contains(lua, `created_by = "GutSaga#0000"`) || !strings.Contains(lua, `character = "Mira"`) ||
+		!strings.Contains(lua, `battletag = "Magnus#2231"`) {
 		t.Fatal(lua)
 	}
 }
