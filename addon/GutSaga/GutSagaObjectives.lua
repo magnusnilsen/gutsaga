@@ -10,6 +10,11 @@
 --
 -- all_of / any_of children are checked live (together), except kill counts which
 -- accumulate. The composite itself stays done once it has been true.
+-- memory visit latches. memory hold is true only while the world matches.
+-- go/location default to visit. item/collect default to hold. Events are visit.
+-- A sequence is one step: ordered beats, one within_sec window from the first beat.
+-- A kill with group.level latches only when every member is that exact level
+-- and has attested within 15 seconds of the death.
 -- Clocks: game = GetGameTime, local = time()/date("*t"), realm = GetServerTime as UTC.
 
 local M = {}
@@ -186,7 +191,7 @@ local function emoteOK(obj, state)
     if want == "" or got == "" or want ~= got then
         return false
     end
-    if norm(obj.npc) ~= "" and not (same(obj.npc, state.emote_target) or listed(obj.npc, state.emote_target)) then
+    if norm(obj.npc) ~= "" and not (same(obj.npc, state.emote_target) or listed(obj.npc, state.emote_target) or listed(obj.npc, state.emote_text)) then
         return false
     end
     if not hasPlace(obj) then
@@ -363,6 +368,192 @@ local function preserveTree(obj, saved, into)
     end
 end
 
+local attestWindow = 15
+
+local function memoryOf(obj)
+    local m = obj.memory
+    if m == "hold" or m == "visit" then
+        return m
+    end
+    local k = obj.type
+    if k == "item" or k == "collect" then
+        return "hold"
+    end
+    return "visit"
+end
+
+local function stepKind(kind)
+    if kind == "go" then
+        return "location"
+    end
+    if kind == "talk" then
+        return "interact"
+    end
+    if kind == "item" then
+        return "collect"
+    end
+    return kind
+end
+
+local function nowUnix(state)
+    local n = tonumber(state.now)
+    if n and n > 0 then
+        return n
+    end
+    local clocks = state.time
+    if type(clocks) == "table" and type(clocks["local"]) == "table" then
+        n = tonumber(clocks["local"].unix)
+        if n and n > 0 then
+            return n
+        end
+    end
+    return 0
+end
+
+-- groupGate is the kill-step party check. level is exact. size, when set, is
+-- the exact roster length. Every member must have an attest timestamp within
+-- attestWindow seconds of now. A missing rule fails closed.
+function M.groupGate(rule, group, attests, now)
+    if type(rule) ~= "table" or tonumber(rule.level) == nil then
+        return false
+    end
+    local level = tonumber(rule.level) or 0
+    if level < 1 then
+        return false
+    end
+    group = type(group) == "table" and group or {}
+    local members = type(group.members) == "table" and group.members or {}
+    local names = {}
+    for i = 1, #members do
+        local m = members[i]
+        if type(m) == "table" and norm(m.name) ~= "" then
+            if (tonumber(m.level) or 0) ~= level then
+                return false
+            end
+            names[#names + 1] = norm(m.name)
+        end
+    end
+    local size = tonumber(rule.size)
+    if size and size > 0 then
+        if #names ~= size then
+            return false
+        end
+    elseif #names < 2 then
+        return false
+    end
+    if norm(rule.instance) ~= "" then
+        if not (listed(rule.instance, group.instance) or listed(rule.instance, group.zone)) then
+            return false
+        end
+    end
+    now = tonumber(now) or 0
+    if now <= 0 then
+        return false
+    end
+    attests = type(attests) == "table" and attests or {}
+    for i = 1, #names do
+        local at = tonumber(attests[names[i]]) or 0
+        if at <= 0 or now < at or now - at > attestWindow then
+            return false
+        end
+    end
+    return true
+end
+
+local function beatOK(beat, state)
+    if type(beat) ~= "table" then
+        return false
+    end
+    local kind = stepKind(beat.type)
+    if kind == "location" then
+        return locationOK(beat, state)
+    end
+    if kind == "interact" then
+        return interactOK(beat, state)
+    end
+    if kind == "emote" then
+        return emoteOK(beat, state)
+    end
+    if kind == "kill" then
+        if state.kill_secret then
+            return false
+        end
+        return listed(beat.npc, state.kill_name) or listed(beat.npc, state.death_name)
+    end
+    return false
+end
+
+local function eventBeat(beat)
+    if type(beat) ~= "table" then
+        return false
+    end
+    local kind = stepKind(beat.type)
+    return kind == "emote" or kind == "interact" or kind == "kill"
+end
+
+local function checkSequence(obj, state, prev)
+    local beats = type(obj.beats) == "table" and obj.beats or {}
+    local n = #beats
+    local now = nowUnix(state)
+    local window = tonumber(obj.within_sec) or 30
+    local beat = tonumber(prev.beat) or 1
+    local started = tonumber(prev.started_at) or 0
+    local failed = prev.failed and true or false
+    local consumed = false
+    if beat < 1 or beat > n then
+        beat = 1
+    end
+    if not failed and started > 0 and now > 0 and now > started + window then
+        failed = true
+        beat = 1
+        started = 0
+    end
+    if failed then
+        if beats[1] and beatOK(beats[1], state) then
+            failed = false
+            started = now
+            beat = 2
+            consumed = true
+        end
+    else
+        local cur = beats[beat]
+        if beat > 1 and eventBeat(beats[1]) and beatOK(beats[1], state) and not (cur and beatOK(cur, state)) then
+            started = now
+            beat = 2
+            consumed = true
+        elseif cur and beatOK(cur, state) then
+            consumed = true
+            if beat == 1 then
+                started = now
+            end
+            beat = beat + 1
+        end
+    end
+    local done = (not failed) and n > 0 and beat > n
+    if done then
+        failed = false
+        started = 0
+    end
+    local remain = 0
+    if not done and not failed and started > 0 and now > 0 then
+        remain = started + window - now
+        if remain < 0 then
+            remain = 0
+        end
+    end
+    return {
+        done = done,
+        failed = failed,
+        count = done and n or (beat - 1),
+        need = n,
+        active = true,
+        beat = done and n or beat,
+        started_at = done and 0 or started,
+        remain = remain,
+        consumed_emote = consumed,
+    }
+end
+
 local checkOne
 
 local function checkComposite(obj, state, saved)
@@ -400,24 +591,31 @@ local function checkComposite(obj, state, saved)
 end
 
 checkOne = function(obj, state, saved, prev, live)
+    local memory = memoryOf(obj)
     local row = {
         done = prev.done and true or false,
         count = tonumber(prev.count) or 0,
         need = needCount(obj),
         active = false,
+        beat = tonumber(prev.beat) or 0,
+        started_at = tonumber(prev.started_at) or 0,
+        seen_at = tonumber(prev.seen_at) or 0,
+        remain = tonumber(prev.remain) or 0,
+        failed = prev.failed and true or false,
     }
-    if not live and row.done then
+    -- visit latches. hold is recomputed every check, including inside a composite.
+    if memory ~= "hold" and not live and row.done then
         local kept = {}
         preserveTree(obj, saved, kept)
         return row, kept
     end
-    if live then
+    if live or memory == "hold" then
         row.done = false
     end
     row.active = true
     local open = M.timeOpen(obj.when, state)
     local nested
-    local kind = obj.type
+    local kind = stepKind(obj.type)
     if kind == "location" then
         row.done = open and locationOK(obj, state)
     elseif kind == "interact" then
@@ -425,6 +623,27 @@ checkOne = function(obj, state, saved, prev, live)
     elseif kind == "collect" then
         row.count = itemHave(state, obj.item_id)
         row.done = open and row.count >= row.need
+    elseif kind == "kill" and type(obj.group) == "table" and obj.group.level ~= nil then
+        local now = nowUnix(state)
+        local seen = tonumber(prev.seen_at) or 0
+        local death = state.death_name
+        if type(death) ~= "string" or death == "" then
+            death = state.kill_name
+        end
+        if not state.kill_secret and listed(obj.npc, death) and now > 0 then
+            seen = now
+        end
+        if seen > 0 and now > seen + attestWindow then
+            seen = 0
+        end
+        row.seen_at = seen
+        local attests = {}
+        if type(state.attests) == "table" and type(state.attests[obj.id]) == "table" then
+            attests = state.attests[obj.id]
+        end
+        row.done = open and seen > 0 and M.groupGate(obj.group, state.group, attests, now)
+        row.count = 0
+        row.need = tonumber(obj.group.size) or 0
     elseif kind == "kill" then
         if state.kill_secret then
             row.count = tonumber(prev.count) or 0
@@ -439,12 +658,22 @@ checkOne = function(obj, state, saved, prev, live)
         -- finishQuest / UI refresh may land on a later tick.
         if open and emoteOK(obj, state) then
             row.done = true
-        elseif not live and prev.done then
+        elseif memory ~= "hold" and not live and prev.done then
             row.done = true
         else
             row.done = false
         end
-    elseif kind == "all_of" or kind == "any_of" then
+    elseif obj.type == "sequence" then
+        local seq = checkSequence(obj, state, prev)
+        row.done = open and seq.done
+        row.count = seq.count
+        row.need = seq.need
+        row.beat = seq.beat
+        row.started_at = seq.started_at
+        row.remain = seq.remain
+        row.failed = seq.failed and true or false
+        row.consumed_emote = seq.consumed_emote and true or false
+    elseif kind == "all_of" or kind == "any_of" or obj.type == "all_of" or obj.type == "any_of" then
         local done, rows, have, total = checkComposite(obj, state, saved)
         nested = rows
         row.count = have
@@ -453,7 +682,7 @@ checkOne = function(obj, state, saved, prev, live)
     else
         row.done = false
     end
-    if not open and not (prev.done and not live) then
+    if not open and (memory == "hold" or not (prev.done and not live)) then
         row.done = false
     end
     return row, nested
@@ -519,5 +748,6 @@ function M.evaluate(objectives, state, saved, ordered, sagaWhen)
     return steps, allDone
 end
 
+M.listed = listed
 GutSagaObjectives = M
 return M

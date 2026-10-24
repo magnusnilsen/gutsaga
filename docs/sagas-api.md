@@ -7,74 +7,65 @@ Admin can still use `/v1/admin/quests` (any creator). Players use `/v1/sagas` an
 
 ## Goal types
 
-Each saga needs `objectives` (1–20). Every objective has:
+Each saga needs `objectives` (1–20 steps). The saga completes the first time every step is satisfied together, and that completion stays. Leave `objectives_ordered` false.
 
 | Field | Required | Notes |
 | --- | --- | --- |
-| `id` | yes | `[A-Za-z0-9_-]{1,40}`, unique within the saga |
-| `type` | yes | see below |
+| `id` | yes | `[A-Za-z0-9_-]{1,40}`, unique across steps and sequence beats |
+| `type` | yes | `go`, `talk`, `item`, `kill`, `emote`, or `sequence` |
 | `text` | yes | player-facing line (max 300) |
+| `memory` | no | `visit` (latches) or `hold` (only while true). Default `visit` on `go`, `hold` on `item`. Talk, emote, kill, and sequence are always `visit`. |
 
-### `location` — place-based
+### `go`
 
-Be in a zone / subzone and/or near map coordinates.
+Be at a place. `memory: "visit"` is a stop on a tour. `memory: "hold"` is "stand here now" and clears when you leave.
 
-- `zone`, `subzone` — optional name match (`\|` / `;` for alternatives)
-- `map_id` — optional continent/zone map id
-- `x`, `y` — map fractions `0..1` (set together); `radius` defaults to `0.02`
+- `zone`, `subzone` — name match (`\|` / `;` for alternatives)
+- `map_id`, `x`, `y` — map fractions `0..1`; `radius` defaults to `0.02`
 
 Needs at least one of zone, subzone, map_id, or x/y.
 
-### `interact` — selection-based
+### `talk`
 
-Talk to / target an NPC or world object.
+Target an NPC or world object. `npc` and/or `object`, matched to `UnitName` in the client language.
 
-- `npc` and/or `object` — at least one required (name match)
+### `item`
 
-### `collect` — inventory
+Have N of an item in bags. `item_id` required. `count` defaults to 1. `memory: "hold"` (the default) clears if the item leaves the bags. `memory: "visit"` latches once you had it.
 
-Have N of an item in bags.
+### `emote`
 
-- `item_id` — required (positive int)
-- `item_name` — optional label
-- `count` — defaults to `1`
+A built-in emote. `SALUTE`, `salute`, or `/salute` are stored as `SALUTE`. Optional `npc` is the target. Optional place fields use the position captured when the emote fires. Custom `/e hello` does not count.
 
-### `kill` — combat (experimental)
+### `kill`
 
-Defeat N creatures by name. Secret combat-log names are ignored.
+Defeat N creatures by name (`npc`, `count` default 1). A secret combat-log name does not count.
 
-- `npc` — creature name (not a GUID)
-- `count` — defaults to `1`
-
-### `emote` — a built-in emote
-
-Perform `/salute`, `/bow`, and the other built-in emotes. The addon reads the token from `DoEmote` (language-independent). `CHAT_MSG_TEXT_EMOTE` only confirms that the emote was announced; the chat text is localized and may be secret in combat on Forever.
-
-- `emote` — required. `SALUTE`, `salute`, or `/salute` are stored as `SALUTE`
-- `npc` — optional. `UnitName` of the target when the emote fires. No target, or a secret name, does not count
-- location fields — optional, same as `location`, using the position captured at emote time
-
-Custom `/e hello` is not an emote token and does not count.
-
-### `all_of` / `any_of` — simultaneous AND, or alternatives
+Optional `group` makes the kill a together-step. `level` is exact for every party member. `size`, when set, is the exact roster size. `instance` matches the dungeon name or zone. The kill latches only when every member's addon has attested from inside that instance within 15 seconds of the death.
 
 ```json
-{
-  "id": "both",
-  "type": "all_of",
-  "text": "Stå i Goldshire med vann",
-  "objectives": [
-    { "id": "inn", "type": "location", "text": "Goldshire", "zone": "Elwynn Forest", "subzone": "Goldshire" },
-    { "id": "water", "type": "collect", "text": "Ha vann", "item_id": 159, "count": 1 }
-  ]
-}
+{ "id": "vancleef", "type": "kill", "text": "Drep Edwin VanCleef sammen", "npc": "Edwin VanCleef",
+  "group": { "level": 17, "instance": "The Deadmines|Deadmines" } }
 ```
 
-- `objectives` — at least two children. One nesting level is the normal case; up to 4 levels and 40 nodes total are accepted
-- `all_of` is done only when every child is true in the same check. Location, item, interact, and emote are live. Kill counts still add up
-- `any_of` is done when any child is true
-- Child `id`s must be unique across the whole saga, not only inside the parent
-- The composite stays done once it has been true
+### `sequence`
+
+One checkbox with ordered beats and a single deadline.
+
+- `within_sec` — 1–600, measured on the computer clock from the first beat
+- `beats` — 2 to 6 steps, each `go`, `talk`, `emote`, or `kill`
+
+A beat after the window resets the sequence. Repeating the first emote, talk, or kill restarts the clock. The other steps in the saga are not ordered.
+
+```json
+{ "id": "trick", "type": "sequence", "text": "Klapp, deretter /rude innen 30 sekunder", "within_sec": 30,
+  "beats": [
+    { "id": "clap", "type": "emote", "text": "Klapp for Wilhelm", "emote": "APPLAUD", "npc": "Brother Wilhelm" },
+    { "id": "rude", "type": "emote", "text": "Vær frekk mot Farley", "emote": "RUDE", "npc": "Innkeeper Farley" }
+  ] }
+```
+
+`location`, `interact`, and `collect` still mean `go`, `talk`, and `item`. `all_of` / `any_of` still evaluate, and new sagas should not send them.
 
 ### Time window
 
@@ -92,23 +83,21 @@ Optional `when` on an objective or on the saga. `clock` defaults to `local`.
 
 `start` and `end` are `HH:MM` and may cross midnight. They are AND with `starts_at` / `ends_at` when both are set. A closed saga window blocks new completions; objectives already done stay done.
 
-### Group
+### Group on the saga
 
-Optional saga field. Checked at completion, not as an objective.
+Older turn-in rule. Prefer `group` on a kill step when every member must be an exact level and present for the kill.
 
 ```json
 "group": { "size": 4, "min_level": 17, "instance": "The Deadmines" }
 ```
 
-`size` members of the party or raid (including you) must be there. Each one who counts must be at least `min_level`. `instance` matches the dungeon name from `GetInstanceInfo` or the zone. Set `party_quest: true` so the whole group is offered the saga.
+`size` members (including you) of at least `min_level` must be present. Extra members are fine. People below `min_level` do not count. `instance` matches `GetInstanceInfo` or the zone.
 
 Completion is stored once per character. The finisher's companion sends the roster; the API also credits every other character it already knows with that name and realm. Peers with the addon get an addon message (`C_ChatInfo.SendAddonMessage` on `PARTY`/`RAID`, including inside the instance) and write their own completion. A second submit does not duplicate rows.
 
 ## Goal order
 
-`objectives_ordered` defaults to **`false`**: any incomplete goal can complete.
-
-Set `"objectives_ordered": true` if later goals must wait until earlier ones are done.
+`objectives_ordered` defaults to **`false`**. Leave it false. A timed order is a `sequence` step, not a second saga and not this flag.
 
 ## Endpoints
 
@@ -121,13 +110,12 @@ Create a saga owned by you. Body:
   "title": "En kveld i Goldshire",
   "description": "…",
   "objectives": [
-    { "id": "inn", "type": "location", "text": "Stå ved vertshuset", "map_id": 37, "x": 0.44, "y": 0.66 },
-    { "id": "farley", "type": "interact", "text": "Snakk med Farley", "npc": "Innkeeper Farley" },
-    { "id": "water", "type": "collect", "text": "Ha vann", "item_id": 159, "count": 1 }
+    { "id": "inn", "type": "go", "text": "Stå ved vertshuset", "map_id": 37, "x": 0.44, "y": 0.66 },
+    { "id": "farley", "type": "talk", "text": "Snakk med Farley", "npc": "Innkeeper Farley" },
+    { "id": "water", "type": "item", "text": "Ha vann", "item_id": 159, "count": 1 }
   ],
   "objectives_ordered": false,
   "when": { "clock": "local", "start": "22:00", "end": "02:00" },
-  "group": { "size": 4, "min_level": 17, "instance": "The Deadmines" },
   "reward": "",
   "min_level": 1,
   "party_quest": false,

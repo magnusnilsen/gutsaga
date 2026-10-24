@@ -27,7 +27,7 @@
           "name": "objectives",
           "type": "array",
           "required": false,
-          "description": "Full replacement objectives array (same shape as create_quest). Always send the complete list when changing goals."
+          "description": "Full replacement step list (same contract as create_quest). Always send the complete list. Types: go, talk, item, kill, emote, sequence. memory visit|hold (go defaults visit, item defaults hold; talk/emote/kill/sequence are visit). sequence is one step with within_sec and 2–6 beats. A together-kill puts group {level, instance, optional size} on that kill: level is exact for every member. Do not use all_of, any_of, or objectives_ordered."
         },
         {
           "name": "reward",
@@ -54,7 +54,8 @@
         {
           "name": "objectives_ordered",
           "type": "boolean",
-          "required": false
+          "required": false,
+          "description": "Leave false. Timed order is a sequence step."
         },
         {
           "name": "active",

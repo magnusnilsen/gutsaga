@@ -112,6 +112,7 @@ func writeLuaObjective(b *strings.Builder, o contract.Objective, indent string) 
 	fmt.Fprintf(b, "%sid = %s,\n", field, luaString(o.ID))
 	fmt.Fprintf(b, "%stype = %s,\n", field, luaString(o.Type))
 	fmt.Fprintf(b, "%stext = %s,\n", field, luaString(o.Text))
+	writeLuaString(b, field, "memory", o.Memory)
 	writeLuaString(b, field, "zone", o.Zone)
 	writeLuaString(b, field, "subzone", o.Subzone)
 	writeLuaString(b, field, "npc", o.NPC)
@@ -130,7 +131,14 @@ func writeLuaObjective(b *strings.Builder, o contract.Objective, indent string) 
 	if o.Count > 0 {
 		fmt.Fprintf(b, "%scount = %d,\n", field, o.Count)
 	}
+	if o.WithinSec > 0 {
+		fmt.Fprintf(b, "%swithin_sec = %d,\n", field, o.WithinSec)
+	}
 	writeLuaWhen(b, o.When, field)
+	writeLuaStepGroup(b, o.Group, field)
+	if len(o.Beats) > 0 {
+		fmt.Fprintf(b, "%sbeats = %s,\n", field, luaObjectiveList(o.Beats, field))
+	}
 	if len(o.Children) > 0 {
 		fmt.Fprintf(b, "%sobjectives = %s,\n", field, luaObjectiveList(o.Children, field))
 	}
@@ -154,6 +162,21 @@ func writeLuaWhen(b *strings.Builder, w *contract.TimeWindow, indent string) {
 	}
 	if w.EndsAt != "" {
 		fmt.Fprintf(b, "%s  ends_at = %s,\n", indent, luaString(w.EndsAt))
+	}
+	fmt.Fprintf(b, "%s},\n", indent)
+}
+
+func writeLuaStepGroup(b *strings.Builder, g *contract.StepGroup, indent string) {
+	if g == nil {
+		return
+	}
+	fmt.Fprintf(b, "%sgroup = {\n", indent)
+	fmt.Fprintf(b, "%s  level = %d,\n", indent, g.Level)
+	if g.Size > 0 {
+		fmt.Fprintf(b, "%s  size = %d,\n", indent, g.Size)
+	}
+	if g.Instance != "" {
+		fmt.Fprintf(b, "%s  instance = %s,\n", indent, luaString(g.Instance))
 	}
 	fmt.Fprintf(b, "%s},\n", indent)
 }

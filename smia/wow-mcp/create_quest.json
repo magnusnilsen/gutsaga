@@ -21,7 +21,7 @@
           "name": "objectives",
           "type": "array",
           "required": true,
-          "description": "Structured goals (NOT plain strings). Each object needs id (slug), type, text (Norwegian log line). Types: location — map_id (Elwynn Forest Classic=37), x/y (0–1), radius, optional zone/subzone (client language; use | for alternatives); interact — npc and/or object (exact UnitName, client language); collect — item_id, count, optional item_name; kill — npc (creature name), count. Example interact: {\"id\":\"tharynn\",\"type\":\"interact\",\"text\":\"Snakk med Tharynn Bouden\",\"npc\":\"Tharynn Bouden\"}. Example kill: {\"id\":\"rabbits\",\"type\":\"kill\",\"text\":\"Drep 5 kaniner\",\"npc\":\"Rabbit\",\"count\":5}."
+          "description": "Step list, NOT plain strings. The saga completes when every step is true together. Each step: id (slug), type, text (Norwegian log line), optional memory. Types: go (place; memory visit latches, hold is only while standing there; zone/subzone with | alternatives, map_id, x/y 0–1, radius; Elwynn Forest=37), talk (npc and/or object, exact UnitName), item (item_id, count; memory hold by default), emote (emote SALUTE or /salute, optional npc and place), kill (npc name, count; optional group {level, size, instance} — level is EXACT for every member, size is exact roster, instance such as The Deadmines|Deadmines; the kill latches only when each addon attests from inside), sequence (within_sec 1–600 and beats: 2–6 of go/talk/emote/kill, one checkbox, clock starts on the first beat). Do not use all_of, any_of, or objectives_ordered. Example: {\"id\":\"tharynn\",\"type\":\"talk\",\"text\":\"Snakk med Tharynn Bouden\",\"npc\":\"Tharynn Bouden\"}. Sequence: {\"id\":\"trick\",\"type\":\"sequence\",\"text\":\"Klapp, så /rude innen 30s\",\"within_sec\":30,\"beats\":[{\"id\":\"clap\",\"type\":\"emote\",\"text\":\"Klapp\",\"emote\":\"APPLAUD\",\"npc\":\"Brother Wilhelm\"},{\"id\":\"rude\",\"type\":\"emote\",\"text\":\"Frekk\",\"emote\":\"RUDE\",\"npc\":\"Innkeeper Farley\"}]}."
         },
         {
           "name": "created_by",
@@ -57,7 +57,7 @@
           "name": "objectives_ordered",
           "type": "boolean",
           "required": false,
-          "description": "If true, goals must be completed in array order."
+          "description": "Leave false. Timed order is a sequence step, not this flag."
         },
         {
           "name": "active",

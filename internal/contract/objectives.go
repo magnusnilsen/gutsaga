@@ -12,26 +12,39 @@ import (
 
 // Objective types the addon can verify.
 //
-//   - location: stand in a zone/subzone and/or near map coordinates (x/y are 0–1)
-//   - interact: select/talk to an NPC and/or world object (selection-based)
-//   - collect:  have N of an item in bags (inventory; item_id required)
-//   - kill:     defeat N creatures by name (experimental; secret combat-log names are ignored)
-//   - emote:    perform a built-in emote token (SALUTE), optionally at a unit and/or place
-//   - all_of:   every nested objective is true in the same check (one simultaneous AND)
-//   - any_of:   at least one nested objective is true (alternatives)
+// Author steps with go, talk, item, kill, emote, and sequence.
+// location, interact, and collect are the same steps under older names.
+// all_of and any_of still evaluate, but new sagas should not use them:
+// the saga itself is the AND, and a timed order is one sequence step.
+//
+//	go:       be at a place. memory visit (default) latches; hold is only while there
+//	talk:     target an NPC or object. Always visit
+//	item:     have N of an item. memory hold (default) clears when the bags do; visit latches
+//	kill:     defeat N creatures by name. Always visit. Optional group gate
+//	emote:    a built-in emote token, optionally at a unit and/or place. Always visit
+//	sequence: ordered beats sharing one within_sec window. Always visit once finished
+//	all_of:   legacy simultaneous AND
+//	any_of:   legacy alternatives
 //
 // Optional when on an objective gates it to a clock window and/or an absolute range.
 // By default goals may be completed in any order (quest.objectives_ordered=false).
-// When objectives_ordered is true, a later goal is not checked until earlier ones are done.
+// Order inside one trick belongs on a sequence step, not objectives_ordered.
 const (
+	ObjectiveGo       = "go"
+	ObjectiveTalk     = "talk"
+	ObjectiveItem     = "item"
 	ObjectiveLocation = "location"
 	ObjectiveInteract = "interact"
 	ObjectiveCollect  = "collect"
 	ObjectiveKill     = "kill"
 	ObjectiveEmote    = "emote"
+	ObjectiveSequence = "sequence"
 	ObjectiveAllOf    = "all_of"
 	ObjectiveAnyOf    = "any_of"
 	objectiveLegacy   = "legacy"
+
+	MemoryVisit = "visit"
+	MemoryHold  = "hold"
 )
 
 // Clock names for a time window. The addon reads them as follows:
@@ -99,27 +112,41 @@ type GroupCredit struct {
 	Already     bool   `json:"already"`
 }
 
+// StepGroup is a gate on a kill step. level is exact for every party member.
+// size, when set, is the exact roster size. instance matches GetInstanceInfo
+// or the zone. Each member's addon must attest from inside that instance
+// within 15 seconds of the death. The kill latches only when the gate passes.
+type StepGroup struct {
+	Level    int    `json:"level"`
+	Size     int    `json:"size,omitempty"`
+	Instance string `json:"instance,omitempty"`
+}
+
 // Objective is one step of a quest. LLMs author these through the admin API.
 // The same array is snapshotted on every quest version.
-// Nested objectives are used only by all_of and any_of.
+// Children are used only by legacy all_of and any_of. Sequence steps use beats.
 type Objective struct {
-	ID       string      `json:"id"`
-	Type     string      `json:"type"`
-	Text     string      `json:"text"`
-	Zone     string      `json:"zone,omitempty"`
-	Subzone  string      `json:"subzone,omitempty"`
-	MapID    *int        `json:"map_id,omitempty"`
-	X        *float64    `json:"x,omitempty"`
-	Y        *float64    `json:"y,omitempty"`
-	Radius   *float64    `json:"radius,omitempty"`
-	NPC      string      `json:"npc,omitempty"`
-	Object   string      `json:"object,omitempty"`
-	ItemID   *int        `json:"item_id,omitempty"`
-	ItemName string      `json:"item_name,omitempty"`
-	Count    int         `json:"count,omitempty"`
-	Emote    string      `json:"emote,omitempty"`
-	When     *TimeWindow `json:"when,omitempty"`
-	Children []Objective `json:"objectives,omitempty"`
+	ID        string      `json:"id"`
+	Type      string      `json:"type"`
+	Text      string      `json:"text"`
+	Memory    string      `json:"memory,omitempty"`
+	Zone      string      `json:"zone,omitempty"`
+	Subzone   string      `json:"subzone,omitempty"`
+	MapID     *int        `json:"map_id,omitempty"`
+	X         *float64    `json:"x,omitempty"`
+	Y         *float64    `json:"y,omitempty"`
+	Radius    *float64    `json:"radius,omitempty"`
+	NPC       string      `json:"npc,omitempty"`
+	Object    string      `json:"object,omitempty"`
+	ItemID    *int        `json:"item_id,omitempty"`
+	ItemName  string      `json:"item_name,omitempty"`
+	Count     int         `json:"count,omitempty"`
+	Emote     string      `json:"emote,omitempty"`
+	WithinSec int         `json:"within_sec,omitempty"`
+	When      *TimeWindow `json:"when,omitempty"`
+	Group     *StepGroup  `json:"group,omitempty"`
+	Beats     []Objective `json:"beats,omitempty"`
+	Children  []Objective `json:"objectives,omitempty"`
 }
 
 // DecodeObjectives reads a jsonb value. Null and empty become an empty slice.
@@ -213,6 +240,7 @@ func normalizeOne(o Objective, allowLegacy bool, seen map[string]bool, depth int
 	o.Object = strings.TrimSpace(o.Object)
 	o.ItemName = strings.TrimSpace(o.ItemName)
 	o.Emote = strings.TrimSpace(o.Emote)
+	o.Memory = strings.ToLower(strings.TrimSpace(o.Memory))
 	if !objectiveID.MatchString(o.ID) {
 		return Objective{}, fmt.Errorf("objective %s: id must match [A-Za-z0-9_-]{1,40}", displayID(o.ID, depth))
 	}
@@ -232,19 +260,23 @@ func normalizeOne(o Objective, allowLegacy bool, seen map[string]bool, depth int
 	}
 	o.When = when
 	switch o.Type {
-	case ObjectiveLocation:
+	case ObjectiveGo, ObjectiveLocation:
 		if err := normalizeLocation(&o); err != nil {
 			return Objective{}, err
 		}
-		o.Children = nil
-	case ObjectiveInteract:
-		if o.NPC == "" && o.Object == "" {
-			return Objective{}, fmt.Errorf("objective %s: interact needs npc and/or object", o.ID)
+		if err := finishStep(&o); err != nil {
+			return Objective{}, err
 		}
-		o.Children = nil
-	case ObjectiveCollect:
+	case ObjectiveTalk, ObjectiveInteract:
+		if o.NPC == "" && o.Object == "" {
+			return Objective{}, fmt.Errorf("objective %s: talk needs npc and/or object", o.ID)
+		}
+		if err := finishStep(&o); err != nil {
+			return Objective{}, err
+		}
+	case ObjectiveItem, ObjectiveCollect:
 		if o.ItemID == nil || *o.ItemID <= 0 {
-			return Objective{}, fmt.Errorf("objective %s: collect needs item_id", o.ID)
+			return Objective{}, fmt.Errorf("objective %s: item needs item_id", o.ID)
 		}
 		if o.Count == 0 {
 			o.Count = 1
@@ -252,7 +284,9 @@ func normalizeOne(o Objective, allowLegacy bool, seen map[string]bool, depth int
 		if o.Count < 1 || o.Count > 10000 {
 			return Objective{}, fmt.Errorf("objective %s: count must be 1..10000", o.ID)
 		}
-		o.Children = nil
+		if err := finishStep(&o); err != nil {
+			return Objective{}, err
+		}
 	case ObjectiveKill:
 		if o.NPC == "" {
 			return Objective{}, fmt.Errorf("objective %s: kill needs npc (the creature name, not a GUID)", o.ID)
@@ -263,7 +297,16 @@ func normalizeOne(o Objective, allowLegacy bool, seen map[string]bool, depth int
 		if o.Count < 1 || o.Count > 1000 {
 			return Objective{}, fmt.Errorf("objective %s: count must be 1..1000", o.ID)
 		}
-		o.Children = nil
+		if o.Group != nil {
+			g, err := normalizeStepGroup(o.ID, o.Group)
+			if err != nil {
+				return Objective{}, err
+			}
+			o.Group = g
+		}
+		if err := finishStep(&o); err != nil {
+			return Objective{}, err
+		}
 	case ObjectiveEmote:
 		token, err := NormalizeEmote(o.Emote)
 		if err != nil {
@@ -275,8 +318,45 @@ func normalizeOne(o Objective, allowLegacy bool, seen map[string]bool, depth int
 				return Objective{}, err
 			}
 		}
-		o.Children = nil
+		if err := finishStep(&o); err != nil {
+			return Objective{}, err
+		}
+	case ObjectiveSequence:
+		if o.WithinSec < 1 || o.WithinSec > 600 {
+			return Objective{}, fmt.Errorf("objective %s: within_sec must be 1..600", o.ID)
+		}
+		if len(o.Beats) < 2 || len(o.Beats) > 6 {
+			return Objective{}, fmt.Errorf("objective %s: sequence needs 2 to 6 beats", o.ID)
+		}
+		if len(o.Children) > 0 {
+			return Objective{}, fmt.Errorf("objective %s: sequence uses beats, not objectives", o.ID)
+		}
+		beats, err := normalizeList(o.Beats, allowLegacy, seen, depth+1, budget)
+		if err != nil {
+			return Objective{}, err
+		}
+		for i := range beats {
+			if !sequenceBeat(beats[i].Type) {
+				return Objective{}, fmt.Errorf("objective %s: sequence beats must be go, talk, emote, or kill", o.ID)
+			}
+			if beats[i].Group != nil {
+				return Objective{}, fmt.Errorf("objective %s: a group gate belongs on a kill step, not a beat", beats[i].ID)
+			}
+		}
+		o.Beats = beats
+		if err := finishStep(&o); err != nil {
+			return Objective{}, err
+		}
 	case ObjectiveAllOf, ObjectiveAnyOf:
+		if o.Memory != "" {
+			return Objective{}, fmt.Errorf("objective %s: memory is not used on %s", o.ID, o.Type)
+		}
+		if o.Group != nil {
+			return Objective{}, fmt.Errorf("objective %s: group belongs on a kill step", o.ID)
+		}
+		if len(o.Beats) > 0 || o.WithinSec != 0 {
+			return Objective{}, fmt.Errorf("objective %s: within_sec and beats belong on a sequence", o.ID)
+		}
 		if len(o.Children) < 2 {
 			return Objective{}, fmt.Errorf("objective %s: %s needs at least 2 nested objectives", o.ID, o.Type)
 		}
@@ -290,10 +370,82 @@ func normalizeOne(o Objective, allowLegacy bool, seen map[string]bool, depth int
 			return Objective{}, fmt.Errorf("objective %s: type legacy is not authorable", o.ID)
 		}
 		o.Children = nil
+		o.Beats = nil
 	default:
-		return Objective{}, fmt.Errorf("objective %s: type must be location, interact, collect, kill, emote, all_of, or any_of", o.ID)
+		return Objective{}, fmt.Errorf("objective %s: type must be go, talk, item, kill, emote, or sequence", o.ID)
 	}
 	return o, nil
+}
+
+// finishStep clears nested trees and applies memory. A group gate is only
+// valid on a kill; other steps reject it.
+func finishStep(o *Objective) error {
+	if o.Type != ObjectiveKill && o.Group != nil {
+		return fmt.Errorf("objective %s: group belongs on a kill step", o.ID)
+	}
+	if o.Type != ObjectiveSequence && (len(o.Beats) > 0 || o.WithinSec != 0) {
+		return fmt.Errorf("objective %s: within_sec and beats belong on a sequence", o.ID)
+	}
+	if len(o.Children) > 0 {
+		return fmt.Errorf("objective %s: nested objectives are only for all_of and any_of", o.ID)
+	}
+	if err := applyMemory(o); err != nil {
+		return err
+	}
+	return nil
+}
+
+func sequenceBeat(kind string) bool {
+	switch kind {
+	case ObjectiveGo, ObjectiveLocation, ObjectiveTalk, ObjectiveInteract, ObjectiveEmote, ObjectiveKill:
+		return true
+	default:
+		return false
+	}
+}
+
+func applyMemory(o *Objective) error {
+	mem := o.Memory
+	switch o.Type {
+	case ObjectiveGo, ObjectiveLocation, ObjectiveItem, ObjectiveCollect:
+		if mem == "" {
+			if o.Type == ObjectiveItem || o.Type == ObjectiveCollect {
+				mem = MemoryHold
+			} else {
+				mem = MemoryVisit
+			}
+		}
+		if mem != MemoryVisit && mem != MemoryHold {
+			return fmt.Errorf("objective %s: memory must be visit or hold", o.ID)
+		}
+	case ObjectiveTalk, ObjectiveInteract, ObjectiveEmote, ObjectiveKill, ObjectiveSequence:
+		if mem == "" {
+			mem = MemoryVisit
+		}
+		if mem != MemoryVisit {
+			return fmt.Errorf("objective %s: %s is always visit", o.ID, o.Type)
+		}
+	default:
+		if mem != "" {
+			return fmt.Errorf("objective %s: memory is only for steps", o.ID)
+		}
+	}
+	o.Memory = mem
+	return nil
+}
+
+func normalizeStepGroup(id string, g *StepGroup) (*StepGroup, error) {
+	if g.Level < 1 || g.Level > 1000 {
+		return nil, fmt.Errorf("objective %s: group.level must be 1..1000 and is exact", id)
+	}
+	if g.Size != 0 && (g.Size < 2 || g.Size > 40) {
+		return nil, fmt.Errorf("objective %s: group.size must be 2..40 when set", id)
+	}
+	inst := strings.TrimSpace(g.Instance)
+	if utf8.RuneCountInString(inst) > 80 {
+		return nil, fmt.Errorf("objective %s: group.instance is longer than 80 characters", id)
+	}
+	return &StepGroup{Level: g.Level, Size: g.Size, Instance: inst}, nil
 }
 
 func displayID(id string, depth int) string {

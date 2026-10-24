@@ -20,14 +20,8 @@ Discover ≠ enroll; addon prompt; MCP toggles. Do this before inventing more pl
 
 ## Timed sequences between objectives
 
-**Status:** Not built. `when` is clock windows (time of day / absolute range), not “within N seconds of the previous goal.”
-
-**Wanted example:** clap for Wilhelm, then punch (emote) the innkeeper within 30 seconds.
-
-**Sketch:** on objective complete, store `completed_at` unix; next objective’s gate is `prev.completed_at + window_sec`. Fail/reset if late. Distinct from `objectives_ordered` (order only, no deadline).
+**Status:** Built as one `sequence` step (`within_sec` + `beats`), not as saga chains. See [API.md](API.md).
 
 ## Live top-level location ticks
 
-**Status:** Mostly already true for `location` / `interact` / `collect` (re-evaluated each tick). Inside `all_of`, children stay live until the composite completes, then the composite sticks.
-
-**Product note:** “Stand in Goldshire” ticking on enter and clearing on leave is the live model — good UX for presence goals. Sticky is better for one-shot emotes/kills (what we just hardened for emotes).
+**Status:** Explicit `memory`. `go` defaults to `visit` (stays ticked). `memory: "hold"` clears when you leave. `item` defaults to `hold`.

@@ -73,21 +73,44 @@ The companion upserts the character the addon reported. BattleTag is taken from 
 
 ## Objectives
 
-`objectives` is a JSON array. Every objective has `id` (`[A-Za-z0-9_-]{1,40}`, unique in the whole tree), `type`, and `text` (the line in the quest log, max 300). At most 20 top-level objectives and 40 nodes including nested ones. Nesting is at most 4 levels. Smia MCP `create_quest` / `update_quest` pass this array through to `POST` / `PATCH /v1/admin/quests` unchanged.
+`objectives` is a JSON array of steps. A saga completes the first time every step is satisfied on the same check, and that completion stays. Smia MCP `create_quest` / `update_quest` pass this array through to `POST` / `PATCH /v1/admin/quests` unchanged.
 
-By default any incomplete objective can complete (`objectives_ordered: false`). Set `objectives_ordered: true` to require earlier objectives first. A composite `all_of` is a separate rule: its children must be true in the same check.
+Every step has `id` (`[A-Za-z0-9_-]{1,40}`, unique across the saga including sequence beats), `type`, and `text` (the quest-log line, max 300). At most 20 top-level steps and 40 nodes. Leave `objectives_ordered` false. Order inside one trick is a `sequence` step.
+
+`memory` is `visit` or `hold`:
+
+| `memory` | Checkbox |
+|---|---|
+| `visit` | Once true, stays ticked. Default for `go`. Always used for `talk`, `emote`, `kill`, and `sequence`. |
+| `hold` | Ticked only while it is true now. Default for `item`. Also valid on `go` ("be here now"). |
 
 | `type` | Fields |
 |---|---|
-| `location` | `zone`, `subzone` (client language; `\|` or `;` for alternatives), `map_id` (UiMapID, Elwynn Forest is 37 on retail and Classic), `x`, `y` (0–1), `radius` (default 0.02) |
-| `interact` | `npc` and/or `object`. Matched to `UnitName`. Names follow the client language. Not GUIDs. |
-| `collect` | `item_id` (required), optional `item_name`, `count` (default 1) |
-| `kill` | `npc` (creature name, not a GUID), `count` (default 1). Experimental. A secret combat-log name does not count. |
-| `emote` | `emote` token such as `SALUTE` or `/salute`. Optional `npc` (UnitName of the target at emote time). Optional location fields, same as `location`, captured when the emote fires. |
-| `all_of` | `objectives`: at least two children. Done only while every child is true in the same check (stand here AND hold the item). Stays done after that. |
-| `any_of` | `objectives`: at least two children. Done when any child is true. |
+| `go` | `zone`, `subzone` (client language; `\|` or `;` for alternatives), `map_id` (UiMapID; Elwynn Forest is 37), `x`, `y` (0–1), `radius` (default 0.02). Optional `memory`. |
+| `talk` | `npc` and/or `object`. Matched to `UnitName`. Names follow the client language. Not GUIDs. |
+| `item` | `item_id` (required), optional `item_name`, `count` (default 1). Optional `memory`. |
+| `emote` | `emote` token such as `SALUTE` or `/salute`. Optional `npc` (target at emote time). Optional place fields, same as `go`, captured when the emote fires. |
+| `kill` | `npc` (creature name, not a GUID), `count` (default 1). A secret combat-log name does not count. Optional `group` (below). |
+| `sequence` | `within_sec` (1–600) and `beats` (2–6). Each beat is a `go`, `talk`, `emote`, or `kill` with its own `id` and `text`. One checkbox. The window starts when the first beat lands, on the computer clock. A later beat after the window resets the sequence. Repeating the first emote, talk, or kill restarts the window. |
 
-Kill counts inside a composite still add up. Location, collect, interact, and emote inside a composite are live: an earlier visit does not stay ticked unless the whole composite became done.
+Same-moment constraints are fields on one step: "salute Wilhelm" is one emote with `npc`, not two steps. Two steps are both required. Cross-verb "either" is not a type.
+
+`location`, `interact`, and `collect` are older names for `go`, `talk`, and `item`. `all_of` and `any_of` still evaluate (`objectives`, at least two children, nesting at most 4) but new sagas should not use them. Inside `all_of`, children stay live until the composite has been true, then it latches.
+
+### Group gate on a kill
+
+```json
+"group": { "level": 17, "size": 5, "instance": "The Deadmines|Deadmines" }
+```
+
+This is not the saga-level turn-in rule. On a kill step:
+
+- `level` is exact. Every party member must be that level. A 16 or an 18 fails the step.
+- `size`, when set, is the exact roster size including the player. When omitted, the whole party must qualify and there must be at least two people.
+- `instance` matches `GetInstanceInfo()` or the zone, with `\|` / `;` alternatives.
+- The death does not latch by itself. Each member's addon attests from inside the instance (`H` on addon channel `PARTY`/`RAID`) within 15 seconds. Someone who is not in the dungeon never attests, so the kill does not count. The addon cannot see that a member is standing in the boss room.
+
+A saga-level `group` is still accepted for older sagas. It means "at least `size` members of `min_level` or higher" at turn-in, and extra members are fine. New "everyone, exactly this level" sagas put `group` on the kill instead.
 
 ### Time window (`when`)
 
@@ -132,32 +155,29 @@ A group saga cannot be completed without a roster that meets `size`, `min_level`
 
 ```json
 "objectives": [
-  {"id": "inn", "type": "location", "text": "Stå i Goldshire", "map_id": 37, "x": 0.438, "y": 0.658, "radius": 0.05},
-  {"id": "talk", "type": "interact", "text": "Snakk med Innkeeper Farley", "npc": "Innkeeper Farley"},
-  {"id": "water", "type": "collect", "text": "Ha kildevann", "item_id": 159, "count": 1},
+  {"id": "inn", "type": "go", "memory": "visit", "text": "Vær innom Goldshire", "map_id": 37, "x": 0.438, "y": 0.658, "radius": 0.05},
+  {"id": "here", "type": "go", "memory": "hold", "text": "Stå i Goldshire", "zone": "Elwynn Forest", "subzone": "Goldshire"},
+  {"id": "talk", "type": "talk", "text": "Snakk med Innkeeper Farley", "npc": "Innkeeper Farley"},
+  {"id": "water", "type": "item", "text": "Ha kildevann", "item_id": 159, "count": 1},
   {"id": "salute", "type": "emote", "text": "Hils på vakten", "emote": "SALUTE", "npc": "Stormwind Guard",
     "when": {"clock": "local", "start": "22:00", "end": "02:00"}},
-  {"id": "both", "type": "all_of", "text": "Stå i Goldshire med vann", "objectives": [
-    {"id": "square", "type": "location", "text": "Goldshire", "zone": "Elwynn Forest", "subzone": "Goldshire"},
-    {"id": "milk", "type": "collect", "text": "Ha melk", "item_id": 1179, "count": 1}
-  ]},
-  {"id": "either", "type": "any_of", "text": "Snakk eller bukk", "objectives": [
-    {"id": "farley", "type": "interact", "text": "Snakk med Farley", "npc": "Innkeeper Farley"},
-    {"id": "bow", "type": "emote", "text": "Bukk", "emote": "/bow"}
+  {"id": "trick", "type": "sequence", "text": "Klapp, deretter en frekk gest innen 30 sekunder", "within_sec": 30, "beats": [
+    {"id": "clap", "type": "emote", "text": "Klapp for Brother Wilhelm", "emote": "APPLAUD", "npc": "Brother Wilhelm"},
+    {"id": "rude", "type": "emote", "text": "Vær frekk mot Innkeeper Farley", "emote": "RUDE", "npc": "Innkeeper Farley"}
   ]}
 ]
 ```
 
-Saga-level night window and a 4-player Deadmines run (all level 17+):
+Edwin VanCleef with the whole party at exactly level 17, inside the dungeon when he dies:
 
 ```json
 {
   "title": "Deadmines",
-  "when": {"clock": "game", "start": "18:00", "end": "06:00"},
-  "group": {"size": 4, "min_level": 17, "instance": "The Deadmines"},
   "party_quest": true,
+  "min_level": 17,
   "objectives": [
-    {"id": "door", "type": "emote", "text": "Hils på Rhahk'Zor", "emote": "/salute", "npc": "Rhahk'Zor"}
+    {"id": "vancleef", "type": "kill", "text": "Drep Edwin VanCleef sammen", "npc": "Edwin VanCleef",
+      "group": {"level": 17, "instance": "The Deadmines|Deadmines"}}
   ]
 }
 ```

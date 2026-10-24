@@ -173,4 +173,99 @@ assertTrue(M.groupOK({ size = 3, min_level = 17, instance = "The Deadmines|Deadm
 assertTrue(not M.groupOK({ size = 3, min_level = 17, instance = "Stormwind Stockade" }, group), "wrong instance")
 assertTrue(M.groupOK(nil, {}), "no group rule")
 
+-- memory: visit latches, hold follows the world.
+steps, done = M.evaluate({
+    { id = "inn", type = "go", text = "Stå her", memory = "hold", zone = "Elwynn Forest" },
+}, { zone = "Elwynn Forest" }, {}, false)
+assertTrue(steps.inn.done, "hold is true while here")
+steps, done = M.evaluate({
+    { id = "inn", type = "go", text = "Stå her", memory = "hold", zone = "Elwynn Forest" },
+}, { zone = "Stormwind City" }, { inn = { done = true } }, false)
+assertTrue(not steps.inn.done, "hold clears after leaving")
+steps, done = M.evaluate({
+    { id = "inn", type = "go", text = "Besøk", zone = "Elwynn Forest" },
+}, { zone = "Stormwind City" }, { inn = { done = true } }, false)
+assertTrue(steps.inn.done, "visit stays ticked")
+steps, done = M.evaluate({
+    { id = "water", type = "item", text = "Vann", item_id = 159 },
+}, { items = {} }, { water = { done = true } }, false)
+assertTrue(not steps.water.done, "item defaults to hold")
+
+-- sequence: clap, then rude within 30s. Wrong emote does nothing.
+local trick = {
+    { id = "trick", type = "sequence", text = "Klapp, så frekk", within_sec = 30, beats = {
+        { id = "clap", type = "emote", text = "Klapp", emote = "APPLAUD", npc = "Brother Wilhelm" },
+        { id = "rude", type = "emote", text = "Frekk", emote = "RUDE", npc = "Innkeeper Farley" },
+    } },
+}
+steps, done = M.evaluate(trick, {
+    emote = "WAVE", emote_target = "Brother Wilhelm",
+    time = { ["local"] = { unix = 1000 } },
+}, {}, false)
+assertTrue(not steps.trick.done and (tonumber(steps.trick.beat) or 1) == 1, "wrong emote does not start")
+steps, done = M.evaluate(trick, {
+    emote = "APPLAUD", emote_target = "Brother Wilhelm",
+    time = { ["local"] = { unix = 1000 } },
+}, {}, false)
+assertTrue(not steps.trick.done and steps.trick.beat == 2 and steps.trick.started_at == 1000, "clap starts the window")
+steps, done = M.evaluate(trick, {
+    emote = "RUDE", emote_target = "Innkeeper Farley",
+    time = { ["local"] = { unix = 1020 } },
+}, { trick = steps.trick }, false)
+assertTrue(steps.trick.done and done, "rude within 30s finishes the step")
+steps, done = M.evaluate(trick, {
+    emote = "RUDE", emote_target = "Innkeeper Farley",
+    time = { ["local"] = { unix = 1040 } },
+}, { trick = { beat = 2, started_at = 1000 } }, false)
+assertTrue(not steps.trick.done and steps.trick.failed and steps.trick.beat == 1 and (tonumber(steps.trick.remain) or 0) == 0, "late rude fails without ticking")
+steps, done = M.evaluate(trick, {
+    emote = "APPLAUD", emote_target = "", emote_text = "You clap for Brother Wilhelm.",
+    time = { ["local"] = { unix = 1100 } },
+}, { trick = { failed = true, beat = 1 } }, false)
+assertTrue(not steps.trick.failed and steps.trick.beat == 2 and steps.trick.started_at == 1100 and steps.trick.remain == 30, "clapping again clears feilet")
+steps, done = M.evaluate(trick, {
+    emote = "APPLAUD", emote_target = "Brother Wilhelm",
+    time = { ["local"] = { unix = 1010 } },
+}, { trick = { beat = 2, started_at = 1000 } }, false)
+assertTrue(not steps.trick.failed and steps.trick.beat == 2 and steps.trick.started_at == 1010 and steps.trick.remain == 30, "clapping again restarts the 30s")
+
+-- group kill: exact level, attestations, no early latch.
+local party = {
+    instance = "The Deadmines",
+    members = {
+        { name = "Magni", level = 17 },
+        { name = "Mira", level = 17 },
+    },
+}
+local boss = {
+    { id = "vancleef", type = "kill", text = "VanCleef", npc = "Edwin VanCleef",
+      group = { level = 17, instance = "The Deadmines|Deadmines" } },
+}
+steps, done = M.evaluate(boss, {
+    death_name = "Edwin VanCleef", now = 5000, group = party, attests = {},
+}, {}, false)
+assertTrue(not steps.vancleef.done and steps.vancleef.seen_at == 5000, "death alone does not latch")
+steps, done = M.evaluate(boss, {
+    now = 5005, group = party,
+    attests = { vancleef = { magni = 5000, mira = 5004 } },
+}, { vancleef = { seen_at = 5000 } }, false)
+assertTrue(steps.vancleef.done and done, "both attestations within 15s")
+local mixed = {
+    instance = "The Deadmines",
+    members = {
+        { name = "Magni", level = 17 },
+        { name = "Mira", level = 18 },
+    },
+}
+steps, done = M.evaluate(boss, {
+    now = 5005, group = mixed,
+    attests = { vancleef = { magni = 5000, mira = 5004 } },
+}, { vancleef = { seen_at = 5000 } }, false)
+assertTrue(not steps.vancleef.done, "level 18 fails the exact gate")
+steps, done = M.evaluate(boss, {
+    now = 5020, group = party,
+    attests = { vancleef = { magni = 5000, mira = 5004 } },
+}, { vancleef = { seen_at = 5000 } }, false)
+assertTrue(not steps.vancleef.done and (tonumber(steps.vancleef.seen_at) or 0) == 0, "witness expires")
+
 print("objectives ok")

@@ -9,7 +9,7 @@ local PREFIX = "GutSaga"
 local player = { name = "", realm = "", level = 1, race = "", class = "", battletag = "" }
 local world = {
     zone = "", subzone = "", minimap = "", mapID = nil, x = nil, y = nil,
-    npc = "", object = "", killName = nil, killSecret = false,
+    npc = "", object = "", killName = nil, killSecret = false, deathName = nil, attests = {},
     gameHour = nil, gameMin = nil, instanceName = "", groupSnap = nil, pendingEmote = nil,
 }
 local readClocks
@@ -904,12 +904,22 @@ local function objectiveLines(entry)
         if depth > 0 then
             pad = string.rep("  ", depth) .. "- "
         end
+        local mem = obj.memory
+        if mem ~= "visit" and mem ~= "hold" then
+            if obj.type == "item" or obj.type == "collect" then
+                mem = "hold"
+            else
+                mem = "visit"
+            end
+        end
         local label
-        if done then
+        if done and mem == "hold" then
+            label = pad .. (obj.text or "Mål") .. " (nå)"
+        elseif done then
             label = pad .. (obj.text or "Mål") .. " (Fullført)"
         else
             label = pad .. applyItemLink(obj.text or "Mål", obj)
-            if obj.type == "location" then
+            if obj.type == "location" or obj.type == "go" then
                 local where = world.minimap
                 if where == "" then
                     where = world.subzone
@@ -921,10 +931,11 @@ local function objectiveLines(entry)
                     label = label .. " (" .. where .. ")"
                 end
             end
-            if obj.type == "collect" or obj.type == "kill" then
+            local groupedKill = obj.type == "kill" and type(obj.group) == "table" and obj.group.level
+            if obj.type == "collect" or obj.type == "item" or (obj.type == "kill" and not groupedKill) then
                 local need = tonumber(obj.count) or 1
                 local have = tonumber(step.count) or 0
-                if obj.type == "collect" then
+                if obj.type == "collect" or obj.type == "item" then
                     local itemID = tonumber(obj.item_id)
                     if itemID then
                         local live = itemCount(itemID)
@@ -943,13 +954,48 @@ local function objectiveLines(entry)
             if obj.type == "emote" and type(obj.emote) == "string" and obj.emote ~= "" then
                 label = label .. " (/" .. string.lower(obj.emote) .. ")"
             end
-            if obj.type == "kill" then
-                label = label .. " (eksperimentell)"
+            if obj.type == "sequence" and step.failed then
+                label = label .. " (feilet)"
+            end
+            if obj.type == "kill" and type(obj.group) == "table" and obj.group.level then
+                local roster = readGroup and readGroup() or {}
+                local have, total = 0, 0
+                local level = tonumber(obj.group.level) or 0
+                for _, m in ipairs(roster.members or {}) do
+                    if type(m) == "table" and type(m.name) == "string" and m.name ~= "" then
+                        total = total + 1
+                        if (tonumber(m.level) or 0) == level then
+                            have = have + 1
+                        end
+                    end
+                end
+                local need = tonumber(obj.group.size) or total
+                label = label .. string.format(" (%d/%d nivå %d)", have, need, level)
             end
             label = label .. timeHint(obj.when, done, clocks)
         end
-        table.insert(lines, { done = done, text = label })
-        if type(obj.objectives) == "table" then
+        table.insert(lines, { done = done, failed = (not done) and step.failed and true or false, text = label })
+        if obj.type == "sequence" and type(obj.beats) == "table" then
+            local beat = tonumber(step.beat) or 1
+            local failed = (not done) and step.failed and true or false
+            local remain = tonumber(step.remain) or 0
+            for i, b in ipairs(obj.beats) do
+                if type(b) == "table" then
+                    local beatDone = (not failed) and (done or i < beat)
+                    local current = (not failed) and (not done) and i == beat
+                    local beatLabel = b.text or "Del"
+                    if current and remain > 0 then
+                        beatLabel = beatLabel .. string.format(" (%ds)", remain)
+                    end
+                    table.insert(lines, {
+                        done = beatDone,
+                        failed = failed,
+                        indent = 1,
+                        text = beatLabel,
+                    })
+                end
+            end
+        elseif type(obj.objectives) == "table" then
             for i, child in ipairs(obj.objectives) do
                 addObj(child, i, depth + 1)
             end
@@ -1232,11 +1278,12 @@ local function objectiveState(entries)
             end
         end
     end
-    local emote, emoteTarget, emoteZone, emoteSub, emoteMini, emoteMap, emoteX, emoteY
+    local emote, emoteTarget, emoteText, emoteZone, emoteSub, emoteMini, emoteMap, emoteX, emoteY
     local pending = world.pendingEmote
     if type(pending) == "table" and (tonumber(pending.untilAt) or 0) >= unixNow() then
         emote = pending.token
         emoteTarget = pending.target
+        emoteText = pending.text
         emoteZone = pending.zone
         emoteSub = pending.subzone
         emoteMini = pending.minimap
@@ -1258,6 +1305,7 @@ local function objectiveState(entries)
         kill_secret = world.killSecret,
         emote = emote,
         emote_target = emoteTarget,
+        emote_text = emoteText,
         emote_zone = emoteZone,
         emote_subzone = emoteSub,
         emote_minimap = emoteMini,
@@ -1277,11 +1325,23 @@ local function checkAll()
         local entries = currentEntries()
         local state = objectiveState(entries)
         local group = readGroup()
+        state.now = unixNow()
+        state.group = group
+        state.death_name = world.deathName
         for _, entry in ipairs(entries) do
             if not isComplete(entry) and not entryLocked(entry, entries) and type(entry.objectives) == "table" and #entry.objectives > 0 then
                 local bucket = savedSteps(entry)
                 local ordered = entry.objectives_ordered and true or false
+                state.attests = world.attests[entry.quest_id]
                 local steps, done = GutSagaObjectives.evaluate(entry.objectives, state, bucket.steps, ordered, entry.when)
+                if state.emote and state.emote ~= "" then
+                    for _, row in pairs(steps) do
+                        if type(row) == "table" and row.consumed_emote then
+                            world.pendingEmote = nil
+                            break
+                        end
+                    end
+                end
                 bucket.steps = steps
                 local groupReady = true
                 if type(entry.group) == "table" and GutSagaObjectives.groupOK then
@@ -1294,6 +1354,7 @@ local function checkAll()
         end
         world.killName = nil
         world.killSecret = false
+        world.deathName = nil
     end)
     checking = false
     if not ok and err ~= lastCheckError then
@@ -1679,17 +1740,29 @@ refresh = function()
 
     local selectedLocked = selectedEntry and entryLocked(selectedEntry, entries)
     -- Goals sit under the title with no section header.
-    local textWidth = width - 22
     for i, goal in ipairs(goals) do
         local row = ensureGoalRow(i)
+        local indent = tonumber(goal.indent) or 0
+        if indent < 0 then
+            indent = 0
+        elseif indent > 3 then
+            indent = 3
+        end
+        local left = 6 + indent * 16
+        local rowWidth = width - indent * 16
+        local textWidth = rowWidth - 22
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-        row:SetWidth(width)
+        row:SetPoint("TOPLEFT", detailChild, "TOPLEFT", left, -detailY)
+        row:SetWidth(rowWidth)
         row:Show()
         if goal.done then
             row.box:SetTexture("Interface\\AddOns\\GutSaga\\check")
             row.box:SetVertexColor(INK.r, INK.g, INK.b)
             row.text:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+        elseif goal.failed then
+            row.box:SetTexture("Interface\\AddOns\\GutSaga\\box")
+            row.box:SetVertexColor(0.45, 0.42, 0.38)
+            row.text:SetTextColor(0.45, 0.42, 0.38)
         elseif selectedLocked then
             row.box:SetTexture("Interface\\AddOns\\GutSaga\\box")
             row.box:SetVertexColor(0.55, 0.55, 0.55)
@@ -1868,6 +1941,80 @@ local function placeLabel(rule, group)
         return zone
     end
     return inst
+end
+
+local function rememberAttest(questID, objID, name, at)
+    if type(questID) ~= "string" or questID == "" or type(objID) ~= "string" or objID == "" then
+        return
+    end
+    local who = norm(name)
+    if who == "" or not at or at <= 0 then
+        return
+    end
+    if type(world.attests) ~= "table" then
+        world.attests = {}
+    end
+    if type(world.attests[questID]) ~= "table" then
+        world.attests[questID] = {}
+    end
+    if type(world.attests[questID][objID]) ~= "table" then
+        world.attests[questID][objID] = {}
+    end
+    world.attests[questID][objID][who] = at
+end
+
+local function sendHerePing(questID, objID)
+    if not ((C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage) then
+        return
+    end
+    local raid, grouped = false, false
+    pcall(function()
+        raid = IsInRaid() and true or false
+    end)
+    pcall(function()
+        grouped = IsInGroup() and true or false
+    end)
+    local channel
+    if raid then
+        channel = "RAID"
+    elseif grouped then
+        channel = "PARTY"
+    else
+        return
+    end
+    sendAddon(PREFIX, "H\t" .. tostring(questID) .. "\t" .. tostring(objID), channel)
+end
+
+-- A group kill only counts when this client is in the instance at the exact
+-- level. The ping lets every other addon attest for itself. Someone outside
+-- the dungeon never sends one.
+local function witnessGroupKills(deathName)
+    if type(deathName) ~= "string" or deathName == "" or not GutSagaObjectives or not GutSagaObjectives.listed then
+        return
+    end
+    cachePlayer()
+    if player.name == "" then
+        return
+    end
+    local group = readGroup()
+    local now = unixNow()
+    for _, entry in ipairs(currentEntries()) do
+        if type(entry) == "table" and not isComplete(entry) and type(entry.objectives) == "table" then
+            for _, obj in ipairs(entry.objectives) do
+                if type(obj) == "table" and obj.type == "kill" and type(obj.group) == "table" and tonumber(obj.group.level) then
+                    local level = tonumber(obj.group.level) or 0
+                    local inst = obj.group.instance
+                    local here = type(inst) ~= "string" or inst == ""
+                        or GutSagaObjectives.listed(inst, group.instance)
+                        or GutSagaObjectives.listed(inst, group.zone)
+                    if here and (tonumber(player.level) or 0) == level and GutSagaObjectives.listed(obj.npc, deathName) then
+                        rememberAttest(entry.quest_id, obj.id, player.name, now)
+                        sendHerePing(entry.quest_id, obj.id)
+                    end
+                end
+            end
+        end
+    end
 end
 
 local function sendGroupPing(questID, version)
@@ -2646,6 +2793,10 @@ SlashCmdList.GUTSAGA = function(msg)
         resetQuest("88e92926-33b1-4ba0-a37b-6cb07ef6c7ba", "Hilsen til Wilhelm")
         return
     end
+    if msg == "reset clap" or msg == "reset klapp" or msg == "reset trick" then
+        resetQuest("59e95828-872b-46f1-9767-7d27e5e27fc5", "Klapp, så en frekk gest")
+        return
+    end
     show()
 end
 
@@ -2667,9 +2818,10 @@ local function inferEmoteToken(msg)
         { "wave", "WAVE" }, { "vink", "WAVE" },
         { "cheer", "CHEER" }, { "juble", "CHEER" },
         { "thank", "THANK" }, { "takk", "THANK" },
-        { "applaud", "APPLAUD" }, { "klapp", "APPLAUD" },
+        { "applaud", "APPLAUD" }, { "applaus", "APPLAUD" }, { "bravo", "APPLAUD" },
+        { "clap", "APPLAUD" }, { "klapp", "APPLAUD" },
         { "kneel", "KNEEL" }, { "knele", "KNEEL" },
-        { "rude", "RUDE" },
+        { "rude", "RUDE" }, { "frekk", "RUDE" }, { "ufin", "RUDE" },
         { "flex", "FLEX" },
         { "dance", "DANCE" }, { "dans", "DANCE" },
     }
@@ -2681,7 +2833,7 @@ local function inferEmoteToken(msg)
     return nil
 end
 
-local function noteEmote(token, unit)
+local function noteEmote(token, unit, msg)
     local emote = plainString(token)
     if not emote or emote == "" then
         return
@@ -2719,6 +2871,7 @@ local function noteEmote(token, unit)
     world.pendingEmote = {
         token = emote,
         target = target,
+        text = plainString(msg) or "",
         zone = world.zone,
         subzone = world.subzone,
         minimap = world.minimap,
@@ -2855,6 +3008,11 @@ events:SetScript("OnEvent", function(_, event, ...)
                     end
                     world.lastHitGUID = nil
                 end
+                local witnessed = (subevent == "PARTY_KILL" or subevent == "UNIT_DIED")
+                    and destName and not secret(destName) and plainString(destName)
+                if witnessed then
+                    world.deathName = witnessed
+                end
                 if counted then
                     if secret(destName) then
                         world.killSecret = true
@@ -2863,9 +3021,15 @@ events:SetScript("OnEvent", function(_, event, ...)
                         world.killSecret = false
                         world.killName = plainString(destName)
                     end
+                end
+                if counted or witnessed then
+                    if witnessed then
+                        witnessGroupKills(witnessed)
+                    end
                     onWorld()
                     world.killName = nil
                     world.killSecret = false
+                    world.deathName = nil
                 end
             end
         end
@@ -2884,7 +3048,7 @@ events:SetScript("OnEvent", function(_, event, ...)
             token = lastDoEmoteToken
         end
         if token and token ~= "" then
-            noteEmote(token, "target")
+            noteEmote(token, "target", msg)
             lastDoEmoteToken = nil
             onWorld()
         elseif type(world.pendingEmote) == "table" then
@@ -2899,21 +3063,49 @@ events:SetScript("OnEvent", function(_, event, ...)
             return
         end
         local msg = plainString(message)
+        local shortName = sender
+        if Ambiguate then
+            local ok, value = pcall(Ambiguate, sender, "short")
+            if ok then
+                local s = plainString(value)
+                if s then
+                    shortName = s
+                end
+            end
+        end
+        if msg and string.sub(msg, 1, 2) == "H\t" then
+            if player.name ~= "" and same(shortName, player.name) then
+                return
+            end
+            local qid, oid
+            local first = string.find(msg, "\t", 3, true)
+            local second = first and string.find(msg, "\t", first + 1, true)
+            if first and second then
+                qid = string.sub(msg, 3, first - 1)
+                oid = string.sub(msg, first + 1, second - 1)
+            elseif first then
+                qid = string.sub(msg, 3, first - 1)
+                oid = string.sub(msg, first + 1)
+            end
+            local group = readGroup()
+            local known = false
+            for _, m in ipairs(group.members or {}) do
+                if type(m) == "table" and same(m.name, shortName) then
+                    known = true
+                    break
+                end
+            end
+            if known and qid and oid and oid ~= "" then
+                rememberAttest(qid, oid, shortName, unixNow())
+                onWorld()
+            end
+            return
+        end
         if msg and string.sub(msg, 1, 2) == "G\t" then
             local qid
             local tabAt = string.find(msg, "\t", 3, true)
             if tabAt then
                 qid = string.sub(msg, 3, tabAt - 1)
-            end
-            local shortName = sender
-            if Ambiguate then
-                local ok, value = pcall(Ambiguate, sender, "short")
-                if ok then
-                    local s = plainString(value)
-                    if s then
-                        shortName = s
-                    end
-                end
             end
             if player.name ~= "" and same(shortName, player.name) then
                 return
