@@ -72,6 +72,16 @@ Du må være medlem av Smia-hubben wow. Ellers svarer API-et 403. API-containere
 
 Om Smia er nede kan du midlertidig sette `SMIA_AUTH_MODE=dev` og `SMIA_DEV_TOKEN=dev-token` på API-et, og `GUTSAGA_DEV_TOKEN=dev-token` på følgeprogrammet. Da hoppes nettleseren over. Vanlig `make dev` bruker ekte Smia-innlogging.
 
+### Tilbakestille oppdrag lokalt
+
+`/gutsaga wipe` (eller `clear` / `reset`) tømmer lokale fullføringer og køer en API-sletting. `/gutsaga reset selected` (eller de navngitte aliasene) gjør det for én saga. Etterpå: `/reload` så SavedVariables skrives til disk — følgeprogrammet kaller `DELETE /v1/progress` og synker på nytt. Uten den runden kommer «fullført» tilbake fra API-et.
+
+Mens du utvikler tillegget, sett `GUTSAGA_ADDON_SRC` til `addon/GutSaga` (eller `addon`) før `go run`, så Install kopierer lua fra disk i stedet for den innebygde kopien:
+
+```bash
+GUTSAGA_ADDON_SRC=addon/GutSaga go run ./cmd/gutsaga --api-url http://localhost:8080 --client classic_era
+```
+
 ## Slik får du det (venner)
 
 Du trenger programmet GutSaga og World of Warcraft. Du trenger ikke kildekoden og ikke en API-nøkkel. Du logger inn med Smia.

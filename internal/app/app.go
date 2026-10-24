@@ -441,10 +441,12 @@ func (a *App) pollChat() {
 
 // pollSavedVars enqueues completions the addon wrote locally. On Classic Era,
 // AddMessage lines never reach WoWChatLog.txt, so this is the reliable path.
+// It also applies /gutsaga reset requests queued in GutSagaDB.pending_resets.
 func (a *App) pollSavedVars() {
 	if a.WowDir == "" {
 		return
 	}
+	a.pollPendingResets()
 	list, err := savedvars.ReadCompletions(a.WowDir)
 	if err != nil {
 		return
@@ -471,6 +473,54 @@ func (a *App) pollSavedVars() {
 		if ok {
 			a.Log.Info("lest fra SavedVariables", "character", c.Character, "quest", c.QuestID)
 		}
+	}
+}
+
+// pollPendingResets deletes API progress for /gutsaga wipe|reset after /reload
+// wrote GutSagaDB.pending_resets. Without this, the next sync brings completed
+// status back and the local wipe looks broken.
+func (a *App) pollPendingResets() {
+	if a.Client == nil || a.Client.APIKey == "" {
+		return
+	}
+	list, err := savedvars.ReadResets(a.WowDir)
+	if err != nil || len(list) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	changed := false
+	for _, r := range list {
+		key := queue.ResetKey(r.QuestID, r.All, r.At)
+		if a.Queue.IsDone(key) {
+			continue
+		}
+		questID := ""
+		if !r.All {
+			questID = r.QuestID
+		}
+		deleted, err := a.Client.ResetProgress(ctx, questID)
+		if err != nil {
+			a.Log.Warn("kunne ikke tilbakestille progress", "quest", questID, "err", err)
+			continue
+		}
+		if r.All {
+			a.Queue.ForgetDonePrefix("completion\n")
+		} else {
+			a.Queue.ForgetDonePrefix("completion\n" + questID + "\n")
+		}
+		a.Queue.MarkDone(key)
+		changed = true
+		a.Log.Info("tilbakestilte progress", "quest", questID, "all", r.All, "deleted", deleted)
+	}
+	if !changed {
+		return
+	}
+	if err := a.Queue.Save(); err != nil {
+		a.Log.Error("kunne ikke lagre køen", "err", err)
+	}
+	if err := a.pullSync(ctx); err != nil {
+		a.Log.Warn("synk etter reset feilet", "err", err)
 	}
 }
 

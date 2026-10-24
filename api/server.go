@@ -49,6 +49,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sync", s.withPlayer(s.sync))
 	mux.HandleFunc("GET /v1/ws", s.serveWS)
 	mux.HandleFunc("POST /v1/complete", s.withPlayer(s.complete))
+	mux.HandleFunc("DELETE /v1/progress", s.withPlayer(s.deleteProgress))
 	mux.HandleFunc("POST /v1/level", s.withPlayer(s.level))
 	mux.HandleFunc("POST /v1/sagas", s.withPlayer(s.createSaga))
 	mux.HandleFunc("GET /v1/sagas", s.withPlayer(s.listSagas))
@@ -76,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/admin/log", s.withAdmin(s.listLog))
 	mux.HandleFunc("POST /v1/admin/log", s.withAdmin(s.createLog))
 	mux.HandleFunc("POST /v1/admin/complete", s.withAdmin(s.adminComplete))
+	mux.HandleFunc("DELETE /v1/admin/progress", s.withAdmin(s.deleteAdminProgress))
 	return mux
 }
 
@@ -206,6 +208,43 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// deleteProgress clears API progress for the signed-in player so a local
+// /gutsaga reset is not undone by the next companion sync.
+// Optional query quest_id limits to one saga; omit it to clear all.
+func (s *Server) deleteProgress(w http.ResponseWriter, r *http.Request) {
+	p := playerFrom(r)
+	questID := strings.TrimSpace(r.URL.Query().Get("quest_id"))
+	n, err := s.store.DeletePlayerProgress(r.Context(), p.ID, questID)
+	if err != nil {
+		if errors.Is(err, ErrInvalid) {
+			writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+			return
+		}
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": n, "quest_id": questID})
+}
+
+func (s *Server) deleteAdminProgress(w http.ResponseWriter, r *http.Request) {
+	characterID := strings.TrimSpace(r.URL.Query().Get("character_id"))
+	questID := strings.TrimSpace(r.URL.Query().Get("quest_id"))
+	if characterID == "" && questID == "" {
+		writeErr(w, http.StatusBadRequest, "invalid", "character_id or quest_id is required")
+		return
+	}
+	n, err := s.store.DeleteAdminProgress(r.Context(), characterID, questID)
+	if err != nil {
+		if errors.Is(err, ErrInvalid) {
+			writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+			return
+		}
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": n, "character_id": characterID, "quest_id": questID})
 }
 
 func (s *Server) level(w http.ResponseWriter, r *http.Request) {

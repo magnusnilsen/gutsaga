@@ -140,6 +140,22 @@ local function initDB()
     if type(GutSagaDB.objectives) ~= "table" then
         GutSagaDB.objectives = {}
     end
+    if type(GutSagaDB.pending_resets) ~= "table" then
+        GutSagaDB.pending_resets = {}
+    end
+end
+
+-- Queue an API progress wipe for the companion (after /reload writes SV).
+-- Without this, the next sync restores completed status and local reset looks broken.
+local function queueReset(questID)
+    initDB()
+    local row = { at = unixNow() }
+    if questID and questID ~= "" then
+        row.quest_id = questID
+    else
+        row.all = true
+    end
+    table.insert(GutSagaDB.pending_resets, row)
 end
 
 -- GutSagaData is only read at login and /reload. The companion writes notice
@@ -2780,13 +2796,15 @@ SlashCmdList.GUTSAGA = function(msg)
         return
     end
     if msg == "wipe" or msg == "clear" or msg == "reset" then
-        -- Must clear in-memory SavedVariables. Editing the file on disk while
-        -- logged in is overwritten on the next /reload or logout.
+        -- Clear in-memory state and queue an API wipe. Companion deletes
+        -- progress after /reload (SavedVariables flush). Editing the SV file
+        -- on disk while logged in is overwritten on the next /reload.
         initDB()
         GutSagaDB.completions = {}
         GutSagaDB.objectives = {}
+        queueReset(nil)
         selectedID = nil
-        chat("|cffc9a227GutSaga|r: Alle lokale fullføringer er slettet.")
+        chat("|cffc9a227GutSaga|r: Alle lokale fullføringer er slettet. Skriv |cffffffff/reload|r så companion rydder API-progress.")
         onWorld()
         if frame and frame:IsShown() then
             refresh()
@@ -2799,10 +2817,29 @@ SlashCmdList.GUTSAGA = function(msg)
         if type(GutSagaDB.objectives) == "table" then
             GutSagaDB.objectives[id] = nil
         end
+        queueReset(id)
         selectedID = id
-        chat("|cffc9a227GutSaga|r: «" .. label .. "» er tilbakestilt.")
+        chat("|cffc9a227GutSaga|r: «" .. label .. "» er tilbakestilt. Skriv |cffffffff/reload|r så companion rydder API-progress.")
         onWorld()
         show()
+    end
+    if msg == "reset selected" or msg == "reset this" then
+        if type(selectedID) == "string" and selectedID ~= "" then
+            local label = selectedID
+            local entries = GutSagaData and GutSagaData.entries
+            if type(entries) == "table" then
+                for _, e in ipairs(entries) do
+                    if type(e) == "table" and e.quest_id == selectedID and type(e.title) == "string" then
+                        label = e.title
+                        break
+                    end
+                end
+            end
+            resetQuest(selectedID, label)
+            return
+        end
+        chat("|cffc9a227GutSaga|r: Ingen saga er valgt. Åpne loggen og velg en, eller bruk |cffffffff/gutsaga wipe|r.")
+        return
     end
     if msg == "reset goldshire" then
         resetQuest("cf031479-7288-4508-b139-f23f1e322026", "En kveld i Goldshire")

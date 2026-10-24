@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -67,6 +68,19 @@ func (c *Client) Sync(ctx context.Context) (contract.SyncResponse, error) {
 	var out contract.SyncResponse
 	err := c.do(ctx, http.MethodGet, "/v1/sync", nil, "", nil, &out)
 	return out, err
+}
+
+// ResetProgress deletes API progress for this player. Empty questID clears all.
+func (c *Client) ResetProgress(ctx context.Context, questID string) (deleted int64, err error) {
+	path := "/v1/progress"
+	if q := strings.TrimSpace(questID); q != "" {
+		path += "?quest_id=" + url.QueryEscape(q)
+	}
+	var out struct {
+		Deleted int64 `json:"deleted"`
+	}
+	err = c.do(ctx, http.MethodDelete, path, nil, "", nil, &out)
+	return out.Deleted, err
 }
 
 // SagaImage downloads a saga cover image for the addon media folder.

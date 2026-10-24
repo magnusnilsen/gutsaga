@@ -5,12 +5,16 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/magnusnilsen/gutsaga/addon"
 	"github.com/magnusnilsen/gutsaga/internal/wowpath"
 )
 
-// Install copies the embedded addon into Interface/AddOns/GutSaga.
+// Install copies the addon into Interface/AddOns/GutSaga.
+// When GUTSAGA_ADDON_SRC is set to a GutSaga folder (or its parent that
+// contains GutSaga/), that tree is used instead of the embedded copy — so
+// local go run picks up lua edits without rebuilding the binary.
 // Each flavor TOC keeps its own interface number so the client can pick
 // GutSaga_Vanilla.toc, GutSaga_Mists.toc, GutSaga_TBC.toc, or GutSaga_Mainline.toc.
 // GutSaga.toc is the fallback and matches mode. mode "forever" rewrites every
@@ -22,6 +26,28 @@ func Install(wowDir, mode string) error {
 		return err
 	}
 	mode = wowpath.NormalizeClient(mode)
+	if src := addonSrc(); src != "" {
+		return installFromDir(src, dest, mode)
+	}
+	return installEmbedded(dest, mode)
+}
+
+func addonSrc() string {
+	src := strings.TrimSpace(os.Getenv("GUTSAGA_ADDON_SRC"))
+	if src == "" {
+		return ""
+	}
+	if st, err := os.Stat(filepath.Join(src, "GutSaga.lua")); err == nil && !st.IsDir() {
+		return src
+	}
+	nested := filepath.Join(src, "GutSaga")
+	if st, err := os.Stat(filepath.Join(nested, "GutSaga.lua")); err == nil && !st.IsDir() {
+		return nested
+	}
+	return ""
+}
+
+func installEmbedded(dest, mode string) error {
 	bodies := map[string][]byte{}
 	for _, name := range []string{
 		"GutSaga_Forever.toc",
@@ -52,6 +78,50 @@ func Install(wowDir, mode string) error {
 			}
 		}
 		body, err := addon.Files.ReadFile("GutSaga/" + name)
+		if err != nil {
+			return err
+		}
+		if isTOC(name) {
+			body = tocBody(mode, name, bodies, body)
+		}
+		if err := writeFile(target, body); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func installFromDir(src, dest, mode string) error {
+	bodies := map[string][]byte{}
+	for _, name := range []string{
+		"GutSaga_Forever.toc",
+		"GutSaga_Mainline.toc",
+		"GutSaga_Vanilla.toc",
+		"GutSaga_Mists.toc",
+		"GutSaga_TBC.toc",
+	} {
+		body, err := os.ReadFile(filepath.Join(src, name))
+		if err != nil {
+			return err
+		}
+		bodies[name] = body
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		target := filepath.Join(dest, name)
+		if name == "GutSagaData.lua" {
+			if _, err := os.Stat(target); err == nil {
+				continue
+			}
+		}
+		body, err := os.ReadFile(filepath.Join(src, name))
 		if err != nil {
 			return err
 		}

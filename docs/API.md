@@ -57,7 +57,7 @@ The API calls the `wow` hub MCP (`https://smia.tools/wow/mcp`), tool `check_acce
 
 `SMIA_AUTH_MODE=dev` plus `SMIA_DEV_TOKEN` skips the network call for local debugging.
 
-- Companion routes (`/v1/sync`, `/v1/complete`, `/v1/level`, `PUT /v1/characters`): `Authorization: Bearer <session or legacy gsk_ key>`.
+- Companion routes (`/v1/sync`, `/v1/complete`, `DELETE /v1/progress`, `/v1/level`, `PUT /v1/characters`): `Authorization: Bearer <session or legacy gsk_ key>`.
 - Admin routes (`/v1/admin/*`): `Authorization: Bearer <ADMIN_TOKEN>`.
 - `GET /healthz` is open. It pings Postgres and returns `{"ok":true}`.
 
@@ -314,6 +314,16 @@ Milestone levels (10, 20, 30, …) are queued as a short embed: content `**Magni
 
 Updates the character. The same level again is a success with `"changed": false` and no extra log line. A change writes `Magni nådde nivå 13.`
 
+### `DELETE /v1/progress`
+
+Clears progress rows for the signed-in player so a local `/gutsaga wipe` or `/gutsaga reset …` is not undone by the next companion sync. Optional `?quest_id=<uuid>` limits to one saga; omit it to clear every row for that player's characters.
+
+```json
+{"ok": true, "deleted": 2, "quest_id": ""}
+```
+
+The companion reads `GutSagaDB.pending_resets` from SavedVariables (after `/reload`), calls this endpoint, then syncs again. Adventure-log lines are left in place.
+
 ## Admin
 
 These are the endpoints a later Smia MCP server should call with `ADMIN_TOKEN`.
@@ -338,6 +348,7 @@ These are the endpoints a later Smia MCP server should call with `ADMIN_TOKEN`.
 | `GET` | `/v1/public/sagas/{id}/image?exp=&sig=` | no `Authorization` header. HMAC-SHA256 of `id`, a newline, and the unix `exp`, hex-encoded, keyed with `IMAGE_URL_SECRET`. `403` bad signature (checked before the database, so a guess does not reveal whether the saga exists). `403` when `exp` is in the past. `404` when the signature is valid and there is no image. The body is only the image bytes. |
 | `GET` | `/v1/admin/log?battletag=&character_id=&limit=` | newest first, default 50 |
 | `POST` | `/v1/admin/log` | `type`, `title`, `body`, optional `battletag` / `player_id` / `character_id` / `quest_id` |
+| `DELETE` | `/v1/admin/progress` | `character_id` and/or `quest_id` (at least one) |
 
 Create quest starts at version 1 and stores that snapshot. Realm must match what the Forever client reports (`GetRealmName()`), including spaces.
 

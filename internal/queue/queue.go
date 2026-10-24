@@ -148,6 +148,46 @@ func (q *Queue) ForgetDone(key string) {
 	delete(q.done, key)
 }
 
+// ForgetDonePrefix drops every finished key with the given prefix
+// (e.g. "completion\n"+questID after a /gutsaga reset).
+func (q *Queue) ForgetDonePrefix(prefix string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if prefix == "" {
+		return
+	}
+	for k := range q.done {
+		if strings.HasPrefix(k, prefix) {
+			delete(q.done, k)
+		}
+	}
+}
+
+// MarkDone records a key as finished without a queued item (used for resets).
+func (q *Queue) MarkDone(key string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if key == "" {
+		return
+	}
+	q.done[key] = true
+}
+
+// IsDone reports whether key was already finished.
+func (q *Queue) IsDone(key string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.done[key]
+}
+
+// ResetKey dedupes one addon-queued progress reset.
+func ResetKey(questID string, all bool, at int64) string {
+	if all || strings.TrimSpace(questID) == "" {
+		return "reset\nall\n" + itoa(int(at))
+	}
+	return "reset\n" + questID + "\n" + itoa(int(at))
+}
+
 func (q *Queue) Due(now time.Time) []Item {
 	q.mu.Lock()
 	defer q.mu.Unlock()

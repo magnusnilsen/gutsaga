@@ -1617,6 +1617,67 @@ func (s *Store) MarkDiscord(ctx context.Context, progressID, discordURL string) 
 	return err
 }
 
+// DeletePlayerProgress removes progress rows for a player's characters.
+// questID empty deletes every row for that player. Returns how many were deleted.
+func (s *Store) DeletePlayerProgress(ctx context.Context, playerID, questID string) (int64, error) {
+	if err := validUUID(playerID); err != nil {
+		return 0, err
+	}
+	if questID != "" {
+		if err := validUUID(questID); err != nil {
+			return 0, err
+		}
+		tag, err := s.pool.Exec(ctx, `
+			DELETE FROM progress p
+			USING characters c
+			WHERE p.character_id = c.id AND c.player_id = $1 AND p.quest_id = $2`, playerID, questID)
+		if err != nil {
+			return 0, err
+		}
+		return tag.RowsAffected(), nil
+	}
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM progress p
+		USING characters c
+		WHERE p.character_id = c.id AND c.player_id = $1`, playerID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// DeleteAdminProgress removes progress by character and/or quest.
+// At least one of characterID or questID must be set.
+func (s *Store) DeleteAdminProgress(ctx context.Context, characterID, questID string) (int64, error) {
+	if characterID == "" && questID == "" {
+		return 0, fmt.Errorf("character_id or quest_id is required")
+	}
+	if characterID != "" {
+		if err := validUUID(characterID); err != nil {
+			return 0, err
+		}
+	}
+	if questID != "" {
+		if err := validUUID(questID); err != nil {
+			return 0, err
+		}
+	}
+	var tag pgconn.CommandTag
+	var err error
+	switch {
+	case characterID != "" && questID != "":
+		tag, err = s.pool.Exec(ctx, `DELETE FROM progress WHERE character_id=$1 AND quest_id=$2`, characterID, questID)
+	case characterID != "":
+		tag, err = s.pool.Exec(ctx, `DELETE FROM progress WHERE character_id=$1`, characterID)
+	default:
+		tag, err = s.pool.Exec(ctx, `DELETE FROM progress WHERE quest_id=$1`, questID)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // AdminComplete marks a quest completed for a character without a player session.
 func (s *Store) AdminComplete(ctx context.Context, characterID, questID string, questVersion, level int) (contract.CompletionResponse, error) {
 	if err := validUUID(characterID); err != nil {

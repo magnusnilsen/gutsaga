@@ -208,6 +208,26 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/Sync"}
         "401": {description: Missing or unknown API key}
+  /v1/progress:
+    delete:
+      security: [{playerKey: []}]
+      summary: Clear progress for this player so a local /gutsaga wipe or reset is not undone by the next sync. Optional quest_id limits to one saga.
+      parameters:
+        - in: query
+          name: quest_id
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: How many progress rows were deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  deleted: {type: integer}
+                  quest_id: {type: string}
+        "401": {description: Missing or unknown API key}
   /v1/complete:
     post:
       security: [{playerKey: []}]
