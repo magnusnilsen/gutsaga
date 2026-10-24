@@ -142,6 +142,72 @@
       }
     },
     {
+      "id": "goals_fallback",
+      "type": "util.constant",
+      "config": {
+        "valueType": "string",
+        "value": "(ingen mål)"
+      }
+    },
+    {
+      "id": "goals_s",
+      "type": "util.convert",
+      "config": {
+        "toType": "string"
+      }
+    },
+    {
+      "id": "goals_empty",
+      "type": "logic.compare",
+      "config": {
+        "op": "eq"
+      }
+    },
+    {
+      "id": "empty_str",
+      "type": "util.constant",
+      "config": {
+        "valueType": "string",
+        "value": ""
+      }
+    },
+    {
+      "id": "pick_goals",
+      "type": "logic.switch",
+      "config": {
+        "valueType": "string"
+      }
+    },
+    {
+      "id": "desc_fallback",
+      "type": "util.constant",
+      "config": {
+        "valueType": "string",
+        "value": "(ingen beskrivelse)"
+      }
+    },
+    {
+      "id": "desc_s",
+      "type": "util.convert",
+      "config": {
+        "toType": "string"
+      }
+    },
+    {
+      "id": "desc_empty",
+      "type": "logic.compare",
+      "config": {
+        "op": "eq"
+      }
+    },
+    {
+      "id": "pick_desc",
+      "type": "logic.switch",
+      "config": {
+        "valueType": "string"
+      }
+    },
+    {
       "id": "goals_block",
       "type": "util.json.build",
       "config": {
@@ -339,17 +405,101 @@
       "targetHandle": "url"
     },
     {
-      "id": "e14",
+      "id": "e14a",
       "source": "goals_md",
-      "target": "goals_block",
+      "target": "goals_s",
       "sourceHandle": "value",
+      "targetHandle": "value"
+    },
+    {
+      "id": "e14b",
+      "source": "goals_s",
+      "target": "goals_empty",
+      "sourceHandle": "out",
+      "targetHandle": "a"
+    },
+    {
+      "id": "e14c",
+      "source": "empty_str",
+      "target": "goals_empty",
+      "sourceHandle": "value",
+      "targetHandle": "b"
+    },
+    {
+      "id": "e14d",
+      "source": "goals_empty",
+      "target": "pick_goals",
+      "sourceHandle": "result",
+      "targetHandle": "switch"
+    },
+    {
+      "id": "e14e",
+      "source": "goals_fallback",
+      "target": "pick_goals",
+      "sourceHandle": "value",
+      "targetHandle": "true"
+    },
+    {
+      "id": "e14f",
+      "source": "goals_s",
+      "target": "pick_goals",
+      "sourceHandle": "out",
+      "targetHandle": "false"
+    },
+    {
+      "id": "e14",
+      "source": "pick_goals",
+      "target": "goals_block",
+      "sourceHandle": "result",
       "targetHandle": "body"
     },
     {
-      "id": "e15",
+      "id": "e15a",
       "source": "desc",
-      "target": "desc_block",
+      "target": "desc_s",
       "sourceHandle": "value",
+      "targetHandle": "value"
+    },
+    {
+      "id": "e15b",
+      "source": "desc_s",
+      "target": "desc_empty",
+      "sourceHandle": "out",
+      "targetHandle": "a"
+    },
+    {
+      "id": "e15c",
+      "source": "empty_str",
+      "target": "desc_empty",
+      "sourceHandle": "value",
+      "targetHandle": "b"
+    },
+    {
+      "id": "e15d",
+      "source": "desc_empty",
+      "target": "pick_desc",
+      "sourceHandle": "result",
+      "targetHandle": "switch"
+    },
+    {
+      "id": "e15e",
+      "source": "desc_fallback",
+      "target": "pick_desc",
+      "sourceHandle": "value",
+      "targetHandle": "true"
+    },
+    {
+      "id": "e15f",
+      "source": "desc_s",
+      "target": "pick_desc",
+      "sourceHandle": "out",
+      "targetHandle": "false"
+    },
+    {
+      "id": "e15",
+      "source": "pick_desc",
+      "target": "desc_block",
+      "sourceHandle": "result",
       "targetHandle": "body"
     },
     {
