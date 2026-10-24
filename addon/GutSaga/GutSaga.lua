@@ -1228,7 +1228,14 @@ local function readNPC()
     local s = ok and plainString(name) or nil
     if s then
         world.npc = s
+        -- Keep the name briefly so a visit talk can latch even if the panel closes
+        -- before the next full check.
+        world.pendingTalk = { name = s, untilAt = unixNow() + 5 }
     end
+end
+
+local function clearNPC()
+    world.npc = ""
 end
 
 local function readObject()
@@ -1256,7 +1263,7 @@ local function collectItems(obj, items)
     if type(obj) ~= "table" then
         return
     end
-    if obj.type == "collect" then
+    if obj.type == "collect" or obj.type == "item" then
         local id = tonumber(obj.item_id)
         if id and items[id] == nil then
             items[id] = itemCount(id)
@@ -1264,6 +1271,11 @@ local function collectItems(obj, items)
     end
     if type(obj.objectives) == "table" then
         for _, child in ipairs(obj.objectives) do
+            collectItems(child, items)
+        end
+    end
+    if type(obj.beats) == "table" then
+        for _, child in ipairs(obj.beats) do
             collectItems(child, items)
         end
     end
@@ -1291,6 +1303,12 @@ local function objectiveState(entries)
         emoteX = pending.x
         emoteY = pending.y
     end
+    local talkName = world.npc
+    local pendingTalk = world.pendingTalk
+    if (not talkName or talkName == "") and type(pendingTalk) == "table"
+        and (tonumber(pendingTalk.untilAt) or 0) >= unixNow() then
+        talkName = pendingTalk.name
+    end
     return {
         zone = world.zone,
         subzone = world.subzone,
@@ -1299,6 +1317,7 @@ local function objectiveState(entries)
         x = world.x,
         y = world.y,
         npc = world.npc,
+        talk_name = talkName,
         object = world.object,
         items = items,
         kill_name = world.killName,
@@ -2797,6 +2816,10 @@ SlashCmdList.GUTSAGA = function(msg)
         resetQuest("59e95828-872b-46f1-9767-7d27e5e27fc5", "Klapp, så en frekk gest")
         return
     end
+    if msg == "reset rabbits" or msg == "reset kaniner" then
+        resetQuest("68a6b8dc-8cbf-4b36-9db0-dff4e6d605a0", "Kaniner i Elwynn")
+        return
+    end
     show()
 end
 
@@ -2843,6 +2866,10 @@ local function noteEmote(token, unit, msg)
         emote = string.sub(emote, 2)
     end
     emote = (emote:gsub("%s+", "_"))
+    -- /clap and /applaud are different tokens; authors usually write APPLAUD.
+    if emote == "CLAP" then
+        emote = "APPLAUD"
+    end
     if emote == "" then
         return
     end
@@ -2910,10 +2937,15 @@ events:RegisterEvent("ZONE_CHANGED")
 events:RegisterEvent("ZONE_CHANGED_INDOORS")
 events:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 events:RegisterEvent("GOSSIP_SHOW")
+events:RegisterEvent("GOSSIP_CLOSED")
 events:RegisterEvent("QUEST_DETAIL")
 events:RegisterEvent("QUEST_PROGRESS")
 events:RegisterEvent("QUEST_COMPLETE")
+events:RegisterEvent("QUEST_FINISHED")
 events:RegisterEvent("MERCHANT_SHOW")
+events:RegisterEvent("MERCHANT_CLOSED")
+events:RegisterEvent("TRAINER_SHOW")
+events:RegisterEvent("TRAINER_CLOSED")
 events:RegisterEvent("PLAYER_TARGET_CHANGED")
 events:RegisterEvent("BAG_UPDATE")
 events:RegisterEvent("GET_ITEM_INFO_RECEIVED")
@@ -2965,9 +2997,14 @@ events:SetScript("OnEvent", function(_, event, ...)
         return
     end
     if event == "GOSSIP_SHOW" or event == "QUEST_DETAIL" or event == "QUEST_PROGRESS"
-        or event == "QUEST_COMPLETE" or event == "MERCHANT_SHOW" then
+        or event == "QUEST_COMPLETE" or event == "MERCHANT_SHOW" or event == "TRAINER_SHOW" then
         readNPC()
         onWorld()
+        return
+    end
+    if event == "GOSSIP_CLOSED" or event == "QUEST_FINISHED"
+        or event == "MERCHANT_CLOSED" or event == "TRAINER_CLOSED" then
+        clearNPC()
         return
     end
     if event == "PLAYER_TARGET_CHANGED" then
@@ -2998,17 +3035,28 @@ events:SetScript("OnEvent", function(_, event, ...)
                     world.lastHitGUID = destGUID
                     world.lastHitName = plainString(destName)
                 end
+                -- Critters may fire both PARTY_KILL and UNIT_DIED; count each GUID once.
+                local recentUntil = tonumber(world.recentKillUntil) or 0
+                if world.recentKillGUID and unixNow() > recentUntil then
+                    world.recentKillGUID = nil
+                    world.recentKillUntil = nil
+                end
+                local already = destGUID and world.recentKillGUID == destGUID and unixNow() <= recentUntil
                 local counted = false
-                if subevent == "PARTY_KILL" then
+                if subevent == "PARTY_KILL" and destGUID and not already then
                     counted = true
-                elseif subevent == "UNIT_DIED" and destGUID and destGUID == world.lastHitGUID then
+                elseif subevent == "UNIT_DIED" and destGUID and not already and destGUID == world.lastHitGUID then
                     counted = true
                     if (not destName or destName == "") and world.lastHitName then
                         destName = world.lastHitName
                     end
+                end
+                if counted and destGUID then
+                    world.recentKillGUID = destGUID
+                    world.recentKillUntil = unixNow() + 3
                     world.lastHitGUID = nil
                 end
-                local witnessed = (subevent == "PARTY_KILL" or subevent == "UNIT_DIED")
+                local witnessed = counted
                     and destName and not secret(destName) and plainString(destName)
                 if witnessed then
                     world.deathName = witnessed
@@ -3021,8 +3069,6 @@ events:SetScript("OnEvent", function(_, event, ...)
                         world.killSecret = false
                         world.killName = plainString(destName)
                     end
-                end
-                if counted or witnessed then
                     if witnessed then
                         witnessGroupKills(witnessed)
                     end

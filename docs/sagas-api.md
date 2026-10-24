@@ -27,7 +27,7 @@ Needs at least one of zone, subzone, map_id, or x/y.
 
 ### `talk`
 
-Target an NPC or world object. `npc` and/or `object`, matched to `UnitName` in the client language.
+Open dialogue with an NPC, or select a world object. `npc` requires gossip / quest / merchant / trainer (`UnitName("npc")`) — targeting alone does not count. `object` matches the current target. Always `visit`: once you have talked, it stays ticked.
 
 ### `item`
 

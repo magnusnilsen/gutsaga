@@ -87,7 +87,7 @@ Every step has `id` (`[A-Za-z0-9_-]{1,40}`, unique across the saga including seq
 | `type` | Fields |
 |---|---|
 | `go` | `zone`, `subzone` (client language; `\|` or `;` for alternatives), `map_id` (UiMapID; Elwynn Forest is 37), `x`, `y` (0–1), `radius` (default 0.02). Optional `memory`. |
-| `talk` | `npc` and/or `object`. Matched to `UnitName`. Names follow the client language. Not GUIDs. |
+| `talk` | `npc` and/or `object`. `npc` requires opening dialogue (gossip, quest, merchant, or trainer) — targeting alone does not count. `object` matches the current target. Names follow the client language. Not GUIDs. Always `visit`. |
 | `item` | `item_id` (required), optional `item_name`, `count` (default 1). Optional `memory`. |
 | `emote` | `emote` token such as `SALUTE` or `/salute`. Optional `npc` (target at emote time). Optional place fields, same as `go`, captured when the emote fires. |
 | `kill` | `npc` (creature name, not a GUID), `count` (default 1). A secret combat-log name does not count. Optional `group` (below). |

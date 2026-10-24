@@ -156,10 +156,19 @@ local function interactOK(obj, state)
     if not wantNPC and not wantObject then
         return false
     end
-    -- state.npc is the gossip/merchant unit. state.object is the current target.
-    local npc = wantNPC and (same(obj.npc, state.npc) or same(obj.npc, state.object))
-    local object = wantObject and (same(obj.object, state.object) or same(obj.object, state.npc))
-    return npc or object
+    -- state.npc is the open dialogue unit (gossip / quest / merchant / trainer).
+    -- Targeting alone is not a talk. state.object is the current target (world objects).
+    local talked = wantNPC and (same(obj.npc, state.npc) or listed(obj.npc, state.npc)
+        or same(obj.npc, state.talk_name) or listed(obj.npc, state.talk_name))
+    local object = wantObject and (same(obj.object, state.object) or same(obj.object, state.npc)
+        or listed(obj.object, state.object) or listed(obj.object, state.npc))
+    if wantNPC and wantObject then
+        return talked or object
+    end
+    if wantNPC then
+        return talked
+    end
+    return object
 end
 
 local function itemHave(state, id)
@@ -178,7 +187,12 @@ local function emoteToken(s)
     if s:sub(1, 1) == "/" then
         s = s:sub(2)
     end
-    return (s:gsub("%s+", "_"):upper())
+    s = (s:gsub("%s+", "_"):upper())
+    -- Classic /clap is CLAP; sagas usually ask for APPLAUD.
+    if s == "CLAP" then
+        return "APPLAUD"
+    end
+    return s
 end
 
 local function hasPlace(obj)

@@ -61,8 +61,14 @@ steps = M.evaluate({
 }, { npc = "Mailbox" }, {})
 assertTrue(steps.obj.done, "gossip name counts as object")
 
-steps, done = M.evaluate(objectives, { object = "Innkeeper Farley" }, { place = { done = true } })
-assertTrue(steps.talk.done, "current target counts as the npc")
+steps, done = M.evaluate(objectives, { object = "Innkeeper Farley" }, { place = { done = true } }, false)
+assertTrue(not steps.talk.done, "targeting alone is not a talk")
+steps, done = M.evaluate(objectives, { npc = "Innkeeper Farley" }, { place = { done = true } }, false)
+assertTrue(steps.talk.done, "open dialogue counts as a talk")
+steps, done = M.evaluate({
+    { id = "farley", type = "talk", text = "Snakk", npc = "Innkeeper Farley" },
+}, { talk_name = "Innkeeper Farley" }, {}, false)
+assertTrue(steps.farley.done, "pending talk_name latches visit")
 
 -- Any-order: later goals can complete without earlier ones.
 steps, done = M.evaluate(objectives, { npc = "Innkeeper Farley", items = { [159] = 1 } }, {}, false)
@@ -172,6 +178,16 @@ assertTrue(not M.groupOK({ size = 4, min_level = 17, instance = "Deadmines" }, g
 assertTrue(M.groupOK({ size = 3, min_level = 17, instance = "The Deadmines|Deadmines" }, group), "three at 17 in the instance")
 assertTrue(not M.groupOK({ size = 3, min_level = 17, instance = "Stormwind Stockade" }, group), "wrong instance")
 assertTrue(M.groupOK(nil, {}), "no group rule")
+
+-- item type + CLAP alias for APPLAUD.
+steps, done = M.evaluate({
+    { id = "water", type = "item", text = "Vann", item_id = 159, count = 1 },
+}, { items = { [159] = 2 } }, {}, false)
+assertTrue(steps.water.done and done, "item 2/1 is done")
+steps, done = M.evaluate({
+    { id = "clap", type = "emote", text = "Klapp", emote = "APPLAUD", npc = "Brother Wilhelm" },
+}, { emote = "CLAP", emote_target = "Brother Wilhelm" }, {}, false)
+assertTrue(steps.clap.done and done, "CLAP matches APPLAUD")
 
 -- memory: visit latches, hold follows the world.
 steps, done = M.evaluate({
