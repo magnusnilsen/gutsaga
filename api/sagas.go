@@ -139,6 +139,14 @@ func (s *Server) deleteSagaImage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getSagaImage(w http.ResponseWriter, r *http.Request) {
 	// Any signed-in player may fetch a cover used in sync / the addon.
 	_ = playerFrom(r)
+	s.writeStoredQuestImage(w, r)
+}
+
+func (s *Server) getAdminQuestImage(w http.ResponseWriter, r *http.Request) {
+	s.writeStoredQuestImage(w, r)
+}
+
+func (s *Server) writeStoredQuestImage(w http.ResponseWriter, r *http.Request) {
 	ct, image, err := s.store.QuestImage(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.fail(w, err)

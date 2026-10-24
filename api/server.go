@@ -25,10 +25,13 @@ type Notifier interface {
 }
 
 type Server struct {
-	store      *Store
-	adminToken string
-	discord    Notifier
-	smia       smia.Verifier
+	store          *Store
+	adminToken     string
+	publicBaseURL  string
+	imageURLSecret string
+	imageURLTTL    time.Duration
+	discord        Notifier
+	smia           smia.Verifier
 }
 
 type ctxKey int
@@ -50,6 +53,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /v1/sagas/{id}/image", s.withPlayer(s.putSagaImage))
 	mux.HandleFunc("DELETE /v1/sagas/{id}/image", s.withPlayer(s.deleteSagaImage))
 	mux.HandleFunc("GET /v1/sagas/{id}/image", s.withPlayer(s.getSagaImage))
+	mux.HandleFunc("GET /v1/public/sagas/{id}/image", s.getPublicSagaImage)
 	mux.HandleFunc("POST /v1/admin/players", s.withAdmin(s.createPlayer))
 	mux.HandleFunc("GET /v1/admin/players", s.withAdmin(s.listPlayers))
 	mux.HandleFunc("POST /v1/admin/players/{id}/rotate-key", s.withAdmin(s.rotateKey))
@@ -61,6 +65,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/admin/quests", s.withAdmin(s.createQuest))
 	mux.HandleFunc("GET /v1/admin/quests", s.withAdmin(s.listQuests))
 	mux.HandleFunc("GET /v1/admin/quests/{id}", s.withAdmin(s.getQuest))
+	mux.HandleFunc("GET /v1/admin/quests/{id}/image", s.withAdmin(s.getAdminQuestImage))
 	mux.HandleFunc("PATCH /v1/admin/quests/{id}", s.withAdmin(s.patchQuest))
 	mux.HandleFunc("GET /v1/admin/log", s.withAdmin(s.listLog))
 	mux.HandleFunc("POST /v1/admin/log", s.withAdmin(s.createLog))
@@ -350,7 +355,7 @@ func (s *Server) createQuest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.announceCreated(r.Context(), out, body.Announce, cover, coverType)
-	writeJSON(w, http.StatusCreated, withSagaImageURL(out))
+	writeJSON(w, http.StatusCreated, s.withSignedCoverURL(withSagaImageURL(out)))
 }
 
 func (s *Server) listQuests(w http.ResponseWriter, r *http.Request) {
@@ -358,6 +363,9 @@ func (s *Server) listQuests(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, err)
 		return
+	}
+	for i := range out {
+		out[i].Quest = s.withSignedCoverURL(out[i].Quest)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"quests": out})
 }
@@ -369,6 +377,7 @@ func (s *Server) getQuest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out.Quest = withSagaImageURL(out.Quest)
+	out.Quest = s.withSignedCoverURL(out.Quest)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -407,7 +416,7 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 	if gerr == nil {
 		s.announceEdited(r.Context(), detail.Quest, out, body.Announce)
 	}
-	writeJSON(w, http.StatusOK, withSagaImageURL(out))
+	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
 }
 
 func (s *Server) listLog(w http.ResponseWriter, r *http.Request) {

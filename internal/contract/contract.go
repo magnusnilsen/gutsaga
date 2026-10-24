@@ -60,6 +60,7 @@ type Quest struct {
 	Version            int         `json:"version"`
 	HasImage           bool        `json:"has_image"`
 	ImageURL           string      `json:"image_url,omitempty"`
+	ImageSignedURL     string      `json:"image_signed_url,omitempty"`
 }
 
 type Progress struct {

@@ -159,7 +159,7 @@ API-et ligger i `api/` og kjøres på Railway-prosjektet `gutsaga`.
 
 1. Koble GitHub-repoet til Railway. **Rotmappen til tjenesten skal være repo-roten**, ikke `api/`. `railway.json` peker på `api/Dockerfile`.
 2. Legg på Postgres-pluginen. Den setter `DATABASE_URL`.
-3. Sett `DISCORD_WEBHOOK_URL` (innkommende webhook) og `ADMIN_TOKEN` (`openssl rand -hex 32`). Det er ingen flere Discord-variabler. Samme webhook brukes til nye sagaer, versjoner, avslutning, milestolpe-nivå og fullføring.
+3. Sett `DISCORD_WEBHOOK_URL` (innkommende webhook) og `ADMIN_TOKEN` (`openssl rand -hex 32`). Det er ingen flere Discord-variabler. Samme webhook brukes til nye sagaer, versjoner, avslutning, milestolpe-nivå og fullføring. For forsidebilde i chat, sett også `PUBLIC_BASE_URL` (`https://gutsaga-production.up.railway.app`) og `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` er valgfri og er `1h` hvis den mangler.
 4. Push til `main` bygger og ruller ut. Migreringene kjører ved oppstart. `/healthz` skal svare `{"ok":true}`.
 5. Spillere logger inn med Smia. API-et sjekker medlemskap i hubben wow og gir en egen økt. `mint` finnes fortsatt for en manuell nøkkel.
 
@@ -173,7 +173,7 @@ Brukernavnet er alltid **GutSaga**. Teksten er norsk. Meldingene er embeds med s
 
 Innlegget skjer i bakgrunnen. API-kallet venter ikke, og en feil fra Discord (også HTTP 429) ruller ikke tilbake sagaen eller fullføringen. 429 venter `retry_after` fra JSON-kroppen, ellers `Retry-After`. Nettverksfeil og 5xx prøves på nytt med økende pause. Etter noen forsøk logges feilen.
 
-`POST /v1/admin/quests` (det Smia-verktøyet `create_quest` kaller) kunngjør en aktiv saga. `announce: false` hopper over. Et inaktivt utkast kunngjøres ikke med mindre `announce` er `true`. Valgfri `image_base64` lagres som cover og legges ved meldingen som fil (`attachment://cover.png`), så bildet vises uten en offentlig GutSaga-adresse. Fullføring gjør det samme med skjermbildet (`attachment://screenshot.png`).
+`POST /v1/admin/quests` (det Smia-verktøyet `create_quest` kaller) kunngjør en aktiv saga. `announce: false` hopper over. Et inaktivt utkast kunngjøres ikke med mindre `announce` er `true`. Valgfri `image_base64` lagres som cover og legges ved Discord-meldingen som fil (`attachment://cover.png`). Fullføring gjør det samme med skjermbildet (`attachment://screenshot.png`). Chatklienter som trenger en adresse bruker i stedet `image_signed_url` fra `PUBLIC_BASE_URL` og `IMAGE_URL_SECRET`.
 
 En endring av tekst, mål, belønning, minstenivå eller parti legger ut en kort versjonsmelding. `active: false` legger sagaen bort. Bare å bytte hvem den er tildelt, er stille. `announce: false` på `PATCH` demper begge. Samme regler gjelder `PATCH /v1/sagas/{id}`. Nivå 10, 20, 30, … får en kort melding. Andre nivåer gjør det ikke.
 
