@@ -1163,7 +1163,8 @@ func buildActivityCard(completers []contract.QuestCompleter) *contract.QuestCard
 	}
 	if len(completers) == 0 {
 		card.Rows = []contract.QuestCardRow{{
-			ID: "done-none",
+			ID:    "done-none",
+			Group: "Aktivitet",
 			Cells: map[string]any{
 				"character": "Ingen har fullført ennå",
 				"detail":    "",
@@ -1190,7 +1191,8 @@ func buildActivityCard(completers []contract.QuestCompleter) *contract.QuestCard
 			detail += c.Realm
 		}
 		card.Rows = append(card.Rows, contract.QuestCardRow{
-			ID: fmt.Sprintf("done-%d", i+1),
+			ID:    fmt.Sprintf("done-%d", i+1),
+			Group: "Aktivitet",
 			Cells: map[string]any{
 				"character": who,
 				"detail":    detail,

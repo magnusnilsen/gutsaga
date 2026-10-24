@@ -131,13 +131,13 @@
       }
     },
     {
-      "id": "heading_act",
+      "id": "spacer",
       "type": "util.constant",
       "config": {
         "valueType": "json",
         "value": {
-          "type": "heading",
-          "text": "Aktivitet"
+          "type": "text",
+          "body": "&nbsp;"
         }
       }
     },
@@ -280,7 +280,7 @@
           "name": "card",
           "type": "object",
           "required": false,
-          "description": "Stack card: goals, Beskrivelse, cover, Aktivitet table."
+          "description": "Stack card: goals, Beskrivelse, cover, collapsible Aktivitet table."
         },
         {
           "name": "saga",
@@ -539,7 +539,7 @@
     },
     {
       "id": "e21",
-      "source": "heading_desc",
+      "source": "spacer",
       "target": "blocks2",
       "sourceHandle": "value",
       "targetHandle": "item"
@@ -553,7 +553,7 @@
     },
     {
       "id": "e23",
-      "source": "desc_block",
+      "source": "heading_desc",
       "target": "blocks3",
       "sourceHandle": "value",
       "targetHandle": "item"
@@ -567,7 +567,7 @@
     },
     {
       "id": "e25",
-      "source": "media_block",
+      "source": "desc_block",
       "target": "blocks4",
       "sourceHandle": "value",
       "targetHandle": "item"
@@ -581,7 +581,7 @@
     },
     {
       "id": "e27",
-      "source": "heading_act",
+      "source": "media_block",
       "target": "blocks5",
       "sourceHandle": "value",
       "targetHandle": "item"

@@ -28,7 +28,7 @@ func TestBuildActivityCard(t *testing.T) {
 	if card == nil || len(card.Columns) != 3 || len(card.Rows) != 1 {
 		t.Fatalf("empty %+v", card)
 	}
-	if card.Rows[0].Cells["character"] != "Ingen har fullført ennå" {
+	if card.Rows[0].Cells["character"] != "Ingen har fullført ennå" || card.Rows[0].Group != "Aktivitet" {
 		t.Fatalf("empty row %+v", card.Rows[0])
 	}
 
@@ -37,6 +37,9 @@ func TestBuildActivityCard(t *testing.T) {
 	}})
 	if len(card.Rows) != 1 {
 		t.Fatalf("rows %d", len(card.Rows))
+	}
+	if card.Rows[0].Group != "Aktivitet" {
+		t.Fatalf("group %q", card.Rows[0].Group)
 	}
 	if card.Rows[0].Cells["character"] != "Magni fullførte" {
 		t.Fatalf("character %v", card.Rows[0].Cells["character"])
