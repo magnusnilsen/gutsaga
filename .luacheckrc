@@ -5,6 +5,7 @@ globals = {
     "GutSagaDB",
     "GutSagaData",
     "GutSagaObjectives",
+    "GutSagaChains",
     "SLASH_GUTSAGA1",
     "SLASH_GUTSAGA2",
     "SlashCmdList",
@@ -86,4 +87,5 @@ read_globals = {
 exclude_files = {
     "addon/GutSaga/GutSagaData.lua",
     "addon/objectives_test.lua",
+    "addon/chains_test.lua",
 }

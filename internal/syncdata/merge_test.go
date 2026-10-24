@@ -105,6 +105,44 @@ func TestLuaEscapes(t *testing.T) {
 	}
 }
 
+func TestChainLockFollowsAnyCompletionVersion(t *testing.T) {
+	sync := contract.SyncResponse{
+		Characters: []contract.Character{
+			{ID: "c1", Name: "Magni", Realm: "Celebras", Level: 10},
+		},
+		Quests: []contract.Quest{
+			{ID: "q1", Title: "Kapittel 1", Active: true, PartyQuest: true, Version: 4, Chain: &contract.Chain{ID: "goldshire", Name: "Goldshire", Order: 1, Index: 1, Total: 2}},
+			{ID: "q2", Title: "Kapittel 2", Active: true, PartyQuest: true, Version: 1, Requires: []string{"q1"}, Chain: &contract.Chain{ID: "goldshire", Name: "Goldshire", Order: 2, Index: 2, Total: 2}},
+		},
+		Progress: []contract.Progress{
+			{QuestID: "q1", CharacterID: "c1", Status: "completed", QuestVersion: 1},
+		},
+	}
+	entries := Merge(sync)
+	byID := map[string]Entry{}
+	for _, e := range entries {
+		byID[e.QuestID] = e
+	}
+	if len(byID) != 2 || byID["q2"].Locked || byID["q2"].ChainIndex != 2 || byID["q2"].ChainTotal != 2 {
+		t.Fatalf("older completion should unlock the next saga: %+v", entries)
+	}
+	if len(byID["q2"].Requires) != 1 || byID["q2"].Requires[0].Title != "Kapittel 1" {
+		t.Fatalf("%+v", byID["q2"])
+	}
+	if entries[0].QuestID != "q2" || entries[1].Status != "completed" {
+		t.Fatalf("open chapter stays ahead of the finished one: %+v", entries)
+	}
+	lua := WriteLua("", "t", entries)
+	if !strings.Contains(lua, `chain_index = 2`) || !strings.Contains(lua, `title = "Kapittel 1"`) || !strings.Contains(lua, `locked = false`) {
+		t.Fatal(lua)
+	}
+	sync.Progress = nil
+	locked := Merge(sync)
+	if len(locked) != 2 || locked[0].QuestID != "q1" || locked[0].Locked || !locked[1].Locked {
+		t.Fatalf("%+v", locked)
+	}
+}
+
 func TestFindCharacter(t *testing.T) {
 	sync := contract.SyncResponse{Characters: []contract.Character{
 		{ID: "1", Name: "Magni", Realm: "Argent Dawn"},

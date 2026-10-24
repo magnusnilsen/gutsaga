@@ -350,12 +350,12 @@ func (s *Server) createQuest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	out, err := s.store.CreateQuest(r.Context(), QuestInput{
-		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
-		ObjectivesOrdered: body.ObjectivesOrdered, When: body.When, Group: body.Group, Reward: body.Reward,
-		MinLevel: body.MinLevel, PartyQuest: body.PartyQuest, Active: body.Active, CreatedBy: body.CreatedBy,
-		AssignedCharacterIDs: body.AssignedCharacterIDs,
-	})
+	in, err := fillQuestInput(body)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	out, err := s.store.CreateQuest(r.Context(), in)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -430,28 +430,10 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	patch := QuestPatch{
-		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
-		ObjectivesOrdered: body.ObjectivesOrdered, Reward: body.Reward,
-		PartyQuest: body.PartyQuest, Active: body.Active, CreatedBy: body.CreatedBy,
-		AssignedCharacterIDs: body.AssignedCharacterIDs,
-	}
-	if err := applyRulePatch(&patch, body.When, body.Group); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+	patch, err := fillQuestPatch(body)
+	if err != nil {
+		s.fail(w, err)
 		return
-	}
-	if len(body.MinLevel) > 0 {
-		patch.MinLevelSet = true
-		if string(body.MinLevel) != "null" {
-			var n int
-			if err := json.Unmarshal(body.MinLevel, &n); err != nil {
-				writeErr(w, http.StatusBadRequest, "invalid", "min_level")
-				return
-			}
-			if n != 0 {
-				patch.MinLevel = &n
-			}
-		}
 	}
 	hasFields := questPatchHasFields(patch)
 	if !hasFields && len(image) == 0 {
@@ -553,6 +535,8 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
 	case errors.Is(err, ErrForbidden):
 		writeErr(w, http.StatusForbidden, "forbidden", "forbidden")
+	case errors.Is(err, ErrLocked):
+		writeErr(w, http.StatusConflict, "locked", err.Error())
 	case errors.Is(err, smia.ErrUnauthorized):
 		writeErr(w, http.StatusUnauthorized, "unauthorized", "Smia avslo tokenet")
 	case errors.Is(err, smia.ErrNotConfigured):
@@ -656,6 +640,8 @@ type questBody struct {
 	Active               *bool                `json:"active"`
 	CreatedBy            string               `json:"created_by"`
 	AssignedCharacterIDs []string             `json:"assigned_character_ids"`
+	Requires             json.RawMessage      `json:"requires"`
+	Chain                json.RawMessage      `json:"chain"`
 	// Announce skips the Discord note when false. Omitted announces an active saga.
 	Announce *bool `json:"announce"`
 	// ImageBase64 is an optional cover. The bytes are stored and attached to the announcement.
@@ -675,6 +661,8 @@ type questPatchBody struct {
 	Active               *bool                 `json:"active"`
 	CreatedBy            *string               `json:"created_by"`
 	AssignedCharacterIDs *[]string             `json:"assigned_character_ids"`
+	Requires             json.RawMessage       `json:"requires"`
+	Chain                json.RawMessage       `json:"chain"`
 	// Announce skips the Discord note when false. Omitted posts a version note or a retirement.
 	Announce *bool `json:"announce"`
 }
@@ -735,6 +723,12 @@ func readQuestCreate(w http.ResponseWriter, r *http.Request) (questBody, []byte,
 				return body, nil, "", errors.New("assigned_character_ids must be JSON array")
 			}
 		}
+		if v := r.FormValue("requires"); v != "" {
+			body.Requires = json.RawMessage(v)
+		}
+		if v := r.FormValue("chain"); v != "" {
+			body.Chain = json.RawMessage(v)
+		}
 		if v, ok := r.MultipartForm.Value["announce"]; ok {
 			b := formBool(v[0])
 			body.Announce = &b
@@ -782,6 +776,12 @@ func readQuestPatch(w http.ResponseWriter, r *http.Request) (questPatchBody, []b
 		}
 		if v, ok := r.MultipartForm.Value["min_level"]; ok {
 			body.MinLevel = json.RawMessage(v[0])
+		}
+		if v, ok := r.MultipartForm.Value["requires"]; ok && v[0] != "" {
+			body.Requires = json.RawMessage(v[0])
+		}
+		if v, ok := r.MultipartForm.Value["chain"]; ok && v[0] != "" {
+			body.Chain = json.RawMessage(v[0])
 		}
 		if v, ok := r.MultipartForm.Value["objectives"]; ok && v[0] != "" {
 			var objs []contract.Objective

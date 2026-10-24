@@ -27,6 +27,13 @@ type Entry struct {
 	PartyQuest        bool                 `json:"party_quest"`
 	CreatedBy         string               `json:"created_by"`
 	CompletedBy       []Completer          `json:"completed_by"`
+	Requires          []contract.Require   `json:"requires,omitempty"`
+	ChainID           string               `json:"chain_id,omitempty"`
+	ChainName         string               `json:"chain_name,omitempty"`
+	ChainOrder        int                  `json:"chain_order,omitempty"`
+	ChainIndex        int                  `json:"chain_index,omitempty"`
+	ChainTotal        int                  `json:"chain_total,omitempty"`
+	Locked            bool                 `json:"locked,omitempty"`
 	Image             string               `json:"image,omitempty"`        // Interface\\AddOns\\GutSaga\\media\\<id>
 	ImageAspect       float64              `json:"image_aspect,omitempty"` // width/height
 	HasImage          bool                 `json:"has_image"`
@@ -51,8 +58,20 @@ type Completer struct {
 // inactive or the character would no longer be eligible.
 func Merge(sync contract.SyncResponse) []Entry {
 	progress := map[string]contract.Progress{}
+	doneBy := map[string]map[string]bool{}
 	for _, p := range sync.Progress {
 		progress[p.CharacterID+"\n"+p.QuestID] = p
+		if p.Status != "completed" {
+			continue
+		}
+		if doneBy[p.CharacterID] == nil {
+			doneBy[p.CharacterID] = map[string]bool{}
+		}
+		doneBy[p.CharacterID][p.QuestID] = true
+	}
+	titles := map[string]string{}
+	for _, q := range sync.Quests {
+		titles[q.ID] = q.Title
 	}
 	completers := completersByQuest(sync)
 	var out []Entry
@@ -63,6 +82,7 @@ func Merge(sync contract.SyncResponse) []Entry {
 			if !contract.Eligible(ch.Level, ch.ID, q) && !completed {
 				continue
 			}
+			locked, _ := contract.Gate(q.ID, q.Requires, doneBy[ch.ID])
 			e := Entry{
 				Character: ch.Name, CharacterID: ch.ID, Realm: ch.Realm,
 				QuestID: q.ID, QuestVersion: q.Version, Title: q.Title,
@@ -70,7 +90,15 @@ func Merge(sync contract.SyncResponse) []Entry {
 				ObjectivesOrdered: q.ObjectivesOrdered, When: q.When, Group: q.Group, Reward: q.Reward,
 				MinLevel: q.MinLevel, PartyQuest: q.PartyQuest,
 				CreatedBy: q.CreatedBy, CompletedBy: completers[q.ID],
+				Requires: requireRefs(q.Requires, titles), Locked: locked,
 				HasImage: q.HasImage,
+			}
+			if q.Chain != nil && q.Chain.ID != "" {
+				e.ChainID = q.Chain.ID
+				e.ChainName = q.Chain.Name
+				e.ChainOrder = q.Chain.Order
+				e.ChainIndex = q.Chain.Index
+				e.ChainTotal = q.Chain.Total
 			}
 			if q.HasImage {
 				e.Image = `Interface\AddOns\GutSaga\media\` + q.ID
@@ -94,6 +122,15 @@ func Merge(sync contract.SyncResponse) []Entry {
 		if ic != jc {
 			return !ic
 		}
+		if (out[i].ChainID == "") != (out[j].ChainID == "") {
+			return out[i].ChainID != ""
+		}
+		if out[i].ChainName != out[j].ChainName {
+			return out[i].ChainName < out[j].ChainName
+		}
+		if out[i].ChainOrder != out[j].ChainOrder {
+			return out[i].ChainOrder < out[j].ChainOrder
+		}
 		li, lj := 0, 0
 		if out[i].MinLevel != nil {
 			li = *out[i].MinLevel
@@ -109,7 +146,17 @@ func Merge(sync contract.SyncResponse) []Entry {
 	return out
 }
 
-// FindCharacter matches name and, when both sides have a realm, the realm.
+func requireRefs(ids []string, titles map[string]string) []contract.Require {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]contract.Require, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, contract.Require{ID: id, Title: titles[id]})
+	}
+	return out
+}
+
 func completersByQuest(sync contract.SyncResponse) map[string][]Completer {
 	type key struct{ quest, name, realm string }
 	seen := map[key]bool{}
@@ -183,6 +230,7 @@ func completersByQuest(sync contract.SyncResponse) map[string][]Completer {
 	return out
 }
 
+// FindCharacter matches name and, when both sides have a realm, the realm.
 func FindCharacter(sync contract.SyncResponse, name, realm string) (contract.Character, bool) {
 	var matches []contract.Character
 	for _, c := range sync.Characters {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -24,13 +23,13 @@ func (s *Server) createSaga(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
 		return
 	}
+	in, err := fillQuestInput(body)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
 	p := playerFrom(r)
-	out, err := s.store.CreateQuestForPlayer(r.Context(), p.ID, QuestInput{
-		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
-		ObjectivesOrdered: body.ObjectivesOrdered, When: body.When, Group: body.Group,
-		Reward: body.Reward, MinLevel: body.MinLevel,
-		PartyQuest: body.PartyQuest, Active: body.Active, AssignedCharacterIDs: body.AssignedCharacterIDs,
-	})
+	out, err := s.store.CreateQuestForPlayer(r.Context(), p.ID, in)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -74,27 +73,10 @@ func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
 		return
 	}
-	patch := QuestPatch{
-		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
-		ObjectivesOrdered: body.ObjectivesOrdered, Reward: body.Reward, PartyQuest: body.PartyQuest,
-		Active: body.Active, AssignedCharacterIDs: body.AssignedCharacterIDs,
-	}
-	if err := applyRulePatch(&patch, body.When, body.Group); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+	patch, err := fillQuestPatch(body)
+	if err != nil {
+		s.fail(w, err)
 		return
-	}
-	if len(body.MinLevel) > 0 {
-		patch.MinLevelSet = true
-		if string(body.MinLevel) != "null" {
-			var n int
-			if err := json.Unmarshal(body.MinLevel, &n); err != nil {
-				writeErr(w, http.StatusBadRequest, "invalid", "min_level")
-				return
-			}
-			if n != 0 {
-				patch.MinLevel = &n
-			}
-		}
 	}
 	p := playerFrom(r)
 	id := r.PathValue("id")

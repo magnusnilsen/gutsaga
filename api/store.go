@@ -471,6 +471,8 @@ type QuestInput struct {
 	Active               *bool
 	CreatedBy            string
 	AssignedCharacterIDs []string
+	Requires             []string
+	Chain                *contract.Chain
 }
 
 type QuestPatch struct {
@@ -489,6 +491,10 @@ type QuestPatch struct {
 	Active               *bool
 	CreatedBy            *string
 	AssignedCharacterIDs *[]string
+	Requires             []string
+	RequiresSet          bool
+	Chain                *contract.Chain
+	ChainSet             bool
 }
 
 func resolveCreator(ctx context.Context, q querier, createdBy string) (tag, playerID string, err error) {
@@ -572,6 +578,16 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	if in.ObjectivesOrdered != nil {
 		ordered = *in.ObjectivesOrdered
 	}
+	requires, err := prepareRequires(in.Requires)
+	if err != nil {
+		return contract.Quest{}, err
+	}
+	in.Requires = requires
+	chain, err := prepareChain(in.Chain)
+	if err != nil {
+		return contract.Quest{}, err
+	}
+	in.Chain = chain
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return contract.Quest{}, err
@@ -582,6 +598,9 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 		return contract.Quest{}, err
 	}
 	if err := ensureCharacters(ctx, tx, in.AssignedCharacterIDs); err != nil {
+		return contract.Quest{}, err
+	}
+	if err := ensureQuests(ctx, tx, in.Requires); err != nil {
 		return contract.Quest{}, err
 	}
 	objJSON, err := objectivesJSON(in.Objectives)
@@ -596,20 +615,34 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	if err != nil {
 		return contract.Quest{}, err
 	}
+	reqJSON, chainID, chainName, chainOrder, err := chainPersist(contract.Quest{Requires: in.Requires, Chain: in.Chain})
+	if err != nil {
+		return contract.Quest{}, err
+	}
+	if err := chainOrderAvailable(ctx, tx, "", in.Chain); err != nil {
+		return contract.Quest{}, err
+	}
 	var id string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO quests (title, description, objectives, reward, min_level, party, active, version, created_by, created_by_player_id, objectives_ordered, time_window, group_rule)
-		VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,1,$8,$9,$10,$11::jsonb,$12::jsonb)
+		INSERT INTO quests (title, description, objectives, reward, min_level, party, active, version, created_by, created_by_player_id, objectives_ordered, time_window, group_rule, requires, chain_id, chain_name, chain_order)
+		VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,1,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16)
 		RETURNING id::text`,
 		strings.TrimSpace(in.Title), in.Description, objJSON, in.Reward, nullableInt(in.MinLevel), in.PartyQuest, active, creatorTag, creatorID, ordered, whenJSON, groupJSON,
+		reqJSON, chainID, chainName, chainOrder,
 	).Scan(&id)
 	if err != nil {
+		return contract.Quest{}, mapChainWrite(err)
+	}
+	if err := assertSagaLinks(ctx, tx, id, in.Chain, in.Chain != nil); err != nil {
 		return contract.Quest{}, err
 	}
 	q := contract.Quest{
 		ID: id, Title: strings.TrimSpace(in.Title), Description: in.Description, Objectives: in.Objectives,
 		ObjectivesOrdered: ordered, When: in.When, Group: in.Group, Reward: in.Reward, MinLevel: in.MinLevel, PartyQuest: in.PartyQuest, Active: active, Version: 1,
-		CreatedBy: creatorTag, AssignedTo: refs(in.AssignedCharacterIDs),
+		CreatedBy: creatorTag, AssignedTo: refs(in.AssignedCharacterIDs), Requires: in.Requires, Chain: in.Chain,
+	}
+	if q.Requires == nil {
+		q.Requires = []string{}
 	}
 	if err := replaceAssignments(ctx, tx, id, in.AssignedCharacterIDs); err != nil {
 		return contract.Quest{}, err
@@ -617,6 +650,11 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	if err := insertSnapshot(ctx, tx, q); err != nil {
 		return contract.Quest{}, err
 	}
+	one := []contract.Quest{q}
+	if err := applyChainPositions(ctx, tx, one); err != nil {
+		return contract.Quest{}, err
+	}
+	q = one[0]
 	if err := tx.Commit(ctx); err != nil {
 		return contract.Quest{}, err
 	}
@@ -701,6 +739,28 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 		}
 		q.AssignedTo = refs(*p.AssignedCharacterIDs)
 	}
+	if p.RequiresSet {
+		reqs, err := prepareRequires(p.Requires)
+		if err != nil {
+			return contract.Quest{}, err
+		}
+		if err := rejectSelfRequire(id, reqs); err != nil {
+			return contract.Quest{}, err
+		}
+		q.Requires = reqs
+	}
+	renameChain := false
+	if p.ChainSet {
+		chain, err := prepareChain(p.Chain)
+		if err != nil {
+			return contract.Quest{}, err
+		}
+		q.Chain = chain
+		renameChain = chain != nil
+	}
+	if err := ensureQuests(ctx, tx, q.Requires); err != nil {
+		return contract.Quest{}, err
+	}
 	if err := validateQuestText(q.Title, q.Description, q.Reward, q.CreatedBy); err != nil {
 		return contract.Quest{}, err
 	}
@@ -720,12 +780,23 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 	if err != nil {
 		return contract.Quest{}, err
 	}
+	reqJSON, chainID, chainName, chainOrder, err := chainPersist(q)
+	if err != nil {
+		return contract.Quest{}, err
+	}
+	if err := chainOrderAvailable(ctx, tx, id, q.Chain); err != nil {
+		return contract.Quest{}, err
+	}
 	_, err = tx.Exec(ctx, `
 		UPDATE quests
-		SET title=$2, description=$3, objectives=$4::jsonb, reward=$5, min_level=$6, party=$7, active=$8, version=$9, created_by=$10, created_by_player_id=$11, objectives_ordered=$12, time_window=$13::jsonb, group_rule=$14::jsonb, updated_at=now()
+		SET title=$2, description=$3, objectives=$4::jsonb, reward=$5, min_level=$6, party=$7, active=$8, version=$9, created_by=$10, created_by_player_id=$11, objectives_ordered=$12, time_window=$13::jsonb, group_rule=$14::jsonb, requires=$15::jsonb, chain_id=$16, chain_name=$17, chain_order=$18, updated_at=now()
 		WHERE id=$1`,
-		id, q.Title, q.Description, objJSON, q.Reward, nullableInt(q.MinLevel), q.PartyQuest, q.Active, q.Version, q.CreatedBy, creatorID, q.ObjectivesOrdered, whenJSON, groupJSON)
+		id, q.Title, q.Description, objJSON, q.Reward, nullableInt(q.MinLevel), q.PartyQuest, q.Active, q.Version, q.CreatedBy, creatorID, q.ObjectivesOrdered, whenJSON, groupJSON,
+		reqJSON, chainID, chainName, chainOrder)
 	if err != nil {
+		return contract.Quest{}, mapChainWrite(err)
+	}
+	if err := assertSagaLinks(ctx, tx, id, q.Chain, renameChain); err != nil {
 		return contract.Quest{}, err
 	}
 	if p.AssignedCharacterIDs != nil {
@@ -736,6 +807,11 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 	if err := insertSnapshot(ctx, tx, q); err != nil {
 		return contract.Quest{}, err
 	}
+	one := []contract.Quest{q}
+	if err := applyChainPositions(ctx, tx, one); err != nil {
+		return contract.Quest{}, err
+	}
+	q = one[0]
 	if err := tx.Commit(ctx); err != nil {
 		return contract.Quest{}, err
 	}
@@ -854,19 +930,25 @@ func insertSnapshot(ctx context.Context, q querier, quest contract.Quest) error 
 	if err != nil {
 		return err
 	}
+	reqJSON, chainID, chainName, chainOrder, err := chainPersist(quest)
+	if err != nil {
+		return err
+	}
 	_, err = q.Exec(ctx, `
-		INSERT INTO quest_versions (quest_id, version, title, description, objectives, reward, min_level, party, active, assigned_to, created_by, objectives_ordered, time_window, group_rule)
-		VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10::jsonb,$11,$12,$13::jsonb,$14::jsonb)`,
+		INSERT INTO quest_versions (quest_id, version, title, description, objectives, reward, min_level, party, active, assigned_to, created_by, objectives_ordered, time_window, group_rule, requires, chain_id, chain_name, chain_order)
+		VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10::jsonb,$11,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17,$18)`,
 		quest.ID, quest.Version, quest.Title, quest.Description, objJSON, quest.Reward,
-		nullableInt(quest.MinLevel), quest.PartyQuest, quest.Active, string(raw), quest.CreatedBy, quest.ObjectivesOrdered, whenJSON, groupJSON)
+		nullableInt(quest.MinLevel), quest.PartyQuest, quest.Active, string(raw), quest.CreatedBy, quest.ObjectivesOrdered, whenJSON, groupJSON,
+		reqJSON, chainID, chainName, chainOrder)
 	return err
 }
 
 func scanQuest(scan func(dest ...any) error) (contract.Quest, error) {
 	var q contract.Quest
 	var ml sql.NullInt32
-	var obj, whenRaw, groupRaw string
-	err := scan(&q.ID, &q.Title, &q.Description, &obj, &q.Reward, &ml, &q.PartyQuest, &q.Active, &q.Version, &q.CreatedBy, &q.ObjectivesOrdered, &q.HasImage, &whenRaw, &groupRaw)
+	var obj, whenRaw, groupRaw, reqRaw, chainID, chainName string
+	var chainOrder sql.NullInt32
+	err := scan(&q.ID, &q.Title, &q.Description, &obj, &q.Reward, &ml, &q.PartyQuest, &q.Active, &q.Version, &q.CreatedBy, &q.ObjectivesOrdered, &q.HasImage, &whenRaw, &groupRaw, &reqRaw, &chainID, &chainName, &chainOrder)
 	if err != nil {
 		return q, err
 	}
@@ -883,6 +965,13 @@ func scanQuest(scan func(dest ...any) error) (contract.Quest, error) {
 	if err != nil {
 		return q, fmt.Errorf("%w: group", ErrInvalid)
 	}
+	q.Requires, err = decodeRequires(reqRaw)
+	if err != nil {
+		return q, fmt.Errorf("%w: requires", ErrInvalid)
+	}
+	if chainID != "" && chainOrder.Valid {
+		q.Chain = &contract.Chain{ID: chainID, Name: chainName, Order: int(chainOrder.Int32)}
+	}
 	q.AssignedTo = []contract.IDRef{}
 	return q, nil
 }
@@ -893,7 +982,8 @@ const questSelect = `
 			q.objectives_ordered,
 			(q.image_bytes IS NOT NULL AND octet_length(q.image_bytes) > 0),
 			COALESCE(q.time_window::text, ''),
-			COALESCE(q.group_rule::text, '')
+			COALESCE(q.group_rule::text, ''),
+			q.requires::text, q.chain_id, q.chain_name, q.chain_order
 		FROM quests q
 		LEFT JOIN players p ON p.id = q.created_by_player_id`
 
@@ -913,7 +1003,11 @@ func loadQuest(ctx context.Context, q querier, id string) (contract.Quest, error
 	if quest.AssignedTo == nil {
 		quest.AssignedTo = []contract.IDRef{}
 	}
-	return quest, nil
+	one := []contract.Quest{quest}
+	if err := applyChainPositions(ctx, q, one); err != nil {
+		return contract.Quest{}, err
+	}
+	return one[0], nil
 }
 
 func loadAssignments(ctx context.Context, q querier, questIDs []string) (map[string][]contract.IDRef, error) {
@@ -946,7 +1040,8 @@ func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, 
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT version, title, description, objectives::text, reward, min_level, party, active, assigned_to::text, created_by, created_at,
-			COALESCE(time_window::text, ''), COALESCE(group_rule::text, '')
+			COALESCE(time_window::text, ''), COALESCE(group_rule::text, ''),
+			requires::text, chain_id, chain_name, chain_order
 		FROM quest_versions WHERE quest_id=$1 ORDER BY version`, id)
 	if err != nil {
 		return contract.QuestDetail{}, err
@@ -956,9 +1051,10 @@ func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, 
 	for rows.Next() {
 		var v contract.QuestVersion
 		var ml sql.NullInt32
-		var assigned, obj, whenRaw, groupRaw string
+		var assigned, obj, whenRaw, groupRaw, reqRaw, chainID, chainName string
+		var chainOrder sql.NullInt32
 		var created time.Time
-		if err := rows.Scan(&v.Version, &v.Title, &v.Description, &obj, &v.Reward, &ml, &v.PartyQuest, &v.Active, &assigned, &v.CreatedBy, &created, &whenRaw, &groupRaw); err != nil {
+		if err := rows.Scan(&v.Version, &v.Title, &v.Description, &obj, &v.Reward, &ml, &v.PartyQuest, &v.Active, &assigned, &v.CreatedBy, &created, &whenRaw, &groupRaw, &reqRaw, &chainID, &chainName, &chainOrder); err != nil {
 			return contract.QuestDetail{}, err
 		}
 		v.Objectives, err = contract.DecodeObjectives(obj)
@@ -972,6 +1068,13 @@ func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, 
 		v.Group, err = contract.DecodeGroupRule(groupRaw)
 		if err != nil {
 			return contract.QuestDetail{}, err
+		}
+		v.Requires, err = decodeRequires(reqRaw)
+		if err != nil {
+			return contract.QuestDetail{}, err
+		}
+		if chainID != "" && chainOrder.Valid {
+			v.Chain = &contract.Chain{ID: chainID, Name: chainName, Order: int(chainOrder.Int32)}
 		}
 		v.MinLevel = nullInt(ml)
 		v.CreatedAt = contract.FormatTime(created)
@@ -1024,6 +1127,9 @@ func (s *Store) ListQuests(ctx context.Context, characterID string) ([]contract.
 	if err != nil {
 		return nil, err
 	}
+	if err := applyChainPositions(ctx, s.pool, quests); err != nil {
+		return nil, err
+	}
 	progress := map[string]contract.Progress{}
 	if charKnown {
 		prows, err := s.pool.Query(ctx, `
@@ -1058,6 +1164,17 @@ func (s *Store) ListQuests(ctx context.Context, characterID string) ([]contract.
 		if charKnown {
 			ok := contract.Eligible(level, characterID, q)
 			item.Eligible = &ok
+			done := map[string]bool{}
+			for id, p := range progress {
+				if p.Status == "completed" {
+					done[id] = true
+				}
+			}
+			locked, missing := contract.Gate(q.ID, q.Requires, done)
+			unlocked := !locked
+			item.Locked = &locked
+			item.Unlocked = &unlocked
+			item.Missing = missing
 			if p, found := progress[q.ID]; found {
 				status := p.Status
 				item.Status = &status
@@ -1125,6 +1242,9 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 			quests[i].ImageURL = "/v1/sagas/" + quests[i].ID + "/image"
 		}
 	}
+	if err := applyChainPositions(ctx, s.pool, quests); err != nil {
+		return contract.SyncResponse{}, err
+	}
 	prows, err := s.pool.Query(ctx, `
 		SELECT p.quest_id::text, p.character_id::text, p.quest_version, p.status, p.completed_at, p.discord_url
 		FROM progress p
@@ -1160,9 +1280,13 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	if err != nil {
 		return contract.SyncResponse{}, err
 	}
+	locks := contract.SagaLocks(chars, quests, progress)
+	if locks == nil {
+		locks = []contract.SagaLock{}
+	}
 	return contract.SyncResponse{
 		BattleTag: tag, GeneratedAt: contract.FormatTime(time.Now()),
-		Characters: chars, Quests: quests, Progress: progress, Completions: completions,
+		Characters: chars, Quests: quests, Progress: progress, Completions: completions, Locks: locks,
 	}, nil
 }
 
@@ -1334,6 +1458,24 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 		if err := contract.GroupSatisfied(rule, members, in.Instance); err != nil {
 			return contract.CompletionResponse{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
 		}
+	}
+
+	// Prerequisites use the live requires list. A completed row counts at any
+	// quest_version, including one recorded before the saga was edited.
+	requires, err := loadRequires(ctx, tx, in.QuestID)
+	if err != nil {
+		return contract.CompletionResponse{}, err
+	}
+	done, err := completedQuestIDs(ctx, tx, in.CharacterID)
+	if err != nil {
+		return contract.CompletionResponse{}, err
+	}
+	if locked, missing := contract.Gate(in.QuestID, requires, done); locked {
+		msg, err := lockMessage(ctx, tx, missing)
+		if err != nil {
+			return contract.CompletionResponse{}, err
+		}
+		return contract.CompletionResponse{}, lockError{message: msg}
 	}
 
 	var screenshot any
@@ -1844,6 +1986,9 @@ func (s *Store) ListQuestsByPlayer(ctx context.Context, playerID string) ([]cont
 		if quests[i].AssignedTo == nil {
 			quests[i].AssignedTo = []contract.IDRef{}
 		}
+	}
+	if err := applyChainPositions(ctx, s.pool, quests); err != nil {
+		return nil, err
 	}
 	return quests, nil
 }

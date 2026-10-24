@@ -27,3 +27,4 @@ down:
 test:
 	go test ./...
 	lua5.1 addon/objectives_test.lua
+	lua5.1 addon/chains_test.lua

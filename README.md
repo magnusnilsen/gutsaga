@@ -162,6 +162,55 @@ Andre som har GutSaga og står i gruppe eller guild, kan få et kort varsel. Inn
 
 `## Interface: 16001` i `GutSaga_Forever.toc` er beta-verdien. Endre tallet i `addon/INTERFACE` og i toc-filene samtidig. `GutSaga_Mainline.toc` er retail (`120000`). `GutSaga_Vanilla.toc` er Classic Era (`11509`). `GutSaga_Mists.toc` er Classic-progresjon (`50504`). `GutSaga_TBC.toc` er Anniversary (`20506`). Når programmet installerer for Forever, skriver det Forever-nummeret inn i alle toc-filene, fordi den klienten kan laste Mainline-filen. De andre klientene beholder sin egen toc.
 
+## Saga-kjeder
+
+En saga kan kreve at karakteren har fullført andre sagaer først, og kan ligge i en kjede som loggen viser som «Kapittel 2 av 4». Begge feltene er valgfrie. Uten `requires` er sagaen åpen. Uten `chain` står den for seg selv.
+
+`requires` er en liste med saga-id-er. **Alle** må være fullført av den samme karakteren. `chain` er bare visning: `id` er en stabil nøkkel (`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`), `name` er teksten i loggen, `order` er rekkefølgen (unikt innenfor samme `id`, fra 1). Samme `id` deler navn. Setter du et nytt navn, oppdateres navnet på de andre sagaene i kjeden. Versjonen deres økes ikke.
+
+Admin (`POST`/`PATCH /v1/admin/quests`) og spiller-API-et (`/v1/sagas`) tar samme JSON. Smia-verktøyene `create_quest` og `update_quest` sender feltene videre som de er.
+
+```json
+{
+  "title": "Kapittel 2",
+  "description": "Videre fra vertshuset.",
+  "objectives": [
+    {"id": "road", "type": "location", "text": "Stå på veien", "map_id": 37, "x": 0.456, "y": 0.477}
+  ],
+  "reward": "",
+  "min_level": 1,
+  "party_quest": true,
+  "active": true,
+  "created_by": "Magnus#2231",
+  "assigned_character_ids": [],
+  "requires": ["11111111-1111-1111-1111-111111111111"],
+  "chain": {"id": "goldshire", "name": "Goldshire", "order": 2}
+}
+```
+
+Svaret legger på plass i kjeden. `index` og `total` regnes ut og skal ikke sendes inn:
+
+```json
+"requires": ["11111111-1111-1111-1111-111111111111"],
+"chain": {"id": "goldshire", "name": "Goldshire", "order": 2, "index": 2, "total": 4}
+```
+
+`requires` kan også sendes som `[{"id": "<uuid>"}]`. Tom liste eller `null` fjerner forutsetninger. `"chain": null` tar sagaen ut av kjeden. Utelatte felt på `PATCH` blir stående.
+
+API-et avviser ukjent saga-id, selvkrav, sykluser og to sagaer med samme `chain.order`. En ny fullføring av en låst saga får `409`:
+
+```json
+{"error": "locked", "message": "Låst: fullfør Kapittel 1 først"}
+```
+
+`GET /v1/sync` har `locks` for hver av spillerens karakterer. `GET /v1/admin/quests?character_id=` setter `locked`, `unlocked` og `missing` i tillegg til `eligible`. Låsen er uavhengig av nivå og tildeling: en saga kan være synlig og likevel låst. Loggen viser den grå, med «Kapittel 2 av 4 — Låst: fullfør Kapittel 1 først». Når forrige saga fullføres, låses neste opp i klienten med en gang (kjeden ligger i `GutSagaData.lua`). Neste synk bekrefter det samme.
+
+### Versjon
+
+Fullføring lagres én gang per karakter og saga, med `quest_version` de hadde lastet. En forutsetning teller så snart den raden har `status: completed`, uansett versjon. Har du fullført kapittel 1 på versjon 1, er kapittel 2 åpent selv om kapittel 1 siden er redigert til versjon 4.
+
+Låsen leser `requires` på sagaen slik den er nå, ikke på øyeblikksbildet i versjonen spilleren har lastet. Å endre `requires` eller `chain` øker versjonen og lagrer et nytt øyeblikksbilde, men sletter ingen fullføringer og krever ikke at forutsetningen tas om igjen. En saga som allerede er fullført, blir ikke låst igjen om noen senere legger på en forutsetning. Et nytt forsøk på en saga som alt er fullført, svarer som før (`already_completed`), også om den ville vært låst for en som ikke har gjort den.
+
 ## For den som driver serveren
 
 API-et ligger i `api/` og kjøres på Railway-prosjektet `gutsaga`.

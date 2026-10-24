@@ -49,6 +49,21 @@ func WriteLua(battletag, generatedAt string, entries []Entry) string {
 			b.WriteString("      party_quest = false,\n")
 		}
 		fmt.Fprintf(&b, "      created_by = %s,\n", luaString(e.CreatedBy))
+		fmt.Fprintf(&b, "      requires = %s,\n", luaRequires(e.Requires))
+		if e.ChainID != "" {
+			fmt.Fprintf(&b, "      chain_id = %s,\n", luaString(e.ChainID))
+			fmt.Fprintf(&b, "      chain_name = %s,\n", luaString(e.ChainName))
+			fmt.Fprintf(&b, "      chain_order = %d,\n", e.ChainOrder)
+			if e.ChainIndex > 0 && e.ChainTotal > 0 {
+				fmt.Fprintf(&b, "      chain_index = %d,\n", e.ChainIndex)
+				fmt.Fprintf(&b, "      chain_total = %d,\n", e.ChainTotal)
+			}
+		}
+		if e.Locked {
+			b.WriteString("      locked = true,\n")
+		} else {
+			b.WriteString("      locked = false,\n")
+		}
 		fmt.Fprintf(&b, "      completed_by = %s,\n", luaCompleters(e.CompletedBy))
 		if e.Image != "" {
 			fmt.Fprintf(&b, "      image = %s,\n", luaString(e.Image))
@@ -146,6 +161,21 @@ func writeLuaGroup(b *strings.Builder, g *contract.GroupRule, indent string) {
 		fmt.Fprintf(b, "%s  instance = %s,\n", indent, luaString(g.Instance))
 	}
 	fmt.Fprintf(b, "%s},\n", indent)
+}
+
+func luaRequires(list []contract.Require) string {
+	if len(list) == 0 {
+		return "{}"
+	}
+	var b strings.Builder
+	b.WriteString("{\n")
+	for _, r := range list {
+		b.WriteString("        { ")
+		fmt.Fprintf(&b, "id = %s, title = %s", luaString(r.ID), luaString(r.Title))
+		b.WriteString(" },\n")
+	}
+	b.WriteString("      }")
+	return b.String()
 }
 
 func luaCompleters(list []Completer) string {
