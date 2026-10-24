@@ -22,11 +22,14 @@ local sectionDone
 local listPanel
 local detailPanel
 local GOLD = { r = 0.99, g = 0.93, b = 0.59 }
+local LOCKED_TITLE = { r = 0.45, g = 0.42, b = 0.38 }
+local LOCKED_SUB = { r = 0.40, g = 0.37, b = 0.34 }
 local listChild
 local listScroll
 local detailFS
 local detailImage
 local detailTitle
+local detailMeta
 local detailGoalsHeader
 local detailActivityHeader
 local detailChild
@@ -277,6 +280,21 @@ local function currentEntries()
         local bc = isComplete(b) and 1 or 0
         if ac ~= bc then
             return ac < bc
+        end
+        local achain = (type(a.chain_id) == "string" and a.chain_id ~= "") and 0 or 1
+        local bchain = (type(b.chain_id) == "string" and b.chain_id ~= "") and 0 or 1
+        if achain ~= bchain then
+            return achain < bchain
+        end
+        local an = a.chain_name or a.chain_id or ""
+        local bn = b.chain_name or b.chain_id or ""
+        if an ~= bn then
+            return an < bn
+        end
+        local ao = tonumber(a.chain_order) or 0
+        local bo = tonumber(b.chain_order) or 0
+        if ao ~= bo then
+            return ao < bo
         end
         local am = tonumber(a.min_level) or 0
         local bm = tonumber(b.min_level) or 0
@@ -596,6 +614,33 @@ local function creatorName(entry)
         return entry.created_by
     end
     return "Ukjent"
+end
+
+local function completionSet()
+    local done = {}
+    if type(GutSagaDB) == "table" and type(GutSagaDB.completions) == "table" then
+        for id in pairs(GutSagaDB.completions) do
+            if type(id) == "string" then
+                done[id] = true
+            end
+        end
+    end
+    return done
+end
+
+local function entryLocked(entry, entries)
+    if type(entry) ~= "table" or type(GutSagaChains) ~= "table" or type(GutSagaChains.isLocked) ~= "function" then
+        return false
+    end
+    return GutSagaChains.isLocked(entry, entries, completionSet()) and true or false
+end
+
+local function listSubtitle(entry, entries)
+    local fallback = creatorName(entry)
+    if type(GutSagaChains) ~= "table" or type(GutSagaChains.listSub) ~= "function" then
+        return fallback
+    end
+    return GutSagaChains.listSub(entry, entries, completionSet(), fallback)
 end
 
 local function sectionExpanded(key, defaultOpen)
@@ -1212,7 +1257,7 @@ local function checkAll()
         local state = objectiveState(entries)
         local group = readGroup()
         for _, entry in ipairs(entries) do
-            if not isComplete(entry) and type(entry.objectives) == "table" and #entry.objectives > 0 then
+            if not isComplete(entry) and not entryLocked(entry, entries) and type(entry.objectives) == "table" and #entry.objectives > 0 then
                 local bucket = savedSteps(entry)
                 local ordered = entry.objectives_ordered and true or false
                 local steps, done = GutSagaObjectives.evaluate(entry.objectives, state, bucket.steps, ordered, entry.when)
@@ -1485,9 +1530,14 @@ refresh = function()
             row:Show()
             row.questID = item.quest_id
             row.title:SetText(item.title or "Saga")
-            row.title:SetTextColor(GOLD.r, GOLD.g, GOLD.b)
-            row.sub:SetText(creatorName(item))
-            row.sub:SetTextColor(0.72, 0.68, 0.58)
+            row.sub:SetText(listSubtitle(item, entries))
+            if entryLocked(item, entries) then
+                row.title:SetTextColor(LOCKED_TITLE.r, LOCKED_TITLE.g, LOCKED_TITLE.b)
+                row.sub:SetTextColor(LOCKED_SUB.r, LOCKED_SUB.g, LOCKED_SUB.b)
+            else
+                row.title:SetTextColor(GOLD.r, GOLD.g, GOLD.b)
+                row.sub:SetTextColor(0.72, 0.68, 0.58)
+            end
             if item.quest_id == selectedID then
                 row.bg:SetAlpha(0.7)
             else
@@ -1554,6 +1604,9 @@ refresh = function()
         if detailActivityHeader then
             detailActivityHeader:Hide()
         end
+        if detailMeta then
+            detailMeta:Hide()
+        end
         if player.name == "" then
             detailFS:SetText("Logg inn på en karakter.")
         elseif type(GutSagaData) ~= "table" or type(GutSagaData.entries) ~= "table" or #GutSagaData.entries == 0 then
@@ -1573,7 +1626,29 @@ refresh = function()
         detailTitle:SetWidth(width)
         detailTitle:ClearAllPoints()
         detailTitle:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-        detailY = detailY + (detailTitle:GetStringHeight() or 20) + 12
+        detailY = detailY + (detailTitle:GetStringHeight() or 20) + 8
+
+        local meta = ""
+        if type(GutSagaChains) == "table" and type(GutSagaChains.detailLines) == "function" then
+            meta = GutSagaChains.detailLines(selectedEntry, entries, completionSet()) or ""
+        end
+        if detailMeta then
+            if meta ~= "" then
+                detailMeta:Show()
+                detailMeta:SetText(meta)
+                detailMeta:SetWidth(width)
+                detailMeta:ClearAllPoints()
+                detailMeta:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+                if entryLocked(selectedEntry, entries) then
+                    detailMeta:SetTextColor(0.45, 0.28, 0.18)
+                else
+                    detailMeta:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+                end
+                detailY = detailY + (detailMeta:GetStringHeight() or 14) + 10
+            else
+                detailMeta:Hide()
+            end
+        end
 
         local okGoals, goalList = pcall(objectiveLines, selectedEntry)
         if okGoals and type(goalList) == "table" then
@@ -1581,6 +1656,7 @@ refresh = function()
         end
     end
 
+    local selectedLocked = selectedEntry and entryLocked(selectedEntry, entries)
     -- Goals sit under the title with no section header.
     local textWidth = width - 22
     for i, goal in ipairs(goals) do
@@ -1592,6 +1668,10 @@ refresh = function()
         if goal.done then
             row.box:SetTexture("Interface\\AddOns\\GutSaga\\check")
             row.box:SetVertexColor(INK.r, INK.g, INK.b)
+            row.text:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+        elseif selectedLocked then
+            row.box:SetTexture("Interface\\AddOns\\GutSaga\\box")
+            row.box:SetVertexColor(0.55, 0.55, 0.55)
             row.text:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
         else
             row.box:SetTexture("Interface\\AddOns\\GutSaga\\box")
@@ -1796,11 +1876,16 @@ finishQuest = function(entry, group)
     if not entry or isComplete(entry) then
         return
     end
+    local entries = currentEntries()
+    if entryLocked(entry, entries) then
+        return
+    end
     cachePlayer()
     initDB()
     if player.name == "" then
         return
     end
+    local before = completionSet()
     local version = tonumber(entry.quest_version) or 0
     local level = player.level
     if level < 1 then
@@ -1827,6 +1912,13 @@ finishQuest = function(entry, group)
     end
     local title = entry.title or "Saga"
     local questID = entry.quest_id
+    local unlocked = {}
+    if type(GutSagaChains) == "table" and type(GutSagaChains.newlyUnlocked) == "function" then
+        unlocked = GutSagaChains.newlyUnlocked(entries, before, completionSet()) or {}
+    end
+    if unlocked[1] and type(unlocked[1].quest_id) == "string" then
+        selectedID = unlocked[1].quest_id
+    end
     showSagaToast(title, questID)
     broadcast(string.format("C|%s|%d|%d|%d", questID, version, level, ts))
     refresh()
@@ -1834,6 +1926,15 @@ finishQuest = function(entry, group)
         DEFAULT_CHAT_FRAME:AddMessage(
             "|cffc9a227GutSaga|r: Fullført. Discord etter |cffffffff/reload|r."
         )
+        local n = #unlocked
+        if n > 3 then
+            n = 3
+        end
+        for i = 1, n do
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cffc9a227GutSaga|r: Ny saga: " .. (unlocked[i].title or "Saga")
+            )
+        end
     end
 end
 
@@ -2282,6 +2383,13 @@ local function build()
     detailTitle:SetJustifyV("TOP")
     detailTitle:SetWordWrap(true)
     detailTitle:SetTextColor(INK.r, INK.g, INK.b)
+    detailMeta = detailChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    detailMeta:SetJustifyH("LEFT")
+    detailMeta:SetJustifyV("TOP")
+    detailMeta:SetWordWrap(true)
+    detailMeta:SetSpacing(2)
+    detailMeta:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+    detailMeta:Hide()
     detailFS = detailChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     detailFS:SetPoint("TOPLEFT", detailTitle, "BOTTOMLEFT", 0, -10)
     detailFS:SetJustifyH("LEFT")
@@ -2311,6 +2419,7 @@ local function build()
         detailFS:SetScript("OnHyperlinkLeave", onGoalLinkLeave)
     end)
     bindWheel(detailTitle, detailScroll, 28)
+    bindWheel(detailMeta, detailScroll, 28)
     bindWheel(detailFS, detailScroll, 28)
     bindWheel(detailGoalsHeader, detailScroll, 28)
     bindWheel(detailActivityHeader, detailScroll, 28)

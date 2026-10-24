@@ -105,6 +105,31 @@ components:
         image_signed_url:
           type: string
           description: Absolute expiring URL. Set only on admin quest list and admin quest get when PUBLIC_BASE_URL and IMAGE_URL_SECRET are configured.
+        requires:
+          type: array
+          items: {type: string, format: uuid}
+          description: Prerequisite saga ids. All must be completed by the character. An older quest_version still counts.
+        chain:
+          type: object
+          nullable: true
+          description: Display group. index and total are read-only.
+          properties:
+            id: {type: string}
+            name: {type: string}
+            order: {type: integer}
+            index: {type: integer}
+            total: {type: integer}
+    SagaLock:
+      type: object
+      required: [quest_id, character_id, locked, unlocked]
+      properties:
+        quest_id: {type: string}
+        character_id: {type: string}
+        locked: {type: boolean}
+        unlocked: {type: boolean}
+        missing:
+          type: array
+          items: {type: string}
     Progress:
       type: object
       properties:
@@ -123,6 +148,9 @@ components:
         characters: {type: array, items: {$ref: "#/components/schemas/Character"}}
         quests: {type: array, items: {$ref: "#/components/schemas/Quest"}}
         progress: {type: array, items: {$ref: "#/components/schemas/Progress"}}
+        locks:
+          type: array
+          items: {$ref: "#/components/schemas/SagaLock"}
     Completion:
       type: object
       required: [allowed, already_completed, completed]
@@ -183,7 +211,7 @@ paths:
   /v1/complete:
     post:
       security: [{playerKey: []}]
-      summary: Idempotent completion. Records the loaded quest version and posts to Discord once.
+      summary: Idempotent completion. Records the loaded quest version and posts to Discord once. 409 locked when prerequisites are unfinished. A prerequisite completed on an older version still counts.
       requestBody:
         required: true
         content:
@@ -320,7 +348,7 @@ paths:
       security: [{adminToken: []}]
       parameters: [{in: query, name: character_id, schema: {type: string}}]
       responses:
-        "200": {description: Quests with optional per-character status}
+        "200": {description: Quests. With character_id, each row includes eligible, locked, unlocked, and missing.}
     post:
       security: [{adminToken: []}]
       summary: Create quest version 1 and a snapshot

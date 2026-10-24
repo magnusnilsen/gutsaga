@@ -138,6 +138,15 @@ Create a saga owned by you. Body:
 
 Empty `assigned_character_ids` with `party_quest: true` offers the saga to everyone eligible by level.
 
+Optional chain fields, same shape as the admin API (see the README section Saga-kjeder):
+
+```json
+"requires": ["<prerequisite saga id>"],
+"chain": {"id": "goldshire", "name": "Goldshire", "order": 2}
+```
+
+All ids in `requires` must already exist. The character must complete every one of them, on any version, before this saga accepts a new completion. `chain` only groups the log (`Kapittel N av M`).
+
 ### `GET /v1/sagas`
 
 Lists sagas you created.

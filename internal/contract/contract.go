@@ -4,8 +4,9 @@ package contract
 import "time"
 
 // SyncResponse is GET /v1/sync. The companion merges quests onto characters;
-// the server does not pre-filter eligibility (except that it omits inactive
-// quests that this player has no progress on).
+// the server does not pre-filter level or assignment (except that it omits
+// inactive quests that this player has no progress on). Locks is the
+// prerequisite gate for each of this player's characters.
 type SyncResponse struct {
 	BattleTag   string            `json:"battletag"`
 	GeneratedAt string            `json:"generated_at"`
@@ -13,6 +14,7 @@ type SyncResponse struct {
 	Quests      []Quest           `json:"quests"`
 	Progress    []Progress        `json:"progress"`
 	Completions []QuestCompletion `json:"completions,omitempty"`
+	Locks       []SagaLock        `json:"locks"`
 }
 
 // QuestCompletion is one character who has finished a saga. Sync includes
@@ -63,6 +65,8 @@ type Quest struct {
 	HasImage          bool        `json:"has_image"`
 	ImageURL          string      `json:"image_url,omitempty"`
 	ImageSignedURL    string      `json:"image_signed_url,omitempty"`
+	Requires          []string    `json:"requires"`
+	Chain             *Chain      `json:"chain,omitempty"`
 }
 
 type Progress struct {
@@ -163,6 +167,8 @@ type QuestVersion struct {
 	AssignedTo  []IDRef     `json:"assigned_to"`
 	CreatedBy   string      `json:"created_by"`
 	CreatedAt   string      `json:"created_at"`
+	Requires    []string    `json:"requires"`
+	Chain       *Chain      `json:"chain,omitempty"`
 }
 
 type QuestDetail struct {
@@ -171,14 +177,18 @@ type QuestDetail struct {
 }
 
 // QuestListItem is an admin quest row. Status is null when character_id was
-// requested and that character has not started the quest. Eligible is set only
-// when character_id was requested.
+// requested and that character has not started the quest. Eligible, Locked,
+// and Unlocked are set only when character_id was requested. Locked is the
+// prerequisite gate and is independent of level and assignment.
 type QuestListItem struct {
 	Quest
-	Status           *string `json:"status"`
-	CompletedAt      string  `json:"completed_at,omitempty"`
-	CompletedVersion int     `json:"completed_version,omitempty"`
-	Eligible         *bool   `json:"eligible,omitempty"`
+	Status           *string  `json:"status"`
+	CompletedAt      string   `json:"completed_at,omitempty"`
+	CompletedVersion int      `json:"completed_version,omitempty"`
+	Eligible         *bool    `json:"eligible,omitempty"`
+	Locked           *bool    `json:"locked,omitempty"`
+	Unlocked         *bool    `json:"unlocked,omitempty"`
+	Missing          []string `json:"missing,omitempty"`
 }
 
 type LogEntry struct {

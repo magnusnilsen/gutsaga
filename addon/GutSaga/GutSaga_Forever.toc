@@ -8,4 +8,5 @@
 
 GutSagaData.lua
 GutSagaObjectives.lua
+GutSagaChains.lua
 GutSaga.lua

@@ -36,6 +36,14 @@ func TestInstallForeverRewritesInterface(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(wow, "Interface", "AddOns", "GutSaga", "GutSagaObjectives.lua")); err != nil {
 		t.Fatal(err)
 	}
+	chains, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "GutSaga", "GutSagaChains.lua"))
+	if err != nil || !strings.Contains(string(chains), "Låst: fullfør") {
+		t.Fatal("chain helper missing from install")
+	}
+	forever, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "GutSaga", "GutSaga_Forever.toc"))
+	if err != nil || !strings.Contains(string(forever), "GutSagaChains.lua") {
+		t.Fatal("forever toc should load chains")
+	}
 	kept, _ := os.ReadFile(data)
 	if !strings.Contains(string(kept), "kept = true") {
 		t.Fatal("data file was overwritten")
