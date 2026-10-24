@@ -84,7 +84,8 @@ jobs:
         run: |
           if [ "$GOOS" = "darwin" ] && [ "$GOARCH" = "amd64" ]; then
             export CC="clang -arch x86_64"
-            export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+            SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+            export SDKROOT
           fi
           mkdir -p dist
           go build -trimpath -ldflags "-s -w -X github.com/magnusnilsen/gutsaga/internal/version.Version=${VERSION}" -o "dist/${{ matrix.asset }}" ./cmd/gutsaga
@@ -98,6 +99,11 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test, package]
     runs-on: ubuntu-latest
+    env:
+      # steps.if cannot read secrets. GitHub rejects the workflow and the run
+      # has zero jobs. Map the secrets here and test env.* on the mirror step.
+      PUBLIC_RELEASE_REPO: ${{ secrets.PUBLIC_RELEASE_REPO }}
+      PUBLIC_RELEASE_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -108,7 +114,7 @@ jobs:
         run: |
           (cd addon && zip -r ../dist/GutSaga-addon.zip GutSaga)
           cd dist
-          sha256sum * > SHA256SUMS
+          sha256sum ./* > SHA256SUMS
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -130,7 +136,7 @@ jobs:
             gh release create "v${VERSION}" dist/* --title "GutSaga v${VERSION}" --notes "$notes"
           fi
       - name: Mirror to public releases repo
-        if: ${{ secrets.PUBLIC_RELEASE_REPO != '' && secrets.PUBLIC_RELEASE_TOKEN != '' }}
+        if: env.PUBLIC_RELEASE_REPO != '' && env.PUBLIC_RELEASE_TOKEN != ''
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
           VERSION: 0.1.${{ github.run_number }}
