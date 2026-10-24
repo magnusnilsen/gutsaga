@@ -159,7 +159,7 @@ API-et ligger i `api/` og kjøres på Railway-prosjektet `gutsaga`.
 
 1. Koble GitHub-repoet til Railway. **Rotmappen til tjenesten skal være repo-roten**, ikke `api/`. `railway.json` peker på `api/Dockerfile`.
 2. Legg på Postgres-pluginen. Den setter `DATABASE_URL`.
-3. Sett `DISCORD_WEBHOOK_URL` (innkommende webhook) og `ADMIN_TOKEN` (`openssl rand -hex 32`).
+3. Sett `DISCORD_WEBHOOK_URL` (innkommende webhook) og `ADMIN_TOKEN` (`openssl rand -hex 32`). For forsidebilde i chat, sett også `PUBLIC_BASE_URL` (`https://gutsaga-production.up.railway.app`) og `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` er valgfri og er `1h` hvis den mangler.
 4. Push til `main` bygger og ruller ut. Migreringene kjører ved oppstart. `/healthz` skal svare `{"ok":true}`.
 5. Spillere logger inn med Smia. API-et sjekker medlemskap i hubben wow og gir en egen økt. `mint` finnes fortsatt for en manuell nøkkel.
 

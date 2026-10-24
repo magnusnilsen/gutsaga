@@ -72,6 +72,11 @@ components:
         created_by: {type: string}
         active: {type: boolean}
         version: {type: integer}
+        has_image: {type: boolean}
+        image_url: {type: string, description: Relative player path. Requires a session.}
+        image_signed_url:
+          type: string
+          description: Absolute expiring URL. Set only on admin quest list and admin quest get when PUBLIC_BASE_URL and IMAGE_URL_SECRET are configured.
     Progress:
       type: object
       properties:
@@ -286,12 +291,40 @@ paths:
     get:
       security: [{adminToken: []}]
       responses:
-        "200": {description: Quest and version snapshots}
+        "200": {description: Quest and version snapshots. Includes image_signed_url when the saga has a cover and signing is configured.}
     patch:
       security: [{adminToken: []}]
       summary: Update, bump version, store a snapshot
       responses:
         "200": {description: Updated}
+  /v1/admin/quests/{id}/image:
+    parameters: [{in: path, name: id, required: true, schema: {type: string, format: uuid}}]
+    get:
+      security: [{adminToken: []}]
+      summary: Saga cover bytes, same body and Content-Type as GET /v1/sagas/{id}/image
+      responses:
+        "200":
+          description: Image bytes
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+        "404": {description: Saga has no image}
+  /v1/public/sagas/{id}/image:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      - {in: query, name: exp, required: true, schema: {type: integer}, description: Unix expiry seconds}
+      - {in: query, name: sig, required: true, schema: {type: string}, description: Hex HMAC-SHA256 of id, newline, and exp}
+    get:
+      security: []
+      summary: Read-only saga cover. No other saga fields are returned.
+      responses:
+        "200":
+          description: Image bytes
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+        "403": {description: Bad signature or expired}
+        "404": {description: Valid signature and no image, or signing is not configured}
   /v1/admin/log:
     get:
       security: [{adminToken: []}]

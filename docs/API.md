@@ -12,6 +12,9 @@ Environment:
 |---|---|---|
 | `DATABASE_URL` | yes | Postgres URL. Railway's Postgres plugin sets this. |
 | `ADMIN_TOKEN` | for admin routes | Bearer token for `/v1/admin/*`. Not a player key. |
+| `PUBLIC_BASE_URL` | for signed covers | Public origin of this API, no trailing slash. Example: `https://gutsaga-production.up.railway.app`. Admin quest reads turn it into absolute `image_signed_url` values. |
+| `IMAGE_URL_SECRET` | for signed covers | HMAC secret for those URLs. `openssl rand -hex 32`. Both this and `PUBLIC_BASE_URL` must be set or the signed URL is omitted. |
+| `IMAGE_URL_TTL` | no | Lifetime of a signed cover URL. Go duration, default `1h`. |
 | `DISCORD_WEBHOOK_URL` | no | Incoming webhook. New completions are posted as username `GutSaga`. |
 | `PORT` | no | Listen port. Railway sets this. Default `8080`. |
 | `SMIA_AUTH_MODE` | no | `smia` (default) calls `https://smia.tools/wow/mcp`. `dev` accepts `SMIA_DEV_TOKEN` instead. |
@@ -20,6 +23,8 @@ Environment:
 ```bash
 export DATABASE_URL=postgres://gutsaga:gutsaga@127.0.0.1:5432/gutsaga?sslmode=disable
 export ADMIN_TOKEN=$(openssl rand -hex 32)
+export PUBLIC_BASE_URL=http://127.0.0.1:8080
+export IMAGE_URL_SECRET=$(openssl rand -hex 32)
 export DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 go run ./api
 ```
@@ -192,9 +197,11 @@ These are the endpoints a later Smia MCP server should call with `ADMIN_TOKEN`.
 | `PATCH` | `/v1/admin/characters/{id}` | any of name, realm, race, class, level, backstory |
 | `DELETE` | `/v1/admin/characters/{id}` | `204` |
 | `POST` | `/v1/admin/quests` | title, description, objectives, reward, `min_level`, `party_quest`, `assigned_character_ids`, `active`, `created_by` |
-| `GET` | `/v1/admin/quests?character_id=` | every quest; with `character_id`, includes `status` (`null` if not started), `eligible`, `completed_version` |
-| `GET` | `/v1/admin/quests/{id}` | quest plus `versions[]` snapshots |
+| `GET` | `/v1/admin/quests?character_id=` | every quest; with `character_id`, includes `status` (`null` if not started), `eligible`, `completed_version`. Quests that have a cover include `image_signed_url` when signing is configured. |
+| `GET` | `/v1/admin/quests/{id}` | quest plus `versions[]` snapshots. Same `image_signed_url` as the list. |
+| `GET` | `/v1/admin/quests/{id}/image` | cover bytes and `Content-Type`, same as `GET /v1/sagas/{id}/image`. `404` when the saga has no image. |
 | `PATCH` | `/v1/admin/quests/{id}` | partial update. **Always bumps `version` and writes a snapshot.** `min_level: null` clears it. |
+| `GET` | `/v1/public/sagas/{id}/image?exp=&sig=` | no `Authorization` header. HMAC-SHA256 of `id`, a newline, and the unix `exp`, hex-encoded, keyed with `IMAGE_URL_SECRET`. `403` bad signature (checked before the database, so a guess does not reveal whether the saga exists). `403` when `exp` is in the past. `404` when the signature is valid and there is no image. The body is only the image bytes. |
 | `GET` | `/v1/admin/log?battletag=&character_id=&limit=` | newest first, default 50 |
 | `POST` | `/v1/admin/log` | `type`, `title`, `body`, optional `battletag` / `player_id` / `character_id` / `quest_id` |
 
@@ -226,4 +233,4 @@ The machine-readable contract is also in [`openapi.yaml`](openapi.yaml).
 
 ## Railway
 
-Connect the GitHub repo to Railway project `gutsaga`. The service root directory must be the **repository root** (the Dockerfile context is the whole module). `railway.json` builds `api/Dockerfile` and checks `/healthz`. Add the Postgres plugin and set `DATABASE_URL`, `DISCORD_WEBHOOK_URL`, and `ADMIN_TOKEN`. Pushes to `main` deploy through Railway's GitHub integration.
+Connect the GitHub repo to Railway project `gutsaga`. The service root directory must be the **repository root** (the Dockerfile context is the whole module). `railway.json` builds `api/Dockerfile` and checks `/healthz`. Add the Postgres plugin and set `DATABASE_URL`, `DISCORD_WEBHOOK_URL`, and `ADMIN_TOKEN`. For chat clients that render a saga cover as a markdown image, also set `PUBLIC_BASE_URL` to the public Railway origin (`https://gutsaga-production.up.railway.app`) and `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` is optional and defaults to `1h`. Pushes to `main` deploy through Railway's GitHub integration.

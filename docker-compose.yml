@@ -21,6 +21,8 @@ services:
     environment:
       DATABASE_URL: postgres://gutsaga:gutsaga@postgres:5432/gutsaga?sslmode=disable
       ADMIN_TOKEN: dev-admin-token
+      PUBLIC_BASE_URL: http://localhost:8080
+      IMAGE_URL_SECRET: dev-image-url-secret
       SMIA_AUTH_MODE: smia
       # Optional: Discord incoming webhook for completion posts (username GutSaga).
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
