@@ -401,45 +401,70 @@ local function findEntry(id)
     return nil
 end
 
-local function characterKey()
-    local name = plainString(player.name)
-    if not name then
-        return nil
+-- GutSagaDB is SavedVariablesPerCharacter, so read state is already per toon.
+-- Flat map: read[quest_id] = true. read_bootstrapped means the one-time
+-- upgrade seed already ran. Incomplete sagas missing from read are unread.
+local function flattenReadMap(raw)
+    local flat = {}
+    if type(raw) ~= "table" then
+        return flat
     end
-    local realm = plainString(player.realm) or ""
-    return string.lower(name) .. "\n" .. string.lower(realm)
+    for k, v in pairs(raw) do
+        if type(v) == "table" then
+            -- Old name\nrealm nesting from the first unread build.
+            for qid, flag in pairs(v) do
+                if flag and type(qid) == "string" then
+                    flat[qid] = true
+                end
+            end
+        elseif v == true and type(k) == "string" then
+            flat[k] = true
+        end
+    end
+    return flat
 end
 
--- Per-character read set. First visit seeds every current saga as read so an
--- upgrade does not paint the whole log blue — only sagas that appear later.
-local function ensureReadBucket()
+local function ensureReadMap()
     initDB()
-    local key = characterKey()
-    if not key then
-        return nil
+    if GutSagaDB.read_bootstrapped then
+        GutSagaDB.read = flattenReadMap(GutSagaDB.read)
+        return GutSagaDB.read
     end
-    local bucket = GutSagaDB.read[key]
-    if type(bucket) ~= "table" then
-        bucket = {}
-        local entries = currentEntries()
-        for i = 1, #entries do
-            local id = entries[i].quest_id
-            if type(id) == "string" and id ~= "" then
-                bucket[id] = true
-            end
+
+    local flat = flattenReadMap(GutSagaDB.read)
+    -- First run: seed every saga already in the log as read so an upgrade is
+    -- not a wall of blue. /gutsaga wipe|unread clears this for playtesting.
+    local entries = currentEntries()
+    for i = 1, #entries do
+        local id = entries[i].quest_id
+        if type(id) == "string" and id ~= "" then
+            flat[id] = true
         end
-        GutSagaDB.read[key] = bucket
     end
-    return bucket
+    GutSagaDB.read = flat
+    GutSagaDB.read_bootstrapped = true
+    return GutSagaDB.read
 end
 
 local function markRead(questID)
     if type(questID) ~= "string" or questID == "" then
         return
     end
-    local bucket = ensureReadBucket()
-    if bucket then
-        bucket[questID] = true
+    local bucket = ensureReadMap()
+    bucket[questID] = true
+end
+
+-- Mark every incomplete saga unread (and drop completed ids from the map).
+local function markAllUnread()
+    initDB()
+    GutSagaDB.read = {}
+    GutSagaDB.read_bootstrapped = true
+    local entries = currentEntries()
+    for i = 1, #entries do
+        local e = entries[i]
+        if isComplete(e) and type(e.quest_id) == "string" then
+            GutSagaDB.read[e.quest_id] = true
+        end
     end
 end
 
@@ -450,48 +475,78 @@ local function isUnread(questID, entry)
     if entry and isComplete(entry) then
         return false
     end
-    local bucket = ensureReadBucket()
-    if not bucket then
-        return false
-    end
+    local bucket = ensureReadMap()
     return bucket[questID] ~= true
 end
 
-local function hasUnreadSagas()
-    local bucket = ensureReadBucket()
-    if not bucket then
-        return false
-    end
+local function countUnreadSagas()
+    local bucket = ensureReadMap()
     local entries = currentEntries()
+    local n = 0
     for i = 1, #entries do
         local e = entries[i]
         if not isComplete(e) and type(e.quest_id) == "string" and bucket[e.quest_id] ~= true then
-            return true
+            n = n + 1
         end
     end
-    return false
+    return n
 end
 
+local function hasUnreadSagas()
+    return countUnreadSagas() > 0
+end
+
+local function unreadTooltipLine()
+    local n = countUnreadSagas()
+    if n <= 0 then
+        return nil
+    end
+    if n == 1 then
+        return "1 ny saga"
+    end
+    return n .. " nye sagaer"
+end
+
+-- Medium sky blue from unread.tga (● is missing in the default WoW font).
+local UNREAD_BLUE = { r = 0.38, g = 0.68, b = 1.0 }
+-- Always leave room for the list dot so rows do not jump when marked read.
+local LIST_TEXT_INSET = 20
 local function paintUnreadDot(tex)
     if not tex then
         return
     end
-    if tex.SetColorTexture then
-        tex:SetColorTexture(0.22, 0.55, 1.0, 1)
+    tex:SetTexture("Interface\\AddOns\\GutSaga\\unread")
+    tex:SetVertexColor(UNREAD_BLUE.r, UNREAD_BLUE.g, UNREAD_BLUE.b)
+    if tex.SetAlpha then
+        tex:SetAlpha(1)
+    end
+end
+
+local function layoutListRow(row, unread)
+    row.title:ClearAllPoints()
+    row.title:SetPoint("TOPLEFT", LIST_TEXT_INSET, -4)
+    row.title:SetPoint("TOPRIGHT", -8, -4)
+    row.sub:ClearAllPoints()
+    row.sub:SetPoint("BOTTOMLEFT", LIST_TEXT_INSET, 4)
+    row.sub:SetPoint("BOTTOMRIGHT", -8, 4)
+    if unread then
+        row.unread:ClearAllPoints()
+        -- Sit beside the title line, not vertically centered on the whole row.
+        row.unread:SetPoint("TOPLEFT", 5, -6)
+        row.unread:Show()
     else
-        tex:SetTexture("Interface\\Buttons\\WHITE8X8")
-        tex:SetVertexColor(0.22, 0.55, 1.0)
+        row.unread:Hide()
     end
 end
 
 updateMinimapUnread = function()
-    if not minimapBtn or not minimapBtn.unread then
+    if not minimapBtn or not minimapBtn.unreadGlow then
         return
     end
     if hasUnreadSagas() then
-        minimapBtn.unread:Show()
+        minimapBtn.unreadGlow:Show()
     else
-        minimapBtn.unread:Hide()
+        minimapBtn.unreadGlow:Hide()
     end
 end
 
@@ -1699,19 +1754,19 @@ local function ensureRow(i)
     hover:SetAlpha(0)
     row.hover = hover
     local unread = row:CreateTexture(nil, "OVERLAY")
-    unread:SetSize(7, 7)
-    unread:SetPoint("TOPLEFT", 4, -7)
+    unread:SetSize(9, 9)
+    unread:SetPoint("TOPLEFT", 5, -6)
     paintUnreadDot(unread)
     unread:Hide()
     row.unread = unread
     local title = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", 8, -4)
+    title:SetPoint("TOPLEFT", LIST_TEXT_INSET, -4)
     title:SetPoint("TOPRIGHT", -8, -4)
     title:SetJustifyH("LEFT")
     title:SetWordWrap(false)
     row.title = title
     local sub = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    sub:SetPoint("BOTTOMLEFT", 8, 4)
+    sub:SetPoint("BOTTOMLEFT", LIST_TEXT_INSET, 4)
     sub:SetPoint("BOTTOMRIGHT", -8, 4)
     sub:SetJustifyH("LEFT")
     row.sub = sub
@@ -1797,17 +1852,7 @@ refresh = function()
             row.questID = item.quest_id
             row.title:SetText(item.title or "Saga")
             row.sub:SetText(listSubtitle(item, entries))
-            if isUnread(item.quest_id, item) then
-                row.unread:Show()
-                row.title:ClearAllPoints()
-                row.title:SetPoint("TOPLEFT", 16, -4)
-                row.title:SetPoint("TOPRIGHT", -8, -4)
-            else
-                row.unread:Hide()
-                row.title:ClearAllPoints()
-                row.title:SetPoint("TOPLEFT", 8, -4)
-                row.title:SetPoint("TOPRIGHT", -8, -4)
-            end
+            layoutListRow(row, isUnread(item.quest_id, item))
             if entryLocked(item, entries) then
                 row.title:SetTextColor(LOCKED_TITLE.r, LOCKED_TITLE.g, LOCKED_TITLE.b)
                 row.sub:SetTextColor(LOCKED_SUB.r, LOCKED_SUB.g, LOCKED_SUB.b)
@@ -1840,12 +1885,9 @@ refresh = function()
             row:Show()
             row.questID = item.quest_id
             row.title:SetText(item.title or "Saga")
-            row.unread:Hide()
-            row.title:ClearAllPoints()
-            row.title:SetPoint("TOPLEFT", 8, -4)
-            row.title:SetPoint("TOPRIGHT", -8, -4)
-            row.title:SetTextColor(0.55, 0.75, 0.45)
             row.sub:SetText(creatorName(item))
+            layoutListRow(row, false)
+            row.title:SetTextColor(0.55, 0.75, 0.45)
             row.sub:SetTextColor(0.55, 0.52, 0.45)
             if item.quest_id == selectedID then
                 row.bg:SetAlpha(0.55)
@@ -1905,14 +1947,8 @@ refresh = function()
         local selectedLocked = entryLocked(selectedEntry, entries)
         detailTitle:Show()
         detailTitle:SetText(selectedEntry.title or "Saga")
-        if selectedLocked then
-            detailTitle:SetTextColor(LOCKED_TITLE.r, LOCKED_TITLE.g, LOCKED_TITLE.b)
-        elseif isComplete(selectedEntry) then
-            detailTitle:SetTextColor(0.35, 0.55, 0.28)
-        else
-            local c = difficultyColor(selectedEntry.min_level, player.level)
-            detailTitle:SetTextColor(c.r, c.g, c.b)
-        end
+        -- Parchment header stays dark ink for contrast; list titles carry difficulty color.
+        detailTitle:SetTextColor(INK.r, INK.g, INK.b)
         detailTitle:SetWidth(width)
         detailTitle:ClearAllPoints()
         detailTitle:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
@@ -2908,15 +2944,26 @@ local function build()
         if type(GutSagaDB) == "table" and type(GutSagaDB.minimapAngle) == "number" then
             btn.angle = GutSagaDB.minimapAngle
         end
+        -- Unread: soft blue ADD glow (Blizzard zoom highlight).
+        local glow = btn:CreateTexture(nil, "BACKGROUND")
+        glow:SetSize(48, 48)
+        glow:SetPoint("CENTER")
+        glow:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+        glow:SetBlendMode("ADD")
+        glow:SetVertexColor(0.42, 0.72, 1.0)
+        glow:SetAlpha(1)
+        glow:Hide()
+        btn.unreadGlow = glow
+        -- Previous (softer) emblem + LibDBIcon-style TrackingBorder placement:
+        -- border anchors TOPLEFT on the 32² button; icon sits in the ring hole.
         local icon = btn:CreateTexture(nil, "ARTWORK")
-        icon:SetAllPoints()
-        icon:SetTexture("Interface\\AddOns\\GutSaga\\GutSaga")
-        local unread = btn:CreateTexture(nil, "OVERLAY")
-        unread:SetSize(9, 9)
-        unread:SetPoint("TOPRIGHT", -1, -1)
-        paintUnreadDot(unread)
-        unread:Hide()
-        btn.unread = unread
+        icon:SetSize(20, 20)
+        icon:SetPoint("TOPLEFT", 7, -5)
+        icon:SetTexture("Interface\\AddOns\\GutSaga\\GutSagaMinimap")
+        local border = btn:CreateTexture(nil, "OVERLAY")
+        border:SetSize(54, 54)
+        border:SetPoint("TOPLEFT")
+        border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
         local function placeMinimap(self)
             local angle = self.angle or (math.pi * 0.75)
             local radius = (Minimap:GetWidth() / 2) + 5
@@ -2960,6 +3007,10 @@ local function build()
             end
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:SetText("GutSaga")
+            local unreadLine = unreadTooltipLine()
+            if unreadLine then
+                GameTooltip:AddLine(unreadLine, UNREAD_BLUE.r, UNREAD_BLUE.g, UNREAD_BLUE.b)
+            end
             GameTooltip:AddLine("Dra for å flytte. Klikk for å åpne.", 0.9, 0.8, 0.6)
             GameTooltip:Show()
         end)
@@ -2987,10 +3038,20 @@ SlashCmdList.GUTSAGA = function(msg)
         initDB()
         GutSagaDB.completions = {}
         GutSagaDB.objectives = {}
+        markAllUnread()
         queueReset(nil)
         selectedID = nil
-        chat("|cffc9a227GutSaga|r: Alle lokale fullføringer er slettet. Skriv |cffffffff/reload|r så companion rydder API-progress.")
+        chat("|cffc9a227GutSaga|r: Alle lokale fullføringer er slettet (ulest). Skriv |cffffffff/reload|r så companion rydder API-progress.")
         onWorld()
+        if frame and frame:IsShown() then
+            refresh()
+        end
+        return
+    end
+    if msg == "unread" then
+        markAllUnread()
+        chat("|cffc9a227GutSaga|r: Alle åpne sagaer er ulest.")
+        updateMinimapUnread()
         if frame and frame:IsShown() then
             refresh()
         end
@@ -3002,6 +3063,8 @@ SlashCmdList.GUTSAGA = function(msg)
         if type(GutSagaDB.objectives) == "table" then
             GutSagaDB.objectives[id] = nil
         end
+        local bucket = ensureReadMap()
+        bucket[id] = nil
         queueReset(id)
         selectedID = id
         chat("|cffc9a227GutSaga|r: «" .. label .. "» er tilbakestilt. Skriv |cffffffff/reload|r så companion rydder API-progress.")
