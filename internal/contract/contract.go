@@ -92,6 +92,9 @@ type CompletionResponse struct {
 	LogWritten       bool   `json:"log_written"`
 	DiscordPosted    bool   `json:"discord_posted"`
 	CharacterName    string `json:"character_name,omitempty"`
+	CharacterClass   string `json:"character_class,omitempty"`
+	CharacterLevel   int    `json:"character_level,omitempty"`
+	Reward           string `json:"reward,omitempty"`
 	QuestTitle       string `json:"quest_title,omitempty"`
 	QuestVersion     int    `json:"quest_version,omitempty"`
 }

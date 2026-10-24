@@ -50,7 +50,7 @@ func usage() {
 
 Environment:
   DATABASE_URL          Postgres connection string (required)
-  DISCORD_WEBHOOK_URL   optional; completions post here as GutSaga
+  DISCORD_WEBHOOK_URL   optional; saga notices post here as GutSaga
   ADMIN_TOKEN           bearer token for /v1/admin
   PUBLIC_BASE_URL       public origin for signed cover URLs (no trailing slash)
   IMAGE_URL_SECRET      HMAC secret for those URLs (openssl rand -hex 32)
@@ -91,16 +91,27 @@ func serve(args []string) int {
 		slog.Error("migrate", "err", err)
 		return 1
 	}
+	store := NewStore(pool)
 	var notifier Notifier
 	if hook := strings.TrimSpace(os.Getenv("DISCORD_WEBHOOK_URL")); hook != "" {
-		notifier = &discord.Client{WebhookURL: hook}
+		q := discord.NewQueue(&discord.Client{WebhookURL: hook})
+		q.After = func(res discord.Result) {
+			if res.Err != nil || res.Kind != discord.KindCompletion || res.Ref == "" {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := store.MarkDiscord(ctx, res.Ref, res.Message.AttachmentURL); err != nil {
+				slog.Error("mark discord", "err", err)
+			}
+		}
+		notifier = q
 	} else {
-		slog.Warn("DISCORD_WEBHOOK_URL is empty; completions will not be posted to Discord")
+		slog.Warn("DISCORD_WEBHOOK_URL is empty; Discord notices are skipped")
 	}
 	if strings.TrimSpace(os.Getenv("ADMIN_TOKEN")) == "" {
 		slog.Warn("ADMIN_TOKEN is empty; admin routes are disabled")
 	}
-	store := NewStore(pool)
 	imageTTL := time.Hour
 	if raw := strings.TrimSpace(os.Getenv("IMAGE_URL_TTL")); raw != "" {
 		d, err := time.ParseDuration(raw)

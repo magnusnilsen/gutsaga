@@ -1149,11 +1149,12 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 	}
 	defer tx.Rollback(ctx)
 
-	var name, tag string
+	var name, className, tag string
+	var charLevel int
 	err = tx.QueryRow(ctx, `
-		SELECT c.name, COALESCE(p.battletag, '')
+		SELECT c.name, COALESCE(c.class, ''), c.level, COALESCE(p.battletag, '')
 		FROM characters c JOIN players p ON p.id = c.player_id
-		WHERE c.id=$1 AND c.player_id=$2`, in.CharacterID, playerID).Scan(&name, &tag)
+		WHERE c.id=$1 AND c.player_id=$2`, in.CharacterID, playerID).Scan(&name, &className, &charLevel, &tag)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.CompletionResponse{Allowed: false}, ErrForbidden
 	}
@@ -1168,8 +1169,8 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 			return contract.CompletionResponse{}, mapPG(err)
 		}
 	}
-	var snapTitle string
-	err = tx.QueryRow(ctx, `SELECT title FROM quest_versions WHERE quest_id=$1 AND version=$2`, in.QuestID, in.QuestVersion).Scan(&snapTitle)
+	var snapTitle, snapReward string
+	err = tx.QueryRow(ctx, `SELECT title, COALESCE(reward, '') FROM quest_versions WHERE quest_id=$1 AND version=$2`, in.QuestID, in.QuestVersion).Scan(&snapTitle, &snapReward)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.CompletionResponse{}, fmt.Errorf("%w: unknown quest version", ErrInvalid)
 	}
@@ -1239,9 +1240,14 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 	if err := tx.Commit(ctx); err != nil {
 		return contract.CompletionResponse{}, err
 	}
+	levelShown := in.Level
+	if levelShown <= 0 {
+		levelShown = charLevel
+	}
 	return contract.CompletionResponse{
 		Allowed: true, Completed: true, LogWritten: true, ProgressID: progressID,
-		CharacterName: name, QuestTitle: snapTitle, QuestVersion: in.QuestVersion,
+		CharacterName: name, CharacterClass: className, CharacterLevel: levelShown, Reward: snapReward,
+		QuestTitle: snapTitle, QuestVersion: in.QuestVersion,
 	}, nil
 }
 

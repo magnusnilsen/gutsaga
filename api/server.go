@@ -19,7 +19,9 @@ import (
 )
 
 type Notifier interface {
-	PostCompletion(ctx context.Context, character, questTitle, contentType string, image []byte) (discord.Message, error)
+	PostCompletion(ctx context.Context, n discord.Completion) (discord.Message, error)
+	PostSaga(ctx context.Context, n discord.SagaNotice) (discord.Message, error)
+	PostLevel(ctx context.Context, n discord.LevelNotice) (discord.Message, error)
 }
 
 type Server struct {
@@ -155,15 +157,38 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	if res.Completed && !res.AlreadyCompleted && s.discord != nil {
-		msg, derr := s.discord.PostCompletion(r.Context(), res.CharacterName, res.QuestTitle, contentType, image)
-		if derr == nil {
-			res.DiscordPosted = true
-			if err := s.store.MarkDiscord(r.Context(), res.ProgressID, msg.AttachmentURL); err != nil {
-				slog.Error("mark discord", "err", err)
+	if res.Completed && !res.AlreadyCompleted {
+		when := time.Now().UTC()
+		if strings.TrimSpace(in.CompletedAt) != "" {
+			if t, err := time.Parse(time.RFC3339, in.CompletedAt); err == nil {
+				when = t.UTC()
 			}
-		} else if !errors.Is(derr, discord.ErrNotConfigured) {
-			slog.Error("discord post", "err", derr)
+		}
+		level := res.CharacterLevel
+		if level == 0 {
+			level = in.Level
+		}
+		msg, ok := s.postDiscord(r.Context(), func(ctx context.Context, n Notifier) (discord.Message, error) {
+			return n.PostCompletion(ctx, discord.Completion{
+				ProgressID:  res.ProgressID,
+				Character:   res.CharacterName,
+				Class:       res.CharacterClass,
+				Level:       level,
+				Title:       res.QuestTitle,
+				Version:     res.QuestVersion,
+				Reward:      res.Reward,
+				When:        when,
+				Image:       image,
+				ContentType: contentType,
+			})
+		})
+		if ok {
+			res.DiscordPosted = true
+			if msg.AttachmentURL != "" && res.ProgressID != "" {
+				if err := s.store.MarkDiscord(r.Context(), res.ProgressID, msg.AttachmentURL); err != nil {
+					slog.Error("mark discord", "err", err)
+				}
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, res)
@@ -176,6 +201,7 @@ func (s *Server) level(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
 		return
 	}
+	before, _ := s.store.GetCharacter(r.Context(), in.CharacterID)
 	res, err := s.store.SetLevel(r.Context(), p.ID, in)
 	if err != nil {
 		if errors.Is(err, ErrForbidden) {
@@ -184,6 +210,9 @@ func (s *Server) level(w http.ResponseWriter, r *http.Request) {
 		}
 		s.fail(w, err)
 		return
+	}
+	if res.Changed && res.Allowed {
+		s.announceLevel(r.Context(), before, res.Level)
 	}
 	writeJSON(w, http.StatusOK, res)
 }
@@ -299,8 +328,13 @@ func (s *Server) deleteCharacter(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createQuest(w http.ResponseWriter, r *http.Request) {
 	var body questBody
-	if err := readJSON(r, &body, 1<<20); err != nil {
+	if err := readJSON(r, &body, 12<<20); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
+		return
+	}
+	cover, coverType, err := decodeCover(body.ImageBase64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
 		return
 	}
 	out, err := s.store.CreateQuest(r.Context(), QuestInput{
@@ -313,7 +347,15 @@ func (s *Server) createQuest(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, withSagaImageURL(out))
+	if len(cover) > 0 {
+		if err := s.store.SetQuestCover(r.Context(), out.ID, coverType, cover); err != nil {
+			slog.Error("saga cover", "err", err)
+		} else {
+			out.HasImage = true
+		}
+	}
+	s.announceCreated(r.Context(), out, body.Announce, cover, coverType)
+	writeJSON(w, http.StatusCreated, s.withSignedCoverURL(withSagaImageURL(out)))
 }
 
 func (s *Server) listQuests(w http.ResponseWriter, r *http.Request) {
@@ -364,12 +406,17 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	out, err := s.store.UpdateQuest(r.Context(), r.PathValue("id"), patch)
+	id := r.PathValue("id")
+	detail, gerr := s.store.GetQuest(r.Context(), id)
+	out, err := s.store.UpdateQuest(r.Context(), id, patch)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, withSagaImageURL(out))
+	if gerr == nil {
+		s.announceEdited(r.Context(), detail.Quest, out, body.Announce)
+	}
+	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
 }
 
 func (s *Server) listLog(w http.ResponseWriter, r *http.Request) {
@@ -523,6 +570,10 @@ type questBody struct {
 	Active               *bool                `json:"active"`
 	CreatedBy            string               `json:"created_by"`
 	AssignedCharacterIDs []string             `json:"assigned_character_ids"`
+	// Announce skips the Discord note when false. Omitted announces an active saga.
+	Announce *bool `json:"announce"`
+	// ImageBase64 is an optional cover. The bytes are stored and attached to the announcement.
+	ImageBase64 string `json:"image_base64"`
 }
 
 type questPatchBody struct {
@@ -536,6 +587,8 @@ type questPatchBody struct {
 	Active               *bool                 `json:"active"`
 	CreatedBy            *string               `json:"created_by"`
 	AssignedCharacterIDs *[]string             `json:"assigned_character_ids"`
+	// Announce skips the Discord note when false. Omitted posts a version note or a retirement.
+	Announce *bool `json:"announce"`
 }
 
 func readCompletion(w http.ResponseWriter, r *http.Request) (contract.CompletionRequest, []byte, string, error) {

@@ -24,7 +24,7 @@ services:
       PUBLIC_BASE_URL: http://localhost:8080
       IMAGE_URL_SECRET: dev-image-url-secret
       SMIA_AUTH_MODE: smia
-      # Optional: Discord incoming webhook for completion posts (username GutSaga).
+      # Optional: Discord incoming webhook (username GutSaga) for saga notices and completions.
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
       PORT: "8080"
     ports:

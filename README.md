@@ -159,13 +159,126 @@ API-et ligger i `api/` og kjøres på Railway-prosjektet `gutsaga`.
 
 1. Koble GitHub-repoet til Railway. **Rotmappen til tjenesten skal være repo-roten**, ikke `api/`. `railway.json` peker på `api/Dockerfile`.
 2. Legg på Postgres-pluginen. Den setter `DATABASE_URL`.
-3. Sett `DISCORD_WEBHOOK_URL` (innkommende webhook) og `ADMIN_TOKEN` (`openssl rand -hex 32`). For forsidebilde i chat, sett også `PUBLIC_BASE_URL` (`https://gutsaga-production.up.railway.app`) og `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` er valgfri og er `1h` hvis den mangler.
+3. Sett `DISCORD_WEBHOOK_URL` (innkommende webhook) og `ADMIN_TOKEN` (`openssl rand -hex 32`). Det er ingen flere Discord-variabler. Samme webhook brukes til nye sagaer, versjoner, avslutning, milestolpe-nivå og fullføring. For forsidebilde i chat, sett også `PUBLIC_BASE_URL` (`https://gutsaga-production.up.railway.app`) og `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` er valgfri og er `1h` hvis den mangler.
 4. Push til `main` bygger og ruller ut. Migreringene kjører ved oppstart. `/healthz` skal svare `{"ok":true}`.
 5. Spillere logger inn med Smia. API-et sjekker medlemskap i hubben wow og gir en egen økt. `mint` finnes fortsatt for en manuell nøkkel.
 
 Kontrakten, inkludert admin-endepunktene som Smia kan peke på senere, står i [docs/API.md](docs/API.md) og [docs/openapi.yaml](docs/openapi.yaml).
 
-Fullføring er idempotent per karakter og oppdrag. Versjonen spilleren hadde lastet, blir lagret. Å redigere et oppdrag øker versjonsnummeret og tar et øyeblikksbilde. API-et poster til Discord som **GutSaga**: `**Magni** fullførte *Oppdragsnavn*!`, med skjermbildet vedlagt når vi har ett.
+Fullføring er idempotent per karakter og oppdrag. Versjonen spilleren hadde lastet, blir lagret. Å redigere et oppdrag øker versjonsnummeret og tar et øyeblikksbilde.
+
+### Discord
+
+Brukernavnet er alltid **GutSaga**. Teksten er norsk. Meldingene er embeds med samme fargevalg: gull for ny saga (`13017435`), grønn for fullføring (`3908957`), blå for ny versjon (`4091802`), grå for avslutning (`7037528`), gul for milestolpe-nivå (`13666602`). Tidsstempel og bunntekst `GutSaga` følger med.
+
+Innlegget skjer i bakgrunnen. API-kallet venter ikke, og en feil fra Discord (også HTTP 429) ruller ikke tilbake sagaen eller fullføringen. 429 venter `retry_after` fra JSON-kroppen, ellers `Retry-After`. Nettverksfeil og 5xx prøves på nytt med økende pause. Etter noen forsøk logges feilen.
+
+`POST /v1/admin/quests` (det Smia-verktøyet `create_quest` kaller) kunngjør en aktiv saga. `announce: false` hopper over. Et inaktivt utkast kunngjøres ikke med mindre `announce` er `true`. Valgfri `image_base64` lagres som cover og legges ved Discord-meldingen som fil (`attachment://cover.png`). Fullføring gjør det samme med skjermbildet (`attachment://screenshot.png`). Chatklienter som trenger en adresse bruker i stedet `image_signed_url` fra `PUBLIC_BASE_URL` og `IMAGE_URL_SECRET`.
+
+En endring av tekst, mål, belønning, minstenivå eller parti legger ut en kort versjonsmelding. `active: false` legger sagaen bort. Bare å bytte hvem den er tildelt, er stille. `announce: false` på `PATCH` demper begge. Samme regler gjelder `PATCH /v1/sagas/{id}`. Nivå 10, 20, 30, … får en kort melding. Andre nivåer gjør det ikke.
+
+Eksempler på `payload_json`. Filen, når den finnes, er multipart-feltet `files[0]`.
+
+Ny saga:
+
+```json
+{
+  "username": "GutSaga",
+  "content": "Ny saga: *Første vakt*",
+  "embeds": [{
+    "title": "Første vakt",
+    "description": "Stå vakt ved porten.",
+    "color": 13017435,
+    "fields": [
+      {"name": "Mål", "value": "1. Møt opp\n2. Hold ut"},
+      {"name": "Minste nivå", "value": "10", "inline": true},
+      {"name": "Belønning", "value": "Ære", "inline": true},
+      {"name": "Laget av", "value": "Magnus#2231", "inline": true},
+      {"name": "Hvem", "value": "Parti — Magni (Paladin, nivå 12)"}
+    ],
+    "timestamp": "2026-10-24T12:00:00Z",
+    "image": {"url": "attachment://cover.png"},
+    "footer": {"text": "GutSaga"}
+  }],
+  "allowed_mentions": {"parse": []}
+}
+```
+
+Fullføring:
+
+```json
+{
+  "username": "GutSaga",
+  "content": "**Magni** fullførte *Første vakt*!",
+  "embeds": [{
+    "title": "Første vakt",
+    "description": "Magni, Paladin på nivå 12, fullførte sagaen.",
+    "color": 3908957,
+    "fields": [
+      {"name": "Karakter", "value": "Magni", "inline": true},
+      {"name": "Klasse", "value": "Paladin", "inline": true},
+      {"name": "Nivå", "value": "12", "inline": true},
+      {"name": "Versjon", "value": "3", "inline": true},
+      {"name": "Belønning", "value": "Ære", "inline": true}
+    ],
+    "timestamp": "2026-10-24T18:30:00Z",
+    "image": {"url": "attachment://screenshot.png"},
+    "footer": {"text": "GutSaga"}
+  }],
+  "allowed_mentions": {"parse": []}
+}
+```
+
+Ny versjon:
+
+```json
+{
+  "username": "GutSaga",
+  "content": "*Første vakt* er oppdatert (versjon 2).",
+  "embeds": [{
+    "title": "Første vakt",
+    "description": "Ny versjon 2.",
+    "color": 4091802,
+    "timestamp": "2026-10-24T12:00:00Z",
+    "footer": {"text": "GutSaga"}
+  }],
+  "allowed_mentions": {"parse": []}
+}
+```
+
+Lagt bort:
+
+```json
+{
+  "username": "GutSaga",
+  "content": "*Første vakt* er lagt bort.",
+  "embeds": [{
+    "title": "Første vakt",
+    "description": "Sagaen er ikke lenger aktiv.",
+    "color": 7037528,
+    "timestamp": "2026-10-24T12:00:00Z",
+    "footer": {"text": "GutSaga"}
+  }],
+  "allowed_mentions": {"parse": []}
+}
+```
+
+Milestolpe:
+
+```json
+{
+  "username": "GutSaga",
+  "content": "**Magni** nådde nivå 20.",
+  "embeds": [{
+    "title": "Nivå 20",
+    "description": "Magni · Paladin",
+    "color": 13666602,
+    "timestamp": "2026-10-24T08:00:00Z",
+    "footer": {"text": "GutSaga"}
+  }],
+  "allowed_mentions": {"parse": []}
+}
+```
 
 Lokal testing med Postgres, API og seed står i avsnittet [Lokal testing](#lokal-testing). `make dev` er den korte varianten.
 

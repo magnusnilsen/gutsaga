@@ -69,19 +69,36 @@ func resetDB(t *testing.T) {
 }
 
 type fakeDiscord struct {
-	mu    sync.Mutex
-	calls int
-	last  string
-	image int
+	mu     sync.Mutex
+	calls  int
+	last   string
+	image  int
+	sagas  []discord.SagaNotice
+	levels []discord.LevelNotice
 }
 
-func (f *fakeDiscord) PostCompletion(_ context.Context, character, questTitle, _ string, image []byte) (discord.Message, error) {
+func (f *fakeDiscord) PostCompletion(_ context.Context, n discord.Completion) (discord.Message, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
-	f.last = discord.CompletionText(character, questTitle)
-	f.image = len(image)
+	f.last = discord.CompletionText(n.Character, n.Title)
+	f.image = len(n.Image)
 	return discord.Message{Content: f.last, AttachmentURL: "https://cdn.example/shot.png"}, nil
+}
+
+func (f *fakeDiscord) PostSaga(_ context.Context, n discord.SagaNotice) (discord.Message, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n.Image = append([]byte(nil), n.Image...)
+	f.sagas = append(f.sagas, n)
+	return discord.Message{Content: n.Title}, nil
+}
+
+func (f *fakeDiscord) PostLevel(_ context.Context, n discord.LevelNotice) (discord.Message, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.levels = append(f.levels, n)
+	return discord.Message{Content: n.Character}, nil
 }
 
 type apiClient struct {
