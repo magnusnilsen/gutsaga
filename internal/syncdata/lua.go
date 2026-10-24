@@ -10,6 +10,12 @@ import (
 
 // WriteLua renders GutSagaData.lua. The addon reads this file at load /reload.
 func WriteLua(battletag, generatedAt string, entries []Entry) string {
+	return WriteLuaFile(battletag, generatedAt, entries, "", "")
+}
+
+// WriteLuaFile is WriteLua plus an optional one-shot notice. The addon shows
+// notice once, after /reload, when notice_id changes.
+func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, noticeID string) string {
 	var b strings.Builder
 	b.WriteString("-- Generert av GutSaga-programmet. Ikke rediger for hånd.\n")
 	b.WriteString("-- Last inn på nytt med /reload for å se nye oppdrag.\n")
@@ -17,6 +23,10 @@ func WriteLua(battletag, generatedAt string, entries []Entry) string {
 	b.WriteString("  version = 1,\n")
 	fmt.Fprintf(&b, "  battletag = %s,\n", luaString(battletag))
 	fmt.Fprintf(&b, "  generated_at = %s,\n", luaString(generatedAt))
+	if notice != "" && noticeID != "" {
+		fmt.Fprintf(&b, "  notice = %s,\n", luaString(notice))
+		fmt.Fprintf(&b, "  notice_id = %s,\n", luaString(noticeID))
+	}
 	b.WriteString("  entries = {\n")
 	for _, e := range entries {
 		b.WriteString("    {\n")

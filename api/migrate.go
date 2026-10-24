@@ -67,13 +67,82 @@ func migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
+// splitSQL splits on semicolons that are not inside quotes, dollar-quotes, or
+// line comments. Migration 007 defines a plpgsql function, and the body
+// contains semicolons.
 func splitSQL(sql string) []string {
-	parts := strings.Split(sql, ";")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if strings.TrimSpace(p) != "" {
-			out = append(out, p)
+	var out []string
+	var b strings.Builder
+	i := 0
+	for i < len(sql) {
+		if strings.HasPrefix(sql[i:], "--") {
+			for i < len(sql) && sql[i] != '\n' {
+				b.WriteByte(sql[i])
+				i++
+			}
+			continue
 		}
+		if sql[i] == '\'' {
+			b.WriteByte(sql[i])
+			i++
+			for i < len(sql) {
+				b.WriteByte(sql[i])
+				if sql[i] == '\'' {
+					if i+1 < len(sql) && sql[i+1] == '\'' {
+						b.WriteByte(sql[i+1])
+						i += 2
+						continue
+					}
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if tag, ok := dollarTag(sql, i); ok {
+			rest := sql[i+len(tag):]
+			end := strings.Index(rest, tag)
+			if end < 0 {
+				b.WriteString(sql[i:])
+				break
+			}
+			end = i + len(tag) + end + len(tag)
+			b.WriteString(sql[i:end])
+			i = end
+			continue
+		}
+		if sql[i] == ';' {
+			if s := strings.TrimSpace(b.String()); s != "" {
+				out = append(out, s)
+			}
+			b.Reset()
+			i++
+			continue
+		}
+		b.WriteByte(sql[i])
+		i++
+	}
+	if s := strings.TrimSpace(b.String()); s != "" {
+		out = append(out, s)
 	}
 	return out
+}
+
+func dollarTag(sql string, i int) (string, bool) {
+	if i >= len(sql) || sql[i] != '$' {
+		return "", false
+	}
+	j := i + 1
+	for j < len(sql) {
+		c := sql[j]
+		if c == '$' {
+			return sql[i : j+1], true
+		}
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' {
+			return "", false
+		}
+		j++
+	}
+	return "", false
 }

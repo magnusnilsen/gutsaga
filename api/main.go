@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/magnusnilsen/gutsaga/internal/discord"
+	"github.com/magnusnilsen/gutsaga/internal/realtime"
 	"github.com/magnusnilsen/gutsaga/internal/smia"
 )
 
@@ -47,6 +48,8 @@ func usage() {
   gutsaga-api seed            insert the local Elwynn test quests
   gutsaga-api mint            create or rotate a player API key
   gutsaga-api help
+
+GET /v1/ws is the player WebSocket (same bearer as /v1/sync).
 
 Environment:
   DATABASE_URL          Postgres connection string (required)
@@ -121,6 +124,9 @@ func serve(args []string) int {
 			imageTTL = d
 		}
 	}
+	hub := realtime.NewHub()
+	defer hub.Close()
+	go hub.Listen(context.Background(), strings.TrimSpace(os.Getenv("DATABASE_URL")))
 	publicBase := strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")), "/")
 	imageSecret := strings.TrimSpace(os.Getenv("IMAGE_URL_SECRET"))
 	if (publicBase == "") != (imageSecret == "") {
@@ -134,6 +140,7 @@ func serve(args []string) int {
 		imageURLTTL:    imageTTL,
 		discord:        notifier,
 		smia:           newVerifier(store),
+		events:         hub,
 	}
 	if strings.EqualFold(os.Getenv("SMIA_AUTH_MODE"), "dev") && strings.TrimSpace(os.Getenv("SMIA_DEV_TOKEN")) == "" {
 		slog.Warn("SMIA_AUTH_MODE=dev but SMIA_DEV_TOKEN is empty; login will fail")
@@ -162,6 +169,7 @@ func serve(args []string) int {
 		return 1
 	case <-sig:
 	}
+	hub.Close()
 	shut, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(shut)

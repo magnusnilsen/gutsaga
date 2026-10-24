@@ -19,6 +19,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/config"
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 	"github.com/magnusnilsen/gutsaga/internal/install"
+	"github.com/magnusnilsen/gutsaga/internal/notify"
 	"github.com/magnusnilsen/gutsaga/internal/queue"
 	"github.com/magnusnilsen/gutsaga/internal/savedvars"
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
@@ -41,6 +42,10 @@ type App struct {
 	mu         sync.Mutex
 	loginMu    sync.Mutex
 	loginTried bool
+	notice     string
+	noticeID   string
+	// Notify shows the desktop banner. Tests set it. Nil uses the OS.
+	Notify func(title, body string)
 }
 
 type follower struct {
@@ -71,6 +76,9 @@ func (a *App) Run(ctx context.Context) {
 	if !a.NoUpdate {
 		a.maybeUpdate(ctx)
 	}
+	wake := make(chan struct{}, 1)
+	unauth := make(chan struct{}, 1)
+	go a.watchRealtime(ctx, wake, unauth)
 	tailTick := time.NewTicker(time.Second)
 	flushTick := time.NewTicker(5 * time.Second)
 	syncTick := time.NewTicker(10 * time.Minute)
@@ -79,6 +87,10 @@ func (a *App) Run(ctx context.Context) {
 	defer flushTick.Stop()
 	defer syncTick.Stop()
 	defer updateTick.Stop()
+	debounce := time.NewTimer(time.Hour)
+	debounce.Stop()
+	defer debounce.Stop()
+	var pending bool
 	a.Flush(ctx)
 	for {
 		select {
@@ -97,6 +109,28 @@ func (a *App) Run(ctx context.Context) {
 		case <-updateTick.C:
 			if !a.NoUpdate {
 				a.maybeUpdate(ctx)
+			}
+		case <-wake:
+			pending = true
+			if !debounce.Stop() {
+				select {
+				case <-debounce.C:
+				default:
+				}
+			}
+			debounce.Reset(200 * time.Millisecond)
+		case <-debounce.C:
+			if !pending {
+				continue
+			}
+			pending = false
+			if err := a.pullSync(ctx); err != nil {
+				a.Log.Warn("sanntidssynk feilet", "err", err)
+			}
+		case <-unauth:
+			a.clearSession()
+			if err := a.bootstrap(ctx); err != nil {
+				a.Log.Warn("innlogging etter sanntid feilet", "err", err)
 			}
 		}
 	}
@@ -157,9 +191,17 @@ func (a *App) pullSync(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	a.sync = sync
+	prev := a.sync
+	desktop, addonNote := syncdata.ReloadNews(prev, sync)
+	notice, noticeID := a.notice, a.noticeID
+	if addonNote != "" {
+		notice, noticeID = addonNote, sync.GeneratedAt
+	}
 	if a.WowDir == "" {
+		a.sync = sync
+		a.notice, a.noticeID = notice, noticeID
 		a.Log.Info("synkronisert, men WoW-mappen er ukjent")
+		a.announce(desktop)
 		return nil
 	}
 	entries := syncdata.Merge(sync)
@@ -173,7 +215,7 @@ func (a *App) pullSync(ctx context.Context) error {
 			entries[i].ImageAspect = ar
 		}
 	}
-	body := syncdata.WriteLua(sync.BattleTag, sync.GeneratedAt, entries)
+	body := syncdata.WriteLuaFile(sync.BattleTag, sync.GeneratedAt, entries, notice, noticeID)
 	path := filepath.Join(addonDir, "GutSagaData.lua")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -181,8 +223,25 @@ func (a *App) pullSync(ctx context.Context) error {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		return err
 	}
+	a.sync = sync
+	a.notice, a.noticeID = notice, noticeID
 	a.Log.Info("oppdrag oppdatert. Skriv /reload i spillet hvis du er innlogget.", "antall", len(entries))
+	a.announce(desktop)
 	return nil
+}
+
+func (a *App) announce(desktop string) {
+	if desktop == "" {
+		return
+	}
+	a.Log.Info(desktop)
+	if a.Notify != nil {
+		a.Notify("GutSaga", desktop)
+		return
+	}
+	if err := notify.Show("GutSaga", desktop); err != nil {
+		a.Log.Warn("skrivebordsvarsel feilet", "err", err)
+	}
 }
 
 func (a *App) writeSagaImages(ctx context.Context, sync contract.SyncResponse, addonDir string) (map[string]float64, error) {

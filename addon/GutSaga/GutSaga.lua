@@ -142,6 +142,27 @@ local function initDB()
     end
 end
 
+-- GutSagaData is only read at login and /reload. The companion writes notice
+-- into that file when a saga changed, and shows the "skriv /reload" banner
+-- on the desktop because it cannot type into the client. After /reload this
+-- prints the notice once per character.
+local function showFreshNotice()
+    if type(GutSagaData) ~= "table" then
+        return
+    end
+    local id = GutSagaData.notice_id
+    local text = GutSagaData.notice
+    if type(id) ~= "string" or id == "" or type(text) ~= "string" or text == "" then
+        return
+    end
+    initDB()
+    if GutSagaDB.seen_notice == id then
+        return
+    end
+    GutSagaDB.seen_notice = id
+    chat("|cffc9a227GutSaga|r: " .. text)
+end
+
 local function pipe(s)
     s = s or ""
     s = s:gsub("|", "/")
@@ -2707,6 +2728,7 @@ events:SetScript("OnEvent", function(_, event, ...)
     end
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         initDB()
+        showFreshNotice()
         cachePlayer()
         build()
         emitCharacter()

@@ -15,6 +15,7 @@ import (
 
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 	"github.com/magnusnilsen/gutsaga/internal/discord"
+	"github.com/magnusnilsen/gutsaga/internal/realtime"
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
 	"github.com/magnusnilsen/gutsaga/internal/smia"
 )
@@ -33,6 +34,7 @@ type Server struct {
 	imageURLTTL    time.Duration
 	discord        Notifier
 	smia           smia.Verifier
+	events         *realtime.Hub
 }
 
 type ctxKey int
@@ -45,6 +47,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/session", s.session)
 	mux.HandleFunc("PUT /v1/characters", s.withPlayer(s.upsertCharacter))
 	mux.HandleFunc("GET /v1/sync", s.withPlayer(s.sync))
+	mux.HandleFunc("GET /v1/ws", s.serveWS)
 	mux.HandleFunc("POST /v1/complete", s.withPlayer(s.complete))
 	mux.HandleFunc("POST /v1/level", s.withPlayer(s.level))
 	mux.HandleFunc("POST /v1/sagas", s.withPlayer(s.createSaga))

@@ -98,6 +98,8 @@ Classic Era, Mists og TBC har `DoEmote`, `GetGameTime`, `time`/`date` og gruppek
 
 Oppdragene ligger i `GutSagaData.lua`, som programmet skriver. Spillet leser filen ved innlogging og `/reload`. Det du fullfører, lagres per karakter i SavedVariables og skrives til disk når du logger ut eller laster inn på nytt. Chatlinjen er det som gjør at fullføringen kommer frem selv om du avslutter spillet brått.
 
+Programmet holder en forbindelse åpen mot API-et. Når en saga blir laget, endret, avsluttet eller fullført, skriver det fila med en gang og viser et varsel på maskinen: «Ny saga: … — skriv /reload i WoW». Spillet ser endringen etter `/reload`. Etter innlasting skriver chatten én linje, for eksempel «Ny saga: … er lastet inn.» Om forbindelsen ryker, prøver programmet igjen selv, og det spør API-et uansett omtrent hvert tiende minutt.
+
 Skriv `/reload` etter at programmet sier at oppdragene er oppdatert.
 
 ### macOS og Gatekeeper
@@ -337,6 +339,8 @@ Milestolpe:
   "allowed_mentions": {"parse": []}
 }
 ```
+
+Følgeprogrammet lytter på `GET /v1/ws` (samme økt som `/v1/sync`) i stedet for å spørre hele tiden. API-et bruker Postgres `LISTEN`/`NOTIFY`, så flere instanser på Railway deler hendelsene. Varsler, ping og omstart står i [docs/realtime.md](docs/realtime.md).
 
 Lokal testing med Postgres, API og seed står i avsnittet [Lokal testing](#lokal-testing). `make dev` er den korte varianten.
 
