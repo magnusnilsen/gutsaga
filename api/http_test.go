@@ -390,6 +390,122 @@ func (fakeSmia) Verify(_ context.Context, token string) (smia.Identity, error) {
 	}
 }
 
+func TestGroupSagaCreditsEachCharacter(t *testing.T) {
+	resetDB(t)
+	srv := httptest.NewServer((&Server{store: NewStore(testPool), adminToken: "admin-test"}).Handler())
+	t.Cleanup(srv.Close)
+	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
+
+	var magnus, other contract.CreatePlayerResponse
+	resp, err := admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
+		"battletag": "Magnus#2231", "display_name": "Magnus",
+	}, &magnus)
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		t.Fatalf("player %d %v", statusOf(resp), err)
+	}
+	resp, err = admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
+		"battletag": "Mira#1", "display_name": "Mira",
+	}, &other)
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		t.Fatalf("mira player %d %v", statusOf(resp), err)
+	}
+	var magni, mira contract.Character
+	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
+		"player_id": magnus.Player.ID, "name": "Magni", "realm": "Argent Dawn",
+		"race": "Dwarf", "class": "Paladin", "level": 18,
+	}, &magni)
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		t.Fatal(err)
+	}
+	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
+		"player_id": other.Player.ID, "name": "Mira", "realm": "Argent Dawn",
+		"race": "Human", "class": "Mage", "level": 17,
+	}, &mira)
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		t.Fatal(err)
+	}
+
+	var bad contract.ErrorBody
+	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+		"title": "Ugyldig emote", "created_by": "Magnus#2231", "party_quest": true,
+		"objectives": []map[string]any{{"id": "hi", "type": "emote", "text": "Hils"}},
+	}, &bad)
+	if err != nil || resp.StatusCode != http.StatusBadRequest || !strings.Contains(bad.Message, "emote") {
+		t.Fatalf("bad emote %d %+v %v", statusOf(resp), bad, err)
+	}
+
+	level := 17
+	var quest contract.Quest
+	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+		"title": "Deadmines", "description": "Fire stykker.", "created_by": "Magnus#2231",
+		"party_quest": true, "min_level": 17,
+		"when":  map[string]any{"clock": "game", "start": "18:00", "end": "06:00"},
+		"group": map[string]any{"size": 2, "min_level": level, "instance": "The Deadmines"},
+		"objectives": []map[string]any{
+			{"id": "door", "type": "emote", "text": "Hils på Rhahk'Zor", "emote": "/salute", "npc": "Rhahk'Zor"},
+			{"id": "both", "type": "all_of", "text": "Inne i gruven med vann", "when": map[string]any{"start": "22:00", "end": "02:00"}, "objectives": []map[string]any{
+				{"id": "mine", "type": "location", "text": "Deadmines", "zone": "The Deadmines"},
+				{"id": "water", "type": "collect", "text": "Vann", "item_id": 159},
+			}},
+		},
+	}, &quest)
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		t.Fatalf("quest %d %v %+v", statusOf(resp), err, quest)
+	}
+	if quest.Group == nil || quest.Group.Size != 2 || quest.When == nil || quest.When.Clock != "game" {
+		t.Fatalf("rules %+v when %+v", quest.Group, quest.When)
+	}
+	if quest.Objectives[0].Emote != "SALUTE" || len(quest.Objectives[1].Children) != 2 || quest.Objectives[1].Children[1].Count != 1 {
+		t.Fatalf("objectives %+v", quest.Objectives)
+	}
+
+	player := apiClient{base: srv.URL, token: magnus.APIKey, http: srv.Client()}
+	var denied contract.ErrorBody
+	resp, err = player.do(http.MethodPost, "/v1/complete", contract.CompletionRequest{
+		CharacterID: magni.ID, QuestID: quest.ID, QuestVersion: 1, BattleTag: "Magnus#2231", Level: 18,
+		Instance:     "The Deadmines",
+		GroupMembers: []contract.GroupMember{{Name: "Magni", Realm: "Argent Dawn", Level: 18}},
+	}, &denied)
+	if err != nil || resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("solo group %d %+v %v", statusOf(resp), denied, err)
+	}
+
+	var first contract.CompletionResponse
+	resp, err = player.do(http.MethodPost, "/v1/complete", contract.CompletionRequest{
+		CharacterID: magni.ID, QuestID: quest.ID, QuestVersion: 1, BattleTag: "Magnus#2231", Level: 18,
+		Instance: "Deadmines",
+		GroupMembers: []contract.GroupMember{
+			{Name: "Magni", Realm: "Argent Dawn", Level: 18},
+			{Name: "Mira", Realm: "Argent Dawn", Level: 17},
+		},
+	}, &first)
+	if err != nil || resp.StatusCode != http.StatusOK || !first.Completed || first.AlreadyCompleted {
+		t.Fatalf("complete %+v %d %v", first, statusOf(resp), err)
+	}
+	if len(first.GroupCredited) != 1 || first.GroupCredited[0].CharacterID != mira.ID || first.GroupCredited[0].Already {
+		t.Fatalf("credit %+v", first.GroupCredited)
+	}
+
+	var second contract.CompletionResponse
+	resp, err = player.do(http.MethodPost, "/v1/complete", contract.CompletionRequest{
+		CharacterID: magni.ID, QuestID: quest.ID, QuestVersion: 1, BattleTag: "Magnus#2231", Level: 18,
+		Instance: "The Deadmines",
+		GroupMembers: []contract.GroupMember{
+			{Name: "Mira", Realm: "Argent Dawn", Level: 17},
+		},
+	}, &second)
+	if err != nil || !second.AlreadyCompleted || len(second.GroupCredited) != 1 || !second.GroupCredited[0].Already {
+		t.Fatalf("repeat %+v %v", second, err)
+	}
+
+	miraClient := apiClient{base: srv.URL, token: other.APIKey, http: srv.Client()}
+	var syncOut contract.SyncResponse
+	resp, err = miraClient.do(http.MethodGet, "/v1/sync", nil, &syncOut)
+	if err != nil || resp.StatusCode != 200 || len(syncOut.Progress) != 1 || syncOut.Progress[0].Status != "completed" || syncOut.Progress[0].CharacterID != mira.ID {
+		t.Fatalf("mira sync %+v %d %v", syncOut.Progress, statusOf(resp), err)
+	}
+}
+
 func TestSmiaSessionUpsertsCharacter(t *testing.T) {
 	resetDB(t)
 	srv := httptest.NewServer((&Server{store: NewStore(testPool), smia: fakeSmia{}}).Handler())

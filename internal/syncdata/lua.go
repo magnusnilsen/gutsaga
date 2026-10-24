@@ -33,6 +33,8 @@ func WriteLua(battletag, generatedAt string, entries []Entry) string {
 		} else {
 			b.WriteString("      objectives_ordered = false,\n")
 		}
+		writeLuaWhen(&b, e.When, "      ")
+		writeLuaGroup(&b, e.Group, "      ")
 		fmt.Fprintf(&b, "      reward = %s,\n", luaString(e.Reward))
 		if e.MinLevel == nil {
 			b.WriteString("      min_level = nil,\n")
@@ -61,37 +63,89 @@ func WriteLua(battletag, generatedAt string, entries []Entry) string {
 }
 
 func luaObjectives(list []contract.Objective) string {
+	return luaObjectiveList(list, "      ")
+}
+
+func luaObjectiveList(list []contract.Objective, indent string) string {
 	if len(list) == 0 {
 		return "{}"
 	}
 	var b strings.Builder
 	b.WriteString("{\n")
 	for _, o := range list {
-		b.WriteString("        {\n")
-		fmt.Fprintf(&b, "          id = %s,\n", luaString(o.ID))
-		fmt.Fprintf(&b, "          type = %s,\n", luaString(o.Type))
-		fmt.Fprintf(&b, "          text = %s,\n", luaString(o.Text))
-		writeLuaString(&b, "zone", o.Zone)
-		writeLuaString(&b, "subzone", o.Subzone)
-		writeLuaString(&b, "npc", o.NPC)
-		writeLuaString(&b, "object", o.Object)
-		writeLuaString(&b, "item_name", o.ItemName)
-		if o.MapID != nil {
-			fmt.Fprintf(&b, "          map_id = %d,\n", *o.MapID)
-		}
-		writeLuaFloat(&b, "x", o.X)
-		writeLuaFloat(&b, "y", o.Y)
-		writeLuaFloat(&b, "radius", o.Radius)
-		if o.ItemID != nil {
-			fmt.Fprintf(&b, "          item_id = %d,\n", *o.ItemID)
-		}
-		if o.Count > 0 {
-			fmt.Fprintf(&b, "          count = %d,\n", o.Count)
-		}
-		b.WriteString("        },\n")
+		writeLuaObjective(&b, o, indent+"  ")
 	}
-	b.WriteString("      }")
+	b.WriteString(indent)
+	b.WriteString("}")
 	return b.String()
+}
+
+func writeLuaObjective(b *strings.Builder, o contract.Objective, indent string) {
+	b.WriteString(indent)
+	b.WriteString("{\n")
+	field := indent + "  "
+	fmt.Fprintf(b, "%sid = %s,\n", field, luaString(o.ID))
+	fmt.Fprintf(b, "%stype = %s,\n", field, luaString(o.Type))
+	fmt.Fprintf(b, "%stext = %s,\n", field, luaString(o.Text))
+	writeLuaString(b, field, "zone", o.Zone)
+	writeLuaString(b, field, "subzone", o.Subzone)
+	writeLuaString(b, field, "npc", o.NPC)
+	writeLuaString(b, field, "object", o.Object)
+	writeLuaString(b, field, "item_name", o.ItemName)
+	writeLuaString(b, field, "emote", o.Emote)
+	if o.MapID != nil {
+		fmt.Fprintf(b, "%smap_id = %d,\n", field, *o.MapID)
+	}
+	writeLuaFloat(b, field, "x", o.X)
+	writeLuaFloat(b, field, "y", o.Y)
+	writeLuaFloat(b, field, "radius", o.Radius)
+	if o.ItemID != nil {
+		fmt.Fprintf(b, "%sitem_id = %d,\n", field, *o.ItemID)
+	}
+	if o.Count > 0 {
+		fmt.Fprintf(b, "%scount = %d,\n", field, o.Count)
+	}
+	writeLuaWhen(b, o.When, field)
+	if len(o.Children) > 0 {
+		fmt.Fprintf(b, "%sobjectives = %s,\n", field, luaObjectiveList(o.Children, field))
+	}
+	b.WriteString(indent)
+	b.WriteString("},\n")
+}
+
+func writeLuaWhen(b *strings.Builder, w *contract.TimeWindow, indent string) {
+	if w == nil {
+		return
+	}
+	fmt.Fprintf(b, "%swhen = {\n", indent)
+	fmt.Fprintf(b, "%s  clock = %s,\n", indent, luaString(w.Clock))
+	if w.Start != "" {
+		fmt.Fprintf(b, "%s  start = %s,\n", indent, luaString(w.Start))
+		// "end" is a Lua keyword, so it cannot be a bare field name.
+		fmt.Fprintf(b, "%s  [\"end\"] = %s,\n", indent, luaString(w.End))
+	}
+	if w.StartsAt != "" {
+		fmt.Fprintf(b, "%s  starts_at = %s,\n", indent, luaString(w.StartsAt))
+	}
+	if w.EndsAt != "" {
+		fmt.Fprintf(b, "%s  ends_at = %s,\n", indent, luaString(w.EndsAt))
+	}
+	fmt.Fprintf(b, "%s},\n", indent)
+}
+
+func writeLuaGroup(b *strings.Builder, g *contract.GroupRule, indent string) {
+	if g == nil {
+		return
+	}
+	fmt.Fprintf(b, "%sgroup = {\n", indent)
+	fmt.Fprintf(b, "%s  size = %d,\n", indent, g.Size)
+	if g.MinLevel != nil {
+		fmt.Fprintf(b, "%s  min_level = %d,\n", indent, *g.MinLevel)
+	}
+	if g.Instance != "" {
+		fmt.Fprintf(b, "%s  instance = %s,\n", indent, luaString(g.Instance))
+	}
+	fmt.Fprintf(b, "%s},\n", indent)
 }
 
 func luaCompleters(list []Completer) string {
@@ -116,18 +170,18 @@ func luaCompleters(list []Completer) string {
 	return b.String()
 }
 
-func writeLuaString(b *strings.Builder, key, value string) {
+func writeLuaString(b *strings.Builder, indent, key, value string) {
 	if value == "" {
 		return
 	}
-	fmt.Fprintf(b, "          %s = %s,\n", key, luaString(value))
+	fmt.Fprintf(b, "%s%s = %s,\n", indent, key, luaString(value))
 }
 
-func writeLuaFloat(b *strings.Builder, key string, value *float64) {
+func writeLuaFloat(b *strings.Builder, indent, key string, value *float64) {
 	if value == nil {
 		return
 	}
-	fmt.Fprintf(b, "          %s = %s,\n", key, strconv.FormatFloat(*value, 'f', -1, 64))
+	fmt.Fprintf(b, "%s%s = %s,\n", indent, key, strconv.FormatFloat(*value, 'f', -1, 64))
 }
 
 func luaString(s string) string {

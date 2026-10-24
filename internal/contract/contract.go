@@ -46,21 +46,23 @@ type IDRef struct {
 }
 
 type Quest struct {
-	ID                 string      `json:"id"`
-	Title              string      `json:"title"`
-	Description        string      `json:"description"`
-	Objectives         []Objective `json:"objectives"`
-	ObjectivesOrdered  bool        `json:"objectives_ordered"`
-	MinLevel           *int        `json:"min_level"`
-	Reward             string      `json:"reward"`
-	PartyQuest         bool        `json:"party_quest"`
-	AssignedTo         []IDRef     `json:"assigned_to"`
-	CreatedBy          string      `json:"created_by"`
-	Active             bool        `json:"active"`
-	Version            int         `json:"version"`
-	HasImage           bool        `json:"has_image"`
-	ImageURL           string      `json:"image_url,omitempty"`
-	ImageSignedURL     string      `json:"image_signed_url,omitempty"`
+	ID                string      `json:"id"`
+	Title             string      `json:"title"`
+	Description       string      `json:"description"`
+	Objectives        []Objective `json:"objectives"`
+	ObjectivesOrdered bool        `json:"objectives_ordered"`
+	When              *TimeWindow `json:"when,omitempty"`
+	Group             *GroupRule  `json:"group,omitempty"`
+	MinLevel          *int        `json:"min_level"`
+	Reward            string      `json:"reward"`
+	PartyQuest        bool        `json:"party_quest"`
+	AssignedTo        []IDRef     `json:"assigned_to"`
+	CreatedBy         string      `json:"created_by"`
+	Active            bool        `json:"active"`
+	Version           int         `json:"version"`
+	HasImage          bool        `json:"has_image"`
+	ImageURL          string      `json:"image_url,omitempty"`
+	ImageSignedURL    string      `json:"image_signed_url,omitempty"`
 }
 
 type Progress struct {
@@ -75,28 +77,31 @@ type Progress struct {
 // CompletionRequest is the JSON form of POST /v1/complete.
 // screenshot_base64 is optional. Multipart uploads use the same fields plus a file part named "screenshot".
 type CompletionRequest struct {
-	CharacterID      string `json:"character_id"`
-	QuestID          string `json:"quest_id"`
-	QuestVersion     int    `json:"quest_version"`
-	BattleTag        string `json:"battletag"`
-	Level            int    `json:"level,omitempty"`
-	CompletedAt      string `json:"completed_at,omitempty"`
-	ScreenshotBase64 string `json:"screenshot_base64,omitempty"`
+	CharacterID      string        `json:"character_id"`
+	QuestID          string        `json:"quest_id"`
+	QuestVersion     int           `json:"quest_version"`
+	BattleTag        string        `json:"battletag"`
+	Level            int           `json:"level,omitempty"`
+	CompletedAt      string        `json:"completed_at,omitempty"`
+	ScreenshotBase64 string        `json:"screenshot_base64,omitempty"`
+	Instance         string        `json:"instance,omitempty"`
+	GroupMembers     []GroupMember `json:"group_members,omitempty"`
 }
 
 type CompletionResponse struct {
-	Allowed          bool   `json:"allowed"`
-	AlreadyCompleted bool   `json:"already_completed"`
-	Completed        bool   `json:"completed"`
-	ProgressID       string `json:"progress_id,omitempty"`
-	LogWritten       bool   `json:"log_written"`
-	DiscordPosted    bool   `json:"discord_posted"`
-	CharacterName    string `json:"character_name,omitempty"`
-	CharacterClass   string `json:"character_class,omitempty"`
-	CharacterLevel   int    `json:"character_level,omitempty"`
-	Reward           string `json:"reward,omitempty"`
-	QuestTitle       string `json:"quest_title,omitempty"`
-	QuestVersion     int    `json:"quest_version,omitempty"`
+	Allowed          bool          `json:"allowed"`
+	AlreadyCompleted bool          `json:"already_completed"`
+	Completed        bool          `json:"completed"`
+	ProgressID       string        `json:"progress_id,omitempty"`
+	LogWritten       bool          `json:"log_written"`
+	DiscordPosted    bool          `json:"discord_posted"`
+	CharacterName    string        `json:"character_name,omitempty"`
+	CharacterClass   string        `json:"character_class,omitempty"`
+	CharacterLevel   int           `json:"character_level,omitempty"`
+	Reward           string        `json:"reward,omitempty"`
+	QuestTitle       string        `json:"quest_title,omitempty"`
+	QuestVersion     int           `json:"quest_version,omitempty"`
+	GroupCredited    []GroupCredit `json:"group_credited,omitempty"`
 }
 
 type LevelRequest struct {
@@ -149,6 +154,8 @@ type QuestVersion struct {
 	Title       string      `json:"title"`
 	Description string      `json:"description"`
 	Objectives  []Objective `json:"objectives"`
+	When        *TimeWindow `json:"when,omitempty"`
+	Group       *GroupRule  `json:"group,omitempty"`
 	Reward      string      `json:"reward"`
 	MinLevel    *int        `json:"min_level"`
 	PartyQuest  bool        `json:"party_quest"`

@@ -9,27 +9,31 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/magnusnilsen/gutsaga/internal/contract"
 )
 
 type Item struct {
-	Kind           string    `json:"kind"`
-	Key            string    `json:"key"`
-	QuestID        string    `json:"quest_id,omitempty"`
-	QuestVersion   int       `json:"quest_version,omitempty"`
-	QuestTitle     string    `json:"quest_title,omitempty"`
-	Character      string    `json:"character"`
-	Realm          string    `json:"realm,omitempty"`
-	Race           string    `json:"race,omitempty"`
-	Class          string    `json:"class,omitempty"`
-	BattleTag      string    `json:"battletag,omitempty"`
-	CharacterID    string    `json:"character_id,omitempty"`
-	Level          int       `json:"level,omitempty"`
-	CompletedAt    string    `json:"completed_at,omitempty"`
-	ScreenshotPath string    `json:"screenshot_path,omitempty"`
-	Attempts       int       `json:"attempts"`
-	NextAttempt    time.Time `json:"next_attempt"`
-	LastError      string    `json:"last_error,omitempty"`
-	Dead           bool      `json:"dead,omitempty"`
+	Kind           string                 `json:"kind"`
+	Key            string                 `json:"key"`
+	QuestID        string                 `json:"quest_id,omitempty"`
+	QuestVersion   int                    `json:"quest_version,omitempty"`
+	QuestTitle     string                 `json:"quest_title,omitempty"`
+	Character      string                 `json:"character"`
+	Realm          string                 `json:"realm,omitempty"`
+	Race           string                 `json:"race,omitempty"`
+	Class          string                 `json:"class,omitempty"`
+	BattleTag      string                 `json:"battletag,omitempty"`
+	CharacterID    string                 `json:"character_id,omitempty"`
+	Level          int                    `json:"level,omitempty"`
+	CompletedAt    string                 `json:"completed_at,omitempty"`
+	Instance       string                 `json:"instance,omitempty"`
+	GroupMembers   []contract.GroupMember `json:"group_members,omitempty"`
+	ScreenshotPath string                 `json:"screenshot_path,omitempty"`
+	Attempts       int                    `json:"attempts"`
+	NextAttempt    time.Time              `json:"next_attempt"`
+	LastError      string                 `json:"last_error,omitempty"`
+	Dead           bool                   `json:"dead,omitempty"`
 }
 
 type fileState struct {
@@ -118,6 +122,22 @@ func (q *Queue) Enqueue(item Item) bool {
 	}
 	q.items = append(q.items, item)
 	return true
+}
+
+// SetGroup attaches a roster to a completion that is still queued.
+// It returns false when that key is not waiting (already sent or never queued).
+func (q *Queue) SetGroup(key, instance string, members []contract.GroupMember) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for i := range q.items {
+		if q.items[i].Key != key {
+			continue
+		}
+		q.items[i].Instance = instance
+		q.items[i].GroupMembers = members
+		return true
+	}
+	return false
 }
 
 // ForgetDone removes a finished key so the same event can be posted again

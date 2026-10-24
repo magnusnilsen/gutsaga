@@ -46,6 +46,64 @@ Defeat N creatures by name. Secret combat-log names are ignored.
 - `npc` — creature name (not a GUID)
 - `count` — defaults to `1`
 
+### `emote` — a built-in emote
+
+Perform `/salute`, `/bow`, and the other built-in emotes. The addon reads the token from `DoEmote` (language-independent). `CHAT_MSG_TEXT_EMOTE` only confirms that the emote was announced; the chat text is localized and may be secret in combat on Forever.
+
+- `emote` — required. `SALUTE`, `salute`, or `/salute` are stored as `SALUTE`
+- `npc` — optional. `UnitName` of the target when the emote fires. No target, or a secret name, does not count
+- location fields — optional, same as `location`, using the position captured at emote time
+
+Custom `/e hello` is not an emote token and does not count.
+
+### `all_of` / `any_of` — simultaneous AND, or alternatives
+
+```json
+{
+  "id": "both",
+  "type": "all_of",
+  "text": "Stå i Goldshire med vann",
+  "objectives": [
+    { "id": "inn", "type": "location", "text": "Goldshire", "zone": "Elwynn Forest", "subzone": "Goldshire" },
+    { "id": "water", "type": "collect", "text": "Ha vann", "item_id": 159, "count": 1 }
+  ]
+}
+```
+
+- `objectives` — at least two children. One nesting level is the normal case; up to 4 levels and 40 nodes total are accepted
+- `all_of` is done only when every child is true in the same check. Location, item, interact, and emote are live. Kill counts still add up
+- `any_of` is done when any child is true
+- Child `id`s must be unique across the whole saga, not only inside the parent
+- The composite stays done once it has been true
+
+### Time window
+
+Optional `when` on an objective or on the saga. `clock` defaults to `local`.
+
+| `clock` | Client API | Meaning |
+|---|---|---|
+| `local` | `time()`, `date("*t")` | Computer local time. Default. Works on Classic and Forever. |
+| `game` | `GetGameTime()` | In-game day/night clock. No date. `starts_at` / `ends_at` are rejected. |
+| `realm` | `GetServerTime()` + `date("!*t")` | Realm unix time as UTC. |
+
+```json
+"when": { "clock": "local", "start": "22:00", "end": "02:00", "starts_at": "2026-11-01T00:00:00Z", "ends_at": "2026-11-30T23:00:00Z" }
+```
+
+`start` and `end` are `HH:MM` and may cross midnight. They are AND with `starts_at` / `ends_at` when both are set. A closed saga window blocks new completions; objectives already done stay done.
+
+### Group
+
+Optional saga field. Checked at completion, not as an objective.
+
+```json
+"group": { "size": 4, "min_level": 17, "instance": "The Deadmines" }
+```
+
+`size` members of the party or raid (including you) must be there. Each one who counts must be at least `min_level`. `instance` matches the dungeon name from `GetInstanceInfo` or the zone. Set `party_quest: true` so the whole group is offered the saga.
+
+Completion is stored once per character. The finisher's companion sends the roster; the API also credits every other character it already knows with that name and realm. Peers with the addon get an addon message (`C_ChatInfo.SendAddonMessage` on `PARTY`/`RAID`, including inside the instance) and write their own completion. A second submit does not duplicate rows.
+
 ## Goal order
 
 `objectives_ordered` defaults to **`false`**: any incomplete goal can complete.
@@ -68,6 +126,8 @@ Create a saga owned by you. Body:
     { "id": "water", "type": "collect", "text": "Ha vann", "item_id": 159, "count": 1 }
   ],
   "objectives_ordered": false,
+  "when": { "clock": "local", "start": "22:00", "end": "02:00" },
+  "group": { "size": 4, "min_level": 17, "instance": "The Deadmines" },
   "reward": "",
   "min_level": 1,
   "party_quest": false,
