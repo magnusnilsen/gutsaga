@@ -41,6 +41,11 @@
       "config": { "path": "description" }
     },
     {
+      "id": "card_sub",
+      "type": "util.get_path",
+      "config": { "path": "card_subtitle" }
+    },
+    {
       "id": "has_image",
       "type": "util.get_path",
       "config": { "path": "has_image" }
@@ -106,10 +111,10 @@
       "type": "tool.output",
       "fields": [
         {
-          "name": "quest",
+          "name": "card",
           "type": "object",
-          "required": true,
-          "description": "Full saga with versions, completed_by, and card (table payload)."
+          "required": false,
+          "description": "Table card: Mål (objectives) and Fullført (who completed). Primary chat view."
         },
         {
           "name": "cover",
@@ -118,10 +123,10 @@
           "description": "Media card with the cover (or placeholder)."
         },
         {
-          "name": "detail",
+          "name": "quest",
           "type": "object",
-          "required": false,
-          "description": "Table card: Mål (objectives) and Fullført (who completed)."
+          "required": true,
+          "description": "Full saga with versions, completed_by, and card (table payload)."
         }
       ]
     }
@@ -131,6 +136,7 @@
     { "id": "e2", "source": "url", "target": "get", "sourceHandle": "value", "targetHandle": "url" },
     { "id": "e3", "source": "get", "target": "title", "sourceHandle": "body", "targetHandle": "in" },
     { "id": "e4", "source": "get", "target": "desc", "sourceHandle": "body", "targetHandle": "in" },
+    { "id": "e4b", "source": "get", "target": "card_sub", "sourceHandle": "body", "targetHandle": "in" },
     { "id": "e5", "source": "get", "target": "has_image", "sourceHandle": "body", "targetHandle": "in" },
     { "id": "e6", "source": "get", "target": "signed_url", "sourceHandle": "body", "targetHandle": "in" },
     { "id": "e6b", "source": "get", "target": "card_cols", "sourceHandle": "body", "targetHandle": "in" },
@@ -143,13 +149,13 @@
     { "id": "e12", "source": "empty_url", "target": "pick_url", "sourceHandle": "value", "targetHandle": "false" },
     { "id": "e13", "source": "pick_url", "target": "fetch", "sourceHandle": "result", "targetHandle": "url" },
     { "id": "e14", "source": "title", "target": "cover", "sourceHandle": "value", "targetHandle": "title" },
-    { "id": "e15", "source": "desc", "target": "cover", "sourceHandle": "value", "targetHandle": "subtitle" },
+    { "id": "e15b", "source": "card_sub", "target": "cover", "sourceHandle": "value", "targetHandle": "subtitle" },
     { "id": "e16", "source": "fetch", "target": "cover", "sourceHandle": "file", "targetHandle": "file" },
     { "id": "e17", "source": "title", "target": "detail", "sourceHandle": "value", "targetHandle": "title" },
     { "id": "e18", "source": "card_cols", "target": "detail", "sourceHandle": "value", "targetHandle": "columns" },
     { "id": "e19", "source": "card_rows", "target": "detail", "sourceHandle": "value", "targetHandle": "rows" },
     { "id": "e20", "source": "get", "target": "output", "sourceHandle": "body", "targetHandle": "quest" },
     { "id": "e21", "source": "cover", "target": "output", "sourceHandle": "view", "targetHandle": "cover" },
-    { "id": "e22", "source": "detail", "target": "output", "sourceHandle": "view", "targetHandle": "detail" }
+    { "id": "e22b", "source": "detail", "target": "output", "sourceHandle": "view", "targetHandle": "card" }
   ]
 }

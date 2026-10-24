@@ -179,6 +179,8 @@ type QuestDetail struct {
 	CompletedBy []QuestCompleter `json:"completed_by"`
 	// Card is a Smia ui.render table payload (goals + who finished).
 	Card *QuestCard `json:"card,omitempty"`
+	// CardSubtitle is Mål + Fullført text for the Smia media cover card.
+	CardSubtitle string `json:"card_subtitle,omitempty"`
 }
 
 // QuestCompleter is someone who finished this saga (admin/detail views).

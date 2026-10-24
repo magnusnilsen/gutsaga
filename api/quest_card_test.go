@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/magnusnilsen/gutsaga/internal/contract"
@@ -37,5 +38,10 @@ func TestBuildQuestCard(t *testing.T) {
 	got, _ := card.Rows[2].Cells["detail"].(string)
 	if got == "" || got[:5] != "Magni" {
 		t.Fatalf("completer line %q", got)
+	}
+
+	sub := buildQuestCardSubtitle(card)
+	if !strings.Contains(sub, "Mål") || !strings.Contains(sub, "Fullført") || !strings.Contains(sub, "Magni") {
+		t.Fatalf("subtitle %q", sub)
 	}
 }

@@ -1092,9 +1092,10 @@ func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, 
 	if err != nil {
 		return contract.QuestDetail{}, err
 	}
+	card := buildQuestCard(q, completers)
 	return contract.QuestDetail{
 		Quest: q, Versions: versions, CompletedBy: completers,
-		Card: buildQuestCard(q, completers),
+		Card: card, CardSubtitle: buildQuestCardSubtitle(card),
 	}, nil
 }
 
@@ -1180,6 +1181,32 @@ func buildQuestCard(q contract.Quest, completers []contract.QuestCompleter) *con
 		})
 	}
 	return card
+}
+
+// buildQuestCardSubtitle flattens the table card into media-card subtitle text
+// (Smia MCP embeds the media view when both cover + table are returned).
+func buildQuestCardSubtitle(card *contract.QuestCard) string {
+	if card == nil || len(card.Rows) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	var lastGroup string
+	for _, row := range card.Rows {
+		if row.Group != "" && row.Group != lastGroup {
+			if b.Len() > 0 {
+				b.WriteString("\n\n")
+			}
+			b.WriteString(row.Group)
+			lastGroup = row.Group
+		}
+		detail, _ := row.Cells["detail"].(string)
+		if detail == "" {
+			continue
+		}
+		b.WriteByte('\n')
+		b.WriteString(detail)
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func (s *Store) ListQuests(ctx context.Context, characterID string) ([]contract.QuestListItem, error) {
