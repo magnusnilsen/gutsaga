@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "input",
+      "type": "tool.input",
+      "fields": [
+        {
+          "name": "battletag",
+          "type": "string",
+          "required": true,
+          "description": "Player BattleTag to sync characters for"
+        }
+      ]
+    },
+    {
+      "id": "curl",
+      "type": "util.string.template",
+      "config": {
+        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/characters?battletag={{tag}}"
+      }
+    },
+    {
+      "id": "qurl",
+      "type": "util.string.template",
+      "config": {
+        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/quests"
+      }
+    },
+    {
+      "id": "chars",
+      "type": "http.request",
+      "config": {
+        "method": "GET",
+        "headers": {
+          "Authorization": "Bearer {{env.GUTSAGA_ADMIN_TOKEN}}"
+        }
+      }
+    },
+    {
+      "id": "quests",
+      "type": "http.request",
+      "config": {
+        "method": "GET",
+        "headers": {
+          "Authorization": "Bearer {{env.GUTSAGA_ADMIN_TOKEN}}"
+        }
+      }
+    },
+    {
+      "id": "merge",
+      "type": "util.json.build",
+      "config": {
+        "inputs": [
+          "battletag",
+          "characters",
+          "quests"
+        ],
+        "template": "{\"battletag\": {{battletag}}, \"characters\": {{characters}}, \"quests\": {{quests}}}"
+      }
+    },
+    {
+      "id": "output",
+      "type": "tool.output",
+      "fields": [
+        {
+          "name": "sync",
+          "type": "object",
+          "required": true,
+          "description": "Characters for the BattleTag plus all quests (companion uses /v1/sync with Smia session; this is for chat/debug)"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input",
+      "target": "curl",
+      "sourceHandle": "battletag",
+      "targetHandle": "tag"
+    },
+    {
+      "id": "e2",
+      "source": "curl",
+      "target": "chars",
+      "sourceHandle": "value",
+      "targetHandle": "url"
+    },
+    {
+      "id": "e3",
+      "source": "qurl",
+      "target": "quests",
+      "sourceHandle": "value",
+      "targetHandle": "url"
+    },
+    {
+      "id": "e4",
+      "source": "input",
+      "target": "merge",
+      "sourceHandle": "battletag",
+      "targetHandle": "battletag"
+    },
+    {
+      "id": "e5",
+      "source": "chars",
+      "target": "merge",
+      "sourceHandle": "body",
+      "targetHandle": "characters"
+    },
+    {
+      "id": "e6",
+      "source": "quests",
+      "target": "merge",
+      "sourceHandle": "body",
+      "targetHandle": "quests"
+    },
+    {
+      "id": "e7",
+      "source": "merge",
+      "target": "output",
+      "sourceHandle": "value",
+      "targetHandle": "sync"
+    }
+  ]
+}

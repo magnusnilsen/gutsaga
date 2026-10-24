@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "input",
+      "type": "tool.input",
+      "fields": [
+        {
+          "name": "quest_id",
+          "type": "string",
+          "required": true,
+          "description": "GutSaga quest UUID from list_quests / create_quest."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "New title (omit to leave unchanged)."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "description": "New flavour text."
+        },
+        {
+          "name": "objectives",
+          "type": "array",
+          "required": false,
+          "description": "Full replacement objectives array (same shape as create_quest). Always send the complete list when changing goals."
+        },
+        {
+          "name": "reward",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "min_level",
+          "type": "number",
+          "required": false,
+          "description": "New minimum level. Text-field patches bump quest version."
+        },
+        {
+          "name": "party_quest",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "assigned_character_ids",
+          "type": "array",
+          "required": false,
+          "description": "Full replacement assigned character UUID list."
+        },
+        {
+          "name": "objectives_ordered",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": false,
+          "description": "false retires the saga (hides from new takers)."
+        },
+        {
+          "name": "image",
+          "type": "file",
+          "required": false,
+          "description": "Optional new cover image (PNG/JPEG/WebP/GIF, max 8 MiB). Can be sent alone to only update the cover."
+        }
+      ]
+    },
+    {
+      "id": "url",
+      "type": "util.string.template",
+      "config": {
+        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/quests/{{id}}"
+      }
+    },
+    {
+      "id": "body",
+      "type": "util.json.build",
+      "config": {
+        "inputs": [
+          "title",
+          "description",
+          "objectives",
+          "reward",
+          "min_level",
+          "party_quest",
+          "assigned_character_ids",
+          "objectives_ordered",
+          "active"
+        ],
+        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party_quest\": {{party_quest}}, \"assigned_character_ids\": {{assigned_character_ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}}"
+      }
+    },
+    {
+      "id": "patch",
+      "type": "http.request",
+      "config": {
+        "method": "PATCH",
+        "headers": {
+          "Authorization": "Bearer {{env.GUTSAGA_ADMIN_TOKEN}}"
+        },
+        "file_mode": "multipart",
+        "file_field": "image"
+      }
+    },
+    {
+      "id": "output",
+      "type": "tool.output",
+      "fields": [
+        {
+          "name": "quest",
+          "type": "object",
+          "required": true,
+          "description": "Updated quest. Text changes bump version; cover-only updates do not."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "input", "target": "url", "sourceHandle": "quest_id", "targetHandle": "id" },
+    { "id": "e2", "source": "input", "target": "body", "sourceHandle": "title", "targetHandle": "title" },
+    { "id": "e3", "source": "input", "target": "body", "sourceHandle": "description", "targetHandle": "description" },
+    { "id": "e4", "source": "input", "target": "body", "sourceHandle": "objectives", "targetHandle": "objectives" },
+    { "id": "e5", "source": "input", "target": "body", "sourceHandle": "reward", "targetHandle": "reward" },
+    { "id": "e6", "source": "input", "target": "body", "sourceHandle": "min_level", "targetHandle": "min_level" },
+    { "id": "e7", "source": "input", "target": "body", "sourceHandle": "party_quest", "targetHandle": "party_quest" },
+    { "id": "e8", "source": "input", "target": "body", "sourceHandle": "assigned_character_ids", "targetHandle": "assigned_character_ids" },
+    { "id": "e9", "source": "input", "target": "body", "sourceHandle": "objectives_ordered", "targetHandle": "objectives_ordered" },
+    { "id": "e10", "source": "input", "target": "body", "sourceHandle": "active", "targetHandle": "active" },
+    { "id": "e11", "source": "url", "target": "patch", "sourceHandle": "value", "targetHandle": "url" },
+    { "id": "e12", "source": "body", "target": "patch", "sourceHandle": "value", "targetHandle": "body" },
+    { "id": "e13", "source": "input", "target": "patch", "sourceHandle": "image", "targetHandle": "files" },
+    { "id": "e14", "source": "patch", "target": "output", "sourceHandle": "body", "targetHandle": "quest" }
+  ]
+}

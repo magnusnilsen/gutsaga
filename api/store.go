@@ -310,6 +310,15 @@ func (s *Store) CreateCharacter(ctx context.Context, in CharacterInput) (contrac
 	if in.Level < 1 || in.Level > 1000 {
 		return contract.Character{}, fmt.Errorf("%w: level", ErrInvalid)
 	}
+	if in.PlayerID == "" && strings.TrimSpace(in.BattleTag) != "" {
+		display := strings.TrimSpace(in.BattleTag)
+		if i := strings.Index(display, "#"); i > 0 {
+			display = display[:i]
+		}
+		if _, err := s.EnsurePlayer(ctx, in.BattleTag, display); err != nil {
+			return contract.Character{}, err
+		}
+	}
 	playerID, err := s.resolvePlayerID(ctx, s.pool, in.PlayerID, in.BattleTag)
 	if err != nil {
 		return contract.Character{}, err
@@ -531,6 +540,13 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	}
 	if in.MinLevel != nil && (*in.MinLevel < 1 || *in.MinLevel > 1000) {
 		return contract.Quest{}, fmt.Errorf("%w: min_level", ErrInvalid)
+	}
+	display := strings.TrimSpace(in.CreatedBy)
+	if i := strings.Index(display, "#"); i > 0 {
+		display = display[:i]
+	}
+	if _, err := s.EnsurePlayer(ctx, in.CreatedBy, display); err != nil {
+		return contract.Quest{}, err
 	}
 	active := true
 	if in.Active != nil {
@@ -1256,6 +1272,40 @@ func (s *Store) MarkDiscord(ctx context.Context, progressID, discordURL string) 
 	return err
 }
 
+// AdminComplete marks a quest completed for a character without a player session.
+func (s *Store) AdminComplete(ctx context.Context, characterID, questID string, questVersion, level int) (contract.CompletionResponse, error) {
+	if err := validUUID(characterID); err != nil {
+		return contract.CompletionResponse{}, err
+	}
+	if err := validUUID(questID); err != nil {
+		return contract.CompletionResponse{}, err
+	}
+	var playerID, tag string
+	err := s.pool.QueryRow(ctx, `
+		SELECT c.player_id::text, COALESCE(p.battletag, '')
+		FROM characters c JOIN players p ON p.id = c.player_id
+		WHERE c.id=$1`, characterID).Scan(&playerID, &tag)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return contract.CompletionResponse{}, ErrNotFound
+	}
+	if err != nil {
+		return contract.CompletionResponse{}, err
+	}
+	if questVersion < 1 {
+		err = s.pool.QueryRow(ctx, `SELECT version FROM quests WHERE id=$1`, questID).Scan(&questVersion)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return contract.CompletionResponse{}, ErrNotFound
+		}
+		if err != nil {
+			return contract.CompletionResponse{}, err
+		}
+	}
+	return s.Complete(ctx, playerID, contract.CompletionRequest{
+		CharacterID: characterID, QuestID: questID, QuestVersion: questVersion,
+		BattleTag: tag, Level: level,
+	}, nil, "")
+}
+
 func (s *Store) SetLevel(ctx context.Context, playerID string, in contract.LevelRequest) (contract.LevelResponse, error) {
 	if err := validUUID(in.CharacterID); err != nil {
 		return contract.LevelResponse{}, err
@@ -1628,6 +1678,21 @@ func (s *Store) SetQuestImage(ctx context.Context, playerID, questID, contentTyp
 	if err := s.assertQuestOwner(ctx, questID, playerID); err != nil {
 		return contract.Quest{}, err
 	}
+	return s.writeQuestImage(ctx, questID, contentType, image)
+}
+
+// AdminSetQuestImage sets a cover without ownership checks (ADMIN_TOKEN routes).
+func (s *Store) AdminSetQuestImage(ctx context.Context, questID, contentType string, image []byte) (contract.Quest, error) {
+	if err := validUUID(questID); err != nil {
+		return contract.Quest{}, err
+	}
+	if _, err := s.GetQuest(ctx, questID); err != nil {
+		return contract.Quest{}, err
+	}
+	return s.writeQuestImage(ctx, questID, contentType, image)
+}
+
+func (s *Store) writeQuestImage(ctx context.Context, questID, contentType string, image []byte) (contract.Quest, error) {
 	if len(image) == 0 {
 		return contract.Quest{}, fmt.Errorf("%w: empty image", ErrInvalid)
 	}
@@ -1655,6 +1720,21 @@ func (s *Store) ClearQuestImage(ctx context.Context, playerID, questID string) (
 	if err := s.assertQuestOwner(ctx, questID, playerID); err != nil {
 		return contract.Quest{}, err
 	}
+	return s.clearQuestImage(ctx, questID)
+}
+
+// AdminClearQuestImage clears a cover without ownership checks (ADMIN_TOKEN routes).
+func (s *Store) AdminClearQuestImage(ctx context.Context, questID string) (contract.Quest, error) {
+	if err := validUUID(questID); err != nil {
+		return contract.Quest{}, err
+	}
+	if _, err := s.GetQuest(ctx, questID); err != nil {
+		return contract.Quest{}, err
+	}
+	return s.clearQuestImage(ctx, questID)
+}
+
+func (s *Store) clearQuestImage(ctx context.Context, questID string) (contract.Quest, error) {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE quests SET image_bytes=NULL, image_content_type='', updated_at=now() WHERE id=$1`, questID)
 	if err != nil {

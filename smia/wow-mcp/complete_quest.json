@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "input",
+      "type": "tool.input",
+      "fields": [
+        {
+          "name": "character_id",
+          "type": "string",
+          "required": true,
+          "description": "GutSaga character UUID"
+        },
+        {
+          "name": "quest_id",
+          "type": "string",
+          "required": true,
+          "description": "GutSaga quest UUID"
+        },
+        {
+          "name": "quest_version",
+          "type": "number",
+          "required": false,
+          "description": "Omit to use the current quest version"
+        },
+        {
+          "name": "level",
+          "type": "number",
+          "required": false,
+          "description": "Character level at completion"
+        }
+      ]
+    },
+    {
+      "id": "body",
+      "type": "util.json.build",
+      "config": {
+        "inputs": ["character_id", "quest_id", "quest_version", "level"],
+        "template": "{\"character_id\": {{character_id}}, \"quest_id\": {{quest_id}}, \"quest_version\": {{quest_version}}, \"level\": {{level}}}"
+      }
+    },
+    {
+      "id": "post",
+      "type": "http.request",
+      "config": {
+        "url": "{{env.GUTSAGA_API_URL}}/v1/admin/complete",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer {{env.GUTSAGA_ADMIN_TOKEN}}"
+        }
+      }
+    },
+    {
+      "id": "output",
+      "type": "tool.output",
+      "fields": [{ "name": "result", "type": "object", "required": true }]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "input", "target": "body", "sourceHandle": "character_id", "targetHandle": "character_id" },
+    { "id": "e2", "source": "input", "target": "body", "sourceHandle": "quest_id", "targetHandle": "quest_id" },
+    { "id": "e3", "source": "input", "target": "body", "sourceHandle": "quest_version", "targetHandle": "quest_version" },
+    { "id": "e4", "source": "input", "target": "body", "sourceHandle": "level", "targetHandle": "level" },
+    { "id": "e5", "source": "body", "target": "post", "sourceHandle": "value", "targetHandle": "body" },
+    { "id": "e6", "source": "post", "target": "output", "sourceHandle": "body", "targetHandle": "result" }
+  ]
+}

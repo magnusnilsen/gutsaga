@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "input",
+      "type": "tool.input",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "body",
+          "type": "string",
+          "required": true,
+          "description": "Log body text"
+        },
+        {
+          "name": "type",
+          "type": "string",
+          "required": false,
+          "description": "e.g. Personal, Party event, quest — defaults to note"
+        },
+        {
+          "name": "battletag",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "character_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "quest_id",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "type_s",
+      "type": "util.convert",
+      "config": { "toType": "string" }
+    },
+    {
+      "id": "body",
+      "type": "util.json.build",
+      "config": {
+        "inputs": ["title", "body", "type", "battletag", "character_id", "quest_id"],
+        "template": "{\"title\": {{title}}, \"body\": {{body}}, \"type\": {{type}}, \"battletag\": {{battletag}}, \"character_id\": {{character_id}}, \"quest_id\": {{quest_id}}}"
+      }
+    },
+    {
+      "id": "post",
+      "type": "http.request",
+      "config": {
+        "url": "{{env.GUTSAGA_API_URL}}/v1/admin/log",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer {{env.GUTSAGA_ADMIN_TOKEN}}"
+        }
+      }
+    },
+    {
+      "id": "output",
+      "type": "tool.output",
+      "fields": [{ "name": "entry", "type": "object", "required": true }]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "input", "target": "body", "sourceHandle": "title", "targetHandle": "title" },
+    { "id": "e2", "source": "input", "target": "body", "sourceHandle": "body", "targetHandle": "body" },
+    { "id": "e3", "source": "input", "target": "type_s", "sourceHandle": "type", "targetHandle": "value" },
+    { "id": "e4", "source": "type_s", "target": "body", "sourceHandle": "out", "targetHandle": "type" },
+    { "id": "e5", "source": "input", "target": "body", "sourceHandle": "battletag", "targetHandle": "battletag" },
+    { "id": "e6", "source": "input", "target": "body", "sourceHandle": "character_id", "targetHandle": "character_id" },
+    { "id": "e7", "source": "input", "target": "body", "sourceHandle": "quest_id", "targetHandle": "quest_id" },
+    { "id": "e8", "source": "body", "target": "post", "sourceHandle": "value", "targetHandle": "body" },
+    { "id": "e9", "source": "post", "target": "output", "sourceHandle": "body", "targetHandle": "entry" }
+  ]
+}

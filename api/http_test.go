@@ -434,6 +434,97 @@ func TestSmiaSessionUpsertsCharacter(t *testing.T) {
 	}
 }
 
+func TestAdminQuestCreateWithOptionalImage(t *testing.T) {
+	resetDB(t)
+	srv := httptest.NewServer((&Server{store: NewStore(testPool), adminToken: "admin-img"}).Handler())
+	t.Cleanup(srv.Close)
+	admin := apiClient{base: srv.URL, token: "admin-img", http: srv.Client()}
+
+	var created contract.CreatePlayerResponse
+	resp, err := admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
+		"battletag": "Magnus#2231", "display_name": "Magnus",
+	}, &created)
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		t.Fatalf("player %d %v", statusOf(resp), err)
+	}
+
+	var noImg contract.Quest
+	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+		"title": "Uten bilde", "description": "Bare tekst.",
+		"objectives": []map[string]any{
+			{"id": "talk", "type": "interact", "text": "Snakk", "npc": "Tharynn Bouden"},
+		},
+		"party_quest": true, "created_by": "Magnus#2231",
+	}, &noImg)
+	if err != nil || resp.StatusCode != http.StatusCreated || noImg.HasImage {
+		t.Fatalf("json create %+v %d %v", noImg, statusOf(resp), err)
+	}
+
+	pngBytes := tinyPNG(t)
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	_ = mw.WriteField("title", "Med bilde")
+	_ = mw.WriteField("description", "Cover.")
+	_ = mw.WriteField("objectives", `[{"id":"talk","type":"interact","text":"Snakk","npc":"Tharynn Bouden"}]`)
+	_ = mw.WriteField("party_quest", "true")
+	_ = mw.WriteField("created_by", "Magnus#2231")
+	fw, err := mw.CreateFormFile("image", "cover.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fw.Write(pngBytes); err != nil {
+		t.Fatal(err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/admin/quests", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Authorization", "Bearer admin-img")
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err = admin.http.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	var withImg contract.Quest
+	if err := json.Unmarshal(raw, &withImg); err != nil {
+		t.Fatalf("decode %s: %v", raw, err)
+	}
+	if resp.StatusCode != http.StatusCreated || !withImg.HasImage || withImg.ImageURL == "" {
+		t.Fatalf("multipart create %+v status %d body %s", withImg, resp.StatusCode, raw)
+	}
+
+	patchBody := &bytes.Buffer{}
+	pmw := multipart.NewWriter(patchBody)
+	fw, err = pmw.CreateFormFile("image", "cover2.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fw.Write(pngBytes); err != nil {
+		t.Fatal(err)
+	}
+	if err := pmw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req, _ = http.NewRequest(http.MethodPatch, srv.URL+"/v1/admin/quests/"+noImg.ID, bytes.NewReader(patchBody.Bytes()))
+	req.Header.Set("Authorization", "Bearer admin-img")
+	req.Header.Set("Content-Type", pmw.FormDataContentType())
+	resp, err = admin.http.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	var patched contract.Quest
+	if err := json.Unmarshal(raw, &patched); err != nil {
+		t.Fatalf("patch decode %s: %v", raw, err)
+	}
+	if resp.StatusCode != 200 || !patched.HasImage || patched.Version != 1 {
+		t.Fatalf("cover-only patch should not bump version: %+v status %d", patched, resp.StatusCode)
+	}
+}
+
 func TestSeedQuests(t *testing.T) {
 	resetDB(t)
 	store := NewStore(testPool)

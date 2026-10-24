@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "input",
+      "type": "tool.input",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "description": "Short saga title shown in the in-game quest log (Norwegian flavour is fine)."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": true,
+          "description": "Quest-giver flavour text. Write it with the player; fit Classic/Forever lore. Newlines OK."
+        },
+        {
+          "name": "objectives",
+          "type": "array",
+          "required": true,
+          "description": "Structured goals (NOT plain strings). Each object needs id (slug), type, text (Norwegian log line). Types: location — map_id (Elwynn Forest Classic=37), x/y (0–1), radius, optional zone/subzone (client language; use | for alternatives); interact — npc and/or object (exact UnitName, client language); collect — item_id, count, optional item_name; kill — npc (creature name), count. Example interact: {\"id\":\"tharynn\",\"type\":\"interact\",\"text\":\"Snakk med Tharynn Bouden\",\"npc\":\"Tharynn Bouden\"}. Example kill: {\"id\":\"rabbits\",\"type\":\"kill\",\"text\":\"Drep 5 kaniner\",\"npc\":\"Rabbit\",\"count\":5}."
+        },
+        {
+          "name": "created_by",
+          "type": "string",
+          "required": true,
+          "description": "Author BattleTag (e.g. Magnus#2231). Creates the GutSaga player if missing."
+        },
+        {
+          "name": "party_quest",
+          "type": "boolean",
+          "required": true,
+          "description": "true = every eligible character can take it; false = only assigned_character_ids."
+        },
+        {
+          "name": "reward",
+          "type": "string",
+          "required": false,
+          "description": "Reward flavour line (shown in-game; not a real item grant)."
+        },
+        {
+          "name": "min_level",
+          "type": "number",
+          "required": false,
+          "description": "Minimum character level. Omit for no gate."
+        },
+        {
+          "name": "assigned_character_ids",
+          "type": "array",
+          "required": false,
+          "description": "GutSaga character UUIDs from list_characters. Use when party_quest=false."
+        },
+        {
+          "name": "objectives_ordered",
+          "type": "boolean",
+          "required": false,
+          "description": "If true, goals must be completed in array order."
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": false,
+          "description": "Defaults true. false retires the saga."
+        },
+        {
+          "name": "image",
+          "type": "file",
+          "required": false,
+          "description": "Optional cover image (PNG/JPEG/WebP/GIF, max 8 MiB). Shown under the description in the addon after companion sync. Omit to create without a cover."
+        }
+      ]
+    },
+    {
+      "id": "reward_s",
+      "type": "util.convert",
+      "config": { "toType": "string" }
+    },
+    {
+      "id": "ids",
+      "type": "util.convert",
+      "config": { "toType": "array" }
+    },
+    {
+      "id": "body",
+      "type": "util.json.build",
+      "config": {
+        "inputs": [
+          "title",
+          "description",
+          "objectives",
+          "reward",
+          "min_level",
+          "party_quest",
+          "ids",
+          "objectives_ordered",
+          "active",
+          "created_by"
+        ],
+        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party_quest\": {{party_quest}}, \"assigned_character_ids\": {{ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"created_by\": {{created_by}}}"
+      }
+    },
+    {
+      "id": "post",
+      "type": "http.request",
+      "config": {
+        "url": "{{env.GUTSAGA_API_URL}}/v1/admin/quests",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer {{env.GUTSAGA_ADMIN_TOKEN}}"
+        },
+        "file_mode": "multipart",
+        "file_field": "image"
+      }
+    },
+    {
+      "id": "output",
+      "type": "tool.output",
+      "fields": [
+        {
+          "name": "quest",
+          "type": "object",
+          "required": true,
+          "description": "Created GutSaga quest (has_image true when a cover was uploaded)"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "input", "target": "body", "sourceHandle": "title", "targetHandle": "title" },
+    { "id": "e2", "source": "input", "target": "body", "sourceHandle": "description", "targetHandle": "description" },
+    { "id": "e3", "source": "input", "target": "body", "sourceHandle": "objectives", "targetHandle": "objectives" },
+    { "id": "e4", "source": "input", "target": "reward_s", "sourceHandle": "reward", "targetHandle": "value" },
+    { "id": "e5", "source": "reward_s", "target": "body", "sourceHandle": "out", "targetHandle": "reward" },
+    { "id": "e6", "source": "input", "target": "body", "sourceHandle": "min_level", "targetHandle": "min_level" },
+    { "id": "e7", "source": "input", "target": "body", "sourceHandle": "party_quest", "targetHandle": "party_quest" },
+    { "id": "e8", "source": "input", "target": "ids", "sourceHandle": "assigned_character_ids", "targetHandle": "value" },
+    { "id": "e9", "source": "ids", "target": "body", "sourceHandle": "out", "targetHandle": "ids" },
+    { "id": "e10", "source": "input", "target": "body", "sourceHandle": "objectives_ordered", "targetHandle": "objectives_ordered" },
+    { "id": "e11", "source": "input", "target": "body", "sourceHandle": "active", "targetHandle": "active" },
+    { "id": "e12", "source": "input", "target": "body", "sourceHandle": "created_by", "targetHandle": "created_by" },
+    { "id": "e13", "source": "body", "target": "post", "sourceHandle": "value", "targetHandle": "body" },
+    { "id": "e14", "source": "input", "target": "post", "sourceHandle": "image", "targetHandle": "files" },
+    { "id": "e15", "source": "post", "target": "output", "sourceHandle": "body", "targetHandle": "quest" }
+  ]
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -67,8 +68,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/admin/quests/{id}", s.withAdmin(s.getQuest))
 	mux.HandleFunc("GET /v1/admin/quests/{id}/image", s.withAdmin(s.getAdminQuestImage))
 	mux.HandleFunc("PATCH /v1/admin/quests/{id}", s.withAdmin(s.patchQuest))
+	mux.HandleFunc("PUT /v1/admin/quests/{id}/image", s.withAdmin(s.putAdminQuestImage))
+	mux.HandleFunc("DELETE /v1/admin/quests/{id}/image", s.withAdmin(s.deleteAdminQuestImage))
 	mux.HandleFunc("GET /v1/admin/log", s.withAdmin(s.listLog))
 	mux.HandleFunc("POST /v1/admin/log", s.withAdmin(s.createLog))
+	mux.HandleFunc("POST /v1/admin/complete", s.withAdmin(s.adminComplete))
 	return mux
 }
 
@@ -327,15 +331,24 @@ func (s *Server) deleteCharacter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createQuest(w http.ResponseWriter, r *http.Request) {
-	var body questBody
-	if err := readJSON(r, &body, 12<<20); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
-		return
-	}
-	cover, coverType, err := decodeCover(body.ImageBase64)
+	body, image, contentType, err := readQuestCreate(w, r)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
 		return
+	}
+	cover, coverType := image, contentType
+	if len(cover) == 0 {
+		cover, coverType, err = decodeCover(body.ImageBase64)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+			return
+		}
+	} else {
+		cover, coverType, err = screenshot.NormalizeUpload(cover)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+			return
+		}
 	}
 	out, err := s.store.CreateQuest(r.Context(), QuestInput{
 		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
@@ -381,12 +394,42 @@ func (s *Server) getQuest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
-	var body questPatchBody
-	if err := readJSON(r, &body, 1<<20); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
+func (s *Server) putAdminQuestImage(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	image, contentType, err := readSagaImage(w, r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
 		return
 	}
+	image, contentType, err = screenshot.NormalizeUpload(image)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+		return
+	}
+	out, err := s.store.AdminSetQuestImage(r.Context(), id, contentType, image)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
+}
+
+func (s *Server) deleteAdminQuestImage(w http.ResponseWriter, r *http.Request) {
+	out, err := s.store.AdminClearQuestImage(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
+}
+
+func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
+	body, image, contentType, err := readQuestPatch(w, r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+		return
+	}
+	id := r.PathValue("id")
 	patch := QuestPatch{
 		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
 		ObjectivesOrdered: body.ObjectivesOrdered, Reward: body.Reward,
@@ -406,14 +449,31 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	id := r.PathValue("id")
+	hasFields := questPatchHasFields(patch)
+	if !hasFields && len(image) == 0 {
+		writeErr(w, http.StatusBadRequest, "invalid", "empty patch")
+		return
+	}
 	detail, gerr := s.store.GetQuest(r.Context(), id)
-	out, err := s.store.UpdateQuest(r.Context(), id, patch)
+	var out contract.Quest
+	if hasFields {
+		out, err = s.store.UpdateQuest(r.Context(), id, patch)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+	} else if gerr != nil {
+		s.fail(w, gerr)
+		return
+	} else {
+		out = detail.Quest
+	}
+	out, err = s.applyAdminQuestImage(r.Context(), out, image, contentType)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	if gerr == nil {
+	if hasFields && gerr == nil {
 		s.announceEdited(r.Context(), detail.Quest, out, body.Announce)
 	}
 	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
@@ -460,6 +520,25 @@ func (s *Server) createLog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, out)
 }
 
+func (s *Server) adminComplete(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		CharacterID  string `json:"character_id"`
+		QuestID      string `json:"quest_id"`
+		QuestVersion int    `json:"quest_version"`
+		Level        int    `json:"level"`
+	}
+	if err := readJSON(r, &body, 1<<20); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
+		return
+	}
+	out, err := s.store.AdminComplete(r.Context(), body.CharacterID, body.QuestID, body.QuestVersion, body.Level)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) fail(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound):
@@ -475,6 +554,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	case errors.Is(err, smia.ErrNotConfigured):
 		writeErr(w, http.StatusServiceUnavailable, "smia_not_configured", "Smia-innlogging er ikke satt opp")
 	case errors.Is(err, smia.ErrUnavailable):
+		slog.Error("smia unavailable", "err", err)
 		writeErr(w, http.StatusBadGateway, "smia_unavailable", "fikk ikke svar fra Smia")
 	default:
 		slog.Error("request failed", "err", err)
@@ -589,6 +669,165 @@ type questPatchBody struct {
 	AssignedCharacterIDs *[]string             `json:"assigned_character_ids"`
 	// Announce skips the Discord note when false. Omitted posts a version note or a retirement.
 	Announce *bool `json:"announce"`
+}
+
+func (s *Server) applyAdminQuestImage(ctx context.Context, q contract.Quest, image []byte, contentType string) (contract.Quest, error) {
+	if len(image) == 0 {
+		return q, nil
+	}
+	image, contentType, err := screenshot.NormalizeUpload(image)
+	if err != nil {
+		return contract.Quest{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
+	}
+	return s.store.AdminSetQuestImage(ctx, q.ID, contentType, image)
+}
+
+func questPatchHasFields(p QuestPatch) bool {
+	return p.Title != nil || p.Description != nil || p.Objectives != nil || p.ObjectivesOrdered != nil ||
+		p.Reward != nil || p.MinLevelSet || p.PartyQuest != nil || p.Active != nil || p.CreatedBy != nil ||
+		p.AssignedCharacterIDs != nil
+}
+
+// readQuestCreate accepts JSON or multipart. Multipart may include optional file field "image".
+func readQuestCreate(w http.ResponseWriter, r *http.Request) (questBody, []byte, string, error) {
+	var body questBody
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/") {
+		r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
+		if err := r.ParseMultipartForm(12 << 20); err != nil {
+			return body, nil, "", err
+		}
+		body.Title = r.FormValue("title")
+		body.Description = r.FormValue("description")
+		body.Reward = r.FormValue("reward")
+		body.CreatedBy = r.FormValue("created_by")
+		body.PartyQuest = formBool(r.FormValue("party_quest"))
+		if v := r.FormValue("min_level"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return body, nil, "", errors.New("min_level")
+			}
+			body.MinLevel = &n
+		}
+		if v := r.FormValue("active"); v != "" {
+			b := formBool(v)
+			body.Active = &b
+		}
+		if v := r.FormValue("objectives_ordered"); v != "" {
+			b := formBool(v)
+			body.ObjectivesOrdered = &b
+		}
+		if v := r.FormValue("objectives"); v != "" {
+			if err := json.Unmarshal([]byte(v), &body.Objectives); err != nil {
+				return body, nil, "", errors.New("objectives must be JSON array")
+			}
+		}
+		if v := r.FormValue("assigned_character_ids"); v != "" {
+			if err := json.Unmarshal([]byte(v), &body.AssignedCharacterIDs); err != nil {
+				return body, nil, "", errors.New("assigned_character_ids must be JSON array")
+			}
+		}
+		if v, ok := r.MultipartForm.Value["announce"]; ok {
+			b := formBool(v[0])
+			body.Announce = &b
+		}
+		img, imgCT, err := optionalFormImage(r)
+		return body, img, imgCT, err
+	}
+	if err := readJSON(r, &body, 12<<20); err != nil {
+		return body, nil, "", errors.New("bad json")
+	}
+	return body, nil, "", nil
+}
+
+func readQuestPatch(w http.ResponseWriter, r *http.Request) (questPatchBody, []byte, string, error) {
+	var body questPatchBody
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/") {
+		r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
+		if err := r.ParseMultipartForm(12 << 20); err != nil {
+			return body, nil, "", err
+		}
+		if v, ok := r.MultipartForm.Value["title"]; ok {
+			body.Title = &v[0]
+		}
+		if v, ok := r.MultipartForm.Value["description"]; ok {
+			body.Description = &v[0]
+		}
+		if v, ok := r.MultipartForm.Value["reward"]; ok {
+			body.Reward = &v[0]
+		}
+		if v, ok := r.MultipartForm.Value["created_by"]; ok {
+			body.CreatedBy = &v[0]
+		}
+		if v, ok := r.MultipartForm.Value["party_quest"]; ok {
+			b := formBool(v[0])
+			body.PartyQuest = &b
+		}
+		if v, ok := r.MultipartForm.Value["active"]; ok {
+			b := formBool(v[0])
+			body.Active = &b
+		}
+		if v, ok := r.MultipartForm.Value["objectives_ordered"]; ok {
+			b := formBool(v[0])
+			body.ObjectivesOrdered = &b
+		}
+		if v, ok := r.MultipartForm.Value["min_level"]; ok {
+			body.MinLevel = json.RawMessage(v[0])
+		}
+		if v, ok := r.MultipartForm.Value["objectives"]; ok && v[0] != "" {
+			var objs []contract.Objective
+			if err := json.Unmarshal([]byte(v[0]), &objs); err != nil {
+				return body, nil, "", errors.New("objectives must be JSON array")
+			}
+			body.Objectives = &objs
+		}
+		if v, ok := r.MultipartForm.Value["assigned_character_ids"]; ok && v[0] != "" {
+			var ids []string
+			if err := json.Unmarshal([]byte(v[0]), &ids); err != nil {
+				return body, nil, "", errors.New("assigned_character_ids must be JSON array")
+			}
+			body.AssignedCharacterIDs = &ids
+		}
+		img, imgCT, err := optionalFormImage(r)
+		return body, img, imgCT, err
+	}
+	if err := readJSON(r, &body, 1<<20); err != nil {
+		return body, nil, "", errors.New("bad json")
+	}
+	return body, nil, "", nil
+}
+
+func optionalFormImage(r *http.Request) ([]byte, string, error) {
+	file, hdr, err := r.FormFile("image")
+	if err != nil {
+		if errors.Is(err, http.ErrMissingFile) {
+			return nil, "", nil
+		}
+		return nil, "", err
+	}
+	defer file.Close()
+	b, err := io.ReadAll(io.LimitReader(file, 8<<20+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if len(b) > 8<<20 {
+		return nil, "", errors.New("image larger than 8 MiB")
+	}
+	contentType := hdr.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	return b, contentType, nil
+}
+
+func formBool(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func readCompletion(w http.ResponseWriter, r *http.Request) (contract.CompletionRequest, []byte, string, error) {

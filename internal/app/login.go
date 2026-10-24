@@ -44,6 +44,11 @@ func (a *App) Login(ctx context.Context) error {
 			a.storeSmia(res)
 			if err := a.exchange(ctx, res.AccessToken); err == nil {
 				return nil
+			} else {
+				// Token is valid; opening the browser again cannot fix API/Smia
+				// verification failures and only causes a login loop.
+				a.Log.Warn("Smia-token ok, men GutSaga-økt feilet", "err", err)
+				return err
 			}
 		}
 		a.Log.Warn("Smia refresh feilet, åpner nettleseren", "err", err)

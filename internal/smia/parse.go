@@ -127,14 +127,20 @@ func (p *acc) absorbText(text string) {
 	for _, line := range lines {
 		trim := strings.TrimSpace(line)
 		lower := strings.ToLower(trim)
-		if strings.HasPrefix(lower, "authenticated as ") {
-			email := strings.TrimSpace(trim[len("authenticated as "):])
+		// Older Smia: "Authenticated as user@host"
+		// Current wow MCP: "Access for user@host"
+		for _, prefix := range []string{"authenticated as ", "access for "} {
+			if !strings.HasPrefix(lower, prefix) {
+				continue
+			}
+			email := strings.TrimSpace(trim[len(prefix):])
 			if i := strings.IndexAny(email, " \t"); i >= 0 {
 				email = email[:i]
 			}
 			if strings.Contains(email, "@") && p.email == "" {
 				p.email = email
 			}
+			break
 		}
 		if strings.HasPrefix(lower, "hubs:") {
 			sawHubHeader = true

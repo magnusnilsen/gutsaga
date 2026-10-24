@@ -149,7 +149,7 @@ func (a *App) pullSync(ctx context.Context) error {
 	var httpErr *backend.HTTPError
 	if errors.As(err, &httpErr) && httpErr.Status == 401 {
 		a.clearSession()
-		if err = a.Login(ctx); err != nil {
+		if err = a.ensureLogin(ctx); err != nil {
 			return err
 		}
 		sync, err = a.Client.Sync(ctx)

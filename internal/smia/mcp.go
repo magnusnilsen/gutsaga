@@ -195,7 +195,11 @@ func (v MCPVerifier) http() *http.Client {
 }
 
 func decodeMCPBody(contentType string, body []byte) []byte {
-	if !strings.Contains(strings.ToLower(contentType), "text/event-stream") {
+	ct := strings.ToLower(contentType)
+	looksSSE := strings.Contains(ct, "text/event-stream") ||
+		strings.Contains(string(body), "\ndata:") ||
+		strings.HasPrefix(strings.TrimSpace(string(body)), "event:")
+	if !looksSSE {
 		return body
 	}
 	var last []byte

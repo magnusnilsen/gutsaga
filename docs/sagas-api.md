@@ -95,6 +95,7 @@ Update fields (same shape as create, all optional). Only the owner may patch. Ca
 - `PUT /v1/sagas/{id}/image` — raw body or multipart field `image` (max 8 MiB; stored as PNG)
 - `GET /v1/sagas/{id}/image` — download (any signed-in player; used by the companion)
 - `DELETE /v1/sagas/{id}/image` — clear
+- Admin (Smia MCP): optional `image` file on `POST`/`PATCH` `/v1/admin/quests`, or `PUT`/`DELETE` `/v1/admin/quests/{id}/image`
 
 When present, `has_image` is true and `image_url` points at the GET path. The companion converts the cover to TGA and writes `Interface/AddOns/GutSaga/media/<quest_id>.tga` on sync (Classic Era cannot load loose PNGs as addon textures). The addon shows it under the description, above goals.
 

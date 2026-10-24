@@ -41,3 +41,14 @@ func TestParseAccessUnauthorized(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestParseAccessForLine(t *testing.T) {
+	body := []byte(`{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"Access for magnus@sparkel.io\nRoles: (none)\nTools: list_characters"}],"isError":false}}`)
+	id, err := ParseAccess(body, Hub, Server)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !id.Member || id.Email != "magnus@sparkel.io" || id.Subject != "magnus@sparkel.io" {
+		t.Fatalf("%+v", id)
+	}
+}
