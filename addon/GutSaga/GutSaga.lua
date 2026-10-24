@@ -54,8 +54,6 @@ local syncScrollBar
 local scrollBy
 local bindWheel
 local wheelOnFrame
-local wheelOnList
-local wheelOnDetail
 
 local function secret(v)
     if issecretvalue == nil or v == nil then
@@ -644,56 +642,6 @@ local function formatOsloWhen(raw)
     end
     local month = NO_MONTHS[t.month] or ""
     return string.format("%02d %s %d %02d:%02d", t.day, month, t.year, t.hour, t.min)
-end
-
--- English class tokens for RAID_CLASS_COLORS (stored race/class are English from Unit*).
-local function classToken(className)
-    local s = norm(className):gsub("%s+", "")
-    if s == "" then
-        return ""
-    end
-    local aliases = {
-        deathknight = "DEATHKNIGHT",
-        demonhunter = "DEMONHUNTER",
-        kriger = "WARRIOR",
-        paladin = "PALADIN",
-        jeger = "HUNTER",
-        slyngel = "ROGUE",
-        prest = "PRIEST",
-        sjaman = "SHAMAN",
-        magiker = "MAGE",
-        hekser = "WARLOCK",
-        druide = "DRUID",
-    }
-    return aliases[s] or string.upper(s)
-end
-
-local function classRGB(className)
-    local token = classToken(className)
-    if token ~= "" and RAID_CLASS_COLORS and RAID_CLASS_COLORS[token] then
-        local c = RAID_CLASS_COLORS[token]
-        return c.r or 1, c.g or 1, c.b or 1
-    end
-    local fallback = {
-        WARRIOR = { 0.78, 0.61, 0.43 },
-        PALADIN = { 0.96, 0.55, 0.73 },
-        HUNTER = { 0.67, 0.83, 0.45 },
-        ROGUE = { 1.00, 0.96, 0.41 },
-        PRIEST = { 1.00, 1.00, 1.00 },
-        SHAMAN = { 0.00, 0.44, 0.87 },
-        MAGE = { 0.41, 0.80, 0.94 },
-        WARLOCK = { 0.58, 0.51, 0.79 },
-        DRUID = { 1.00, 0.49, 0.04 },
-        DEATHKNIGHT = { 0.77, 0.12, 0.23 },
-        MONK = { 0.00, 1.00, 0.59 },
-        DEMONHUNTER = { 0.64, 0.19, 0.79 },
-        EVOKER = { 0.20, 0.58, 0.50 },
-    }
-    local c = fallback[token]
-    if c then
-        return c[1], c[2], c[3]
-    end
-    return INK.r, INK.g, INK.b
 end
 
 local function activityList(entry)
@@ -2510,14 +2458,6 @@ bindWheel = function(target, scroll, step)
     end)
 end
 
-wheelOnList = function(_, delta)
-    scrollBy(listScroll, delta, 36)
-end
-
-wheelOnDetail = function(_, delta)
-    scrollBy(detailScroll, delta, 28)
-end
-
 wheelOnFrame = function(_, delta)
     local scale = frame and frame:GetEffectiveScale() or 1
     if scale == 0 then
@@ -2876,7 +2816,7 @@ local function build()
         end
         self.age = (self.age or 0) + (elapsed or 0)
         local age = self.age
-        local alpha, y = 1, -30
+        local alpha, y
         if age < TOAST_EASE then
             local t = age / TOAST_EASE
             alpha = t

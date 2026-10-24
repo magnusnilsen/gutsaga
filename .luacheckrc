@@ -83,6 +83,8 @@ read_globals = {
     "UnitExists",
     "RAID_CLASS_COLORS",
     "UnitGUID",
+    "GetQuestDifficultyColor",
+    "GetQuestGreenRange",
 }
 exclude_files = {
     "addon/GutSaga/GutSagaData.lua",
