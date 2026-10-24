@@ -2936,7 +2936,8 @@ local function build()
     if Minimap then
         local btn = CreateFrame("Button", "GutSagaMinimapButton", Minimap)
         minimapBtn = btn
-        btn:SetSize(32, 32)
+        -- Larger hit/visual size so the emblem is not crushed into ~20px.
+        btn:SetSize(40, 40)
         btn:SetFrameStrata("MEDIUM")
         btn:RegisterForClicks("LeftButtonUp")
         btn:RegisterForDrag("LeftButton")
@@ -2946,7 +2947,7 @@ local function build()
         end
         -- Unread: soft blue ADD glow (Blizzard zoom highlight).
         local glow = btn:CreateTexture(nil, "BACKGROUND")
-        glow:SetSize(48, 48)
+        glow:SetSize(58, 58)
         glow:SetPoint("CENTER")
         glow:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
         glow:SetBlendMode("ADD")
@@ -2954,19 +2955,19 @@ local function build()
         glow:SetAlpha(1)
         glow:Hide()
         btn.unreadGlow = glow
-        -- Previous (softer) emblem + LibDBIcon-style TrackingBorder placement:
-        -- border anchors TOPLEFT on the 32² button; icon sits in the ring hole.
+        -- LibDBIcon TrackingBorder layout, scaled so the icon stays ~30px
+        -- (small holes look crunchy with the ornate gold rim).
         local icon = btn:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(20, 20)
-        icon:SetPoint("TOPLEFT", 7, -5)
+        icon:SetSize(30, 30)
+        icon:SetPoint("TOPLEFT", 6, -5)
         icon:SetTexture("Interface\\AddOns\\GutSaga\\GutSagaMinimap")
         local border = btn:CreateTexture(nil, "OVERLAY")
-        border:SetSize(54, 54)
+        border:SetSize(66, 66)
         border:SetPoint("TOPLEFT")
         border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
         local function placeMinimap(self)
             local angle = self.angle or (math.pi * 0.75)
-            local radius = (Minimap:GetWidth() / 2) + 5
+            local radius = (Minimap:GetWidth() / 2) + 8
             self:ClearAllPoints()
             self:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
         end
