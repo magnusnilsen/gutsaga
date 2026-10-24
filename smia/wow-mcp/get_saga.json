@@ -136,8 +136,7 @@
       "config": {
         "valueType": "json",
         "value": {
-          "type": "text",
-          "body": "&nbsp;"
+          "type": "divider"
         }
       }
     },
@@ -212,7 +211,9 @@
       "type": "util.json.build",
       "config": {
         "template": "{\"type\":\"text\",\"body\":{{body}}}",
-        "inputs": ["body"]
+        "inputs": [
+          "body"
+        ]
       }
     },
     {
@@ -220,7 +221,9 @@
       "type": "util.json.build",
       "config": {
         "template": "{\"type\":\"text\",\"body\":{{body}}}",
-        "inputs": ["body"]
+        "inputs": [
+          "body"
+        ]
       }
     },
     {
@@ -228,7 +231,9 @@
       "type": "util.json.build",
       "config": {
         "template": "{\"type\":\"media\",\"file\":{{file}}}",
-        "inputs": ["file"]
+        "inputs": [
+          "file"
+        ]
       }
     },
     {
@@ -236,7 +241,10 @@
       "type": "util.json.build",
       "config": {
         "template": "{\"type\":\"table\",\"columns\":{{columns}},\"rows\":{{rows}}}",
-        "inputs": ["columns", "rows"]
+        "inputs": [
+          "columns",
+          "rows"
+        ]
       }
     },
     {
