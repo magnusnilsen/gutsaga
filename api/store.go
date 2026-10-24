@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/magnusnilsen/gutsaga/internal/syncdata"
 )
 
 var (
@@ -1087,7 +1088,98 @@ func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, 
 	if err := rows.Err(); err != nil {
 		return contract.QuestDetail{}, err
 	}
-	return contract.QuestDetail{Quest: q, Versions: versions}, nil
+	completers, err := s.listQuestCompleters(ctx, id)
+	if err != nil {
+		return contract.QuestDetail{}, err
+	}
+	return contract.QuestDetail{
+		Quest: q, Versions: versions, CompletedBy: completers,
+		Card: buildQuestCard(q, completers),
+	}, nil
+}
+
+func (s *Store) listQuestCompleters(ctx context.Context, questID string) ([]contract.QuestCompleter, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.name, c.realm, COALESCE(c.class, ''), COALESCE(c.race, ''), c.level,
+			COALESCE(p.battletag, ''), pr.completed_at, COALESCE(pr.level_at_completion, 0)
+		FROM progress pr
+		JOIN characters c ON c.id = pr.character_id
+		JOIN players p ON p.id = c.player_id
+		WHERE pr.quest_id=$1 AND pr.status='completed'
+		ORDER BY pr.completed_at ASC`, questID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []contract.QuestCompleter
+	for rows.Next() {
+		var c contract.QuestCompleter
+		var completedAt time.Time
+		var levelAt int
+		if err := rows.Scan(&c.Character, &c.Realm, &c.Class, &c.Race, &c.Level, &c.BattleTag, &completedAt, &levelAt); err != nil {
+			return nil, err
+		}
+		if levelAt > 0 {
+			c.Level = levelAt
+		}
+		c.CompletedAt = contract.FormatTime(completedAt.UTC())
+		c.When = syncdata.FormatOsloWhen(c.CompletedAt)
+		out = append(out, c)
+	}
+	if out == nil {
+		out = []contract.QuestCompleter{}
+	}
+	return out, rows.Err()
+}
+
+func buildQuestCard(q contract.Quest, completers []contract.QuestCompleter) *contract.QuestCard {
+	card := &contract.QuestCard{
+		Columns: []contract.QuestCardColumn{
+			{ID: "detail", Label: "", Fill: true, Bold: true, IsMultiline: true},
+		},
+	}
+	for i, o := range q.Objectives {
+		text := strings.TrimSpace(o.Text)
+		if text == "" {
+			text = o.ID
+		}
+		card.Rows = append(card.Rows, contract.QuestCardRow{
+			ID:    fmt.Sprintf("goal-%d", i+1),
+			Group: "Mål",
+			Cells: map[string]any{"detail": fmt.Sprintf("%d. %s", i+1, text)},
+		})
+	}
+	if len(card.Rows) == 0 {
+		card.Rows = append(card.Rows, contract.QuestCardRow{
+			ID: "goal-none", Group: "Mål", Cells: map[string]any{"detail": "(ingen mål)"},
+		})
+	}
+	if len(completers) == 0 {
+		card.Rows = append(card.Rows, contract.QuestCardRow{
+			ID: "done-none", Group: "Fullført", Cells: map[string]any{"detail": "Ingen har fullført ennå"},
+		})
+		return card
+	}
+	for i, c := range completers {
+		line := c.Character
+		if c.Class != "" && c.Level > 0 {
+			line = fmt.Sprintf("%s · %s %d", c.Character, c.Class, c.Level)
+		} else if c.Class != "" {
+			line = fmt.Sprintf("%s · %s", c.Character, c.Class)
+		}
+		if c.Realm != "" {
+			line += " · " + c.Realm
+		}
+		if c.When != "" {
+			line += "\n" + c.When
+		}
+		card.Rows = append(card.Rows, contract.QuestCardRow{
+			ID:    fmt.Sprintf("done-%d", i+1),
+			Group: "Fullført",
+			Cells: map[string]any{"detail": line},
+		})
+	}
+	return card
 }
 
 func (s *Store) ListQuests(ctx context.Context, characterID string) ([]contract.QuestListItem, error) {

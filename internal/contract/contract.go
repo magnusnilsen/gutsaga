@@ -175,7 +175,42 @@ type QuestVersion struct {
 
 type QuestDetail struct {
 	Quest
-	Versions []QuestVersion `json:"versions"`
+	Versions    []QuestVersion   `json:"versions"`
+	CompletedBy []QuestCompleter `json:"completed_by"`
+	// Card is a Smia ui.render table payload (goals + who finished).
+	Card *QuestCard `json:"card,omitempty"`
+}
+
+// QuestCompleter is someone who finished this saga (admin/detail views).
+type QuestCompleter struct {
+	Character   string `json:"character"`
+	Realm       string `json:"realm"`
+	Class       string `json:"class,omitempty"`
+	Level       int    `json:"level,omitempty"`
+	Race        string `json:"race,omitempty"`
+	BattleTag   string `json:"battletag,omitempty"`
+	CompletedAt string `json:"completed_at"`
+	When        string `json:"when,omitempty"`
+}
+
+// QuestCard is shaped for Smia ui.render layout=table.
+type QuestCard struct {
+	Columns []QuestCardColumn `json:"columns"`
+	Rows    []QuestCardRow    `json:"rows"`
+}
+
+type QuestCardColumn struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Fill        bool   `json:"fill,omitempty"`
+	Bold        bool   `json:"bold,omitempty"`
+	IsMultiline bool   `json:"isMultiline,omitempty"`
+}
+
+type QuestCardRow struct {
+	ID     string         `json:"id"`
+	Group  string         `json:"group,omitempty"`
+	Cells  map[string]any `json:"cells"`
 }
 
 // QuestListItem is an admin quest row. Status is null when character_id was

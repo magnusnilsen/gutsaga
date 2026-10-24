@@ -51,6 +51,16 @@
       "config": { "path": "image_signed_url" }
     },
     {
+      "id": "card_cols",
+      "type": "util.get_path",
+      "config": { "path": "card.columns" }
+    },
+    {
+      "id": "card_rows",
+      "type": "util.get_path",
+      "config": { "path": "card.rows" }
+    },
+    {
       "id": "empty_url",
       "type": "util.string.template",
       "config": {
@@ -82,9 +92,14 @@
       "type": "file.fetch"
     },
     {
-      "id": "card",
+      "id": "cover",
       "type": "ui.render",
       "config": { "layout": "media", "fullWidth": true }
+    },
+    {
+      "id": "detail",
+      "type": "ui.render",
+      "config": { "layout": "table", "fullWidth": true, "allowRefresh": true }
     },
     {
       "id": "output",
@@ -94,13 +109,19 @@
           "name": "quest",
           "type": "object",
           "required": true,
-          "description": "Full saga (includes versions[]). has_image / image_signed_url when a cover exists."
+          "description": "Full saga with versions, completed_by, and card (table payload)."
         },
         {
-          "name": "view",
+          "name": "cover",
           "type": "object",
           "required": false,
-          "description": "Smia media card for the cover (or a full-width placeholder panel when the saga has no image)."
+          "description": "Media card with the cover (or placeholder)."
+        },
+        {
+          "name": "detail",
+          "type": "object",
+          "required": false,
+          "description": "Table card: Mål (objectives) and Fullført (who completed)."
         }
       ]
     }
@@ -112,6 +133,8 @@
     { "id": "e4", "source": "get", "target": "desc", "sourceHandle": "body", "targetHandle": "in" },
     { "id": "e5", "source": "get", "target": "has_image", "sourceHandle": "body", "targetHandle": "in" },
     { "id": "e6", "source": "get", "target": "signed_url", "sourceHandle": "body", "targetHandle": "in" },
+    { "id": "e6b", "source": "get", "target": "card_cols", "sourceHandle": "body", "targetHandle": "in" },
+    { "id": "e6c", "source": "get", "target": "card_rows", "sourceHandle": "body", "targetHandle": "in" },
     { "id": "e7", "source": "has_image", "target": "has_cover", "sourceHandle": "value", "targetHandle": "a" },
     { "id": "e8", "source": "true_flag", "target": "has_cover", "sourceHandle": "value", "targetHandle": "b" },
     { "id": "e9", "source": "signed_url", "target": "signed_s", "sourceHandle": "value", "targetHandle": "value" },
@@ -119,10 +142,14 @@
     { "id": "e11", "source": "signed_s", "target": "pick_url", "sourceHandle": "out", "targetHandle": "true" },
     { "id": "e12", "source": "empty_url", "target": "pick_url", "sourceHandle": "value", "targetHandle": "false" },
     { "id": "e13", "source": "pick_url", "target": "fetch", "sourceHandle": "result", "targetHandle": "url" },
-    { "id": "e14", "source": "title", "target": "card", "sourceHandle": "value", "targetHandle": "title" },
-    { "id": "e15", "source": "desc", "target": "card", "sourceHandle": "value", "targetHandle": "subtitle" },
-    { "id": "e16", "source": "fetch", "target": "card", "sourceHandle": "file", "targetHandle": "file" },
-    { "id": "e17", "source": "get", "target": "output", "sourceHandle": "body", "targetHandle": "quest" },
-    { "id": "e18", "source": "card", "target": "output", "sourceHandle": "view", "targetHandle": "view" }
+    { "id": "e14", "source": "title", "target": "cover", "sourceHandle": "value", "targetHandle": "title" },
+    { "id": "e15", "source": "desc", "target": "cover", "sourceHandle": "value", "targetHandle": "subtitle" },
+    { "id": "e16", "source": "fetch", "target": "cover", "sourceHandle": "file", "targetHandle": "file" },
+    { "id": "e17", "source": "title", "target": "detail", "sourceHandle": "value", "targetHandle": "title" },
+    { "id": "e18", "source": "card_cols", "target": "detail", "sourceHandle": "value", "targetHandle": "columns" },
+    { "id": "e19", "source": "card_rows", "target": "detail", "sourceHandle": "value", "targetHandle": "rows" },
+    { "id": "e20", "source": "get", "target": "output", "sourceHandle": "body", "targetHandle": "quest" },
+    { "id": "e21", "source": "cover", "target": "output", "sourceHandle": "view", "targetHandle": "cover" },
+    { "id": "e22", "source": "detail", "target": "output", "sourceHandle": "view", "targetHandle": "detail" }
   ]
 }
