@@ -2643,6 +2643,38 @@ SlashCmdList.GUTSAGA = function(msg)
     show()
 end
 
+-- Classic slash emotes always raise CHAT_MSG_TEXT_EMOTE, but DoEmote is not
+-- always hooked (load order / client builds). Keep the last DoEmote token and
+-- also infer common tokens from the localized chat line as a fallback.
+local lastDoEmoteToken = nil
+
+local function inferEmoteToken(msg)
+    local s = plainString(msg)
+    if not s then
+        return nil
+    end
+    s = string.lower(s)
+    -- English + Norwegian fragments for the emotes we author in sagas.
+    local hints = {
+        { "salute", "SALUTE" }, { "hils", "SALUTE" },
+        { "bow", "BOW" }, { "bukk", "BOW" },
+        { "wave", "WAVE" }, { "vink", "WAVE" },
+        { "cheer", "CHEER" }, { "juble", "CHEER" },
+        { "thank", "THANK" }, { "takk", "THANK" },
+        { "applaud", "APPLAUD" }, { "klapp", "APPLAUD" },
+        { "kneel", "KNEEL" }, { "knele", "KNEEL" },
+        { "rude", "RUDE" },
+        { "flex", "FLEX" },
+        { "dance", "DANCE" }, { "dans", "DANCE" },
+    }
+    for i = 1, #hints do
+        if string.find(s, hints[i][1], 1, true) then
+            return hints[i][2]
+        end
+    end
+    return nil
+end
+
 local function noteEmote(token, unit)
     local emote = plainString(token)
     if not emote or emote == "" then
@@ -2652,15 +2684,25 @@ local function noteEmote(token, unit)
     if string.sub(emote, 1, 1) == "/" then
         emote = string.sub(emote, 2)
     end
+    emote = (emote:gsub("%s+", "_"))
+    if emote == "" then
+        return
+    end
+    lastDoEmoteToken = emote
     readLocation()
     local unitID = plainString(unit)
     local target = ""
     if unitID and unitID ~= "" and unitID ~= "none" and unitID ~= "player" and UnitName then
         local ok, n = pcall(UnitName, unitID)
         target = (ok and plainString(n)) or ""
-    elseif (not unitID or unitID == "" or unitID == "target") and UnitName then
+    end
+    if target == "" and UnitName then
         local ok, n = pcall(UnitName, "target")
         target = (ok and plainString(n)) or ""
+    end
+    -- Prefer the current soft-target name when the unit token was empty.
+    if target == "" and world.object and world.object ~= "" then
+        target = world.object
     end
     world.pendingEmote = {
         token = emote,
@@ -2671,13 +2713,16 @@ local function noteEmote(token, unit)
         mapID = world.mapID,
         x = world.x,
         y = world.y,
-        untilAt = unixNow() + 2,
+        untilAt = unixNow() + 5,
     }
 end
 
 local emoteHooked = false
 local function installEmoteHook()
     if emoteHooked or type(hooksecurefunc) ~= "function" then
+        return
+    end
+    if type(DoEmote) ~= "function" and type(_G.DoEmote) ~= "function" then
         return
     end
     emoteHooked = true
@@ -2728,6 +2773,7 @@ events:SetScript("OnEvent", function(_, event, ...)
     end
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         initDB()
+        installEmoteHook()
         showFreshNotice()
         cachePlayer()
         build()
@@ -2813,10 +2859,21 @@ events:SetScript("OnEvent", function(_, event, ...)
         return
     end
     if event == "CHAT_MSG_TEXT_EMOTE" then
-        -- The token comes from DoEmote. This event only confirms the emote
-        -- was announced. The text itself is localized and may be secret in combat.
-        if type(world.pendingEmote) == "table" then
-            world.pendingEmote.untilAt = unixNow() + 2
+        -- Confirm (and, on Classic, sometimes discover) the emote. Prefer the
+        -- DoEmote token; otherwise infer from the localized chat line.
+        local msg = ...
+        local token = lastDoEmoteToken
+        if type(world.pendingEmote) == "table" and world.pendingEmote.token then
+            token = world.pendingEmote.token
+        end
+        if not token or token == "" then
+            token = inferEmoteToken(msg)
+        end
+        if token and token ~= "" then
+            noteEmote(token, "target")
+            onWorld()
+        elseif type(world.pendingEmote) == "table" then
+            world.pendingEmote.untilAt = unixNow() + 5
             onWorld()
         end
         return
