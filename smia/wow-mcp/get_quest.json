@@ -54,7 +54,7 @@
       "id": "empty_url",
       "type": "util.string.template",
       "config": {
-        "template": "{{env.GUTSAGA_API_URL}}/v1/public/empty.png"
+        "template": "{{env.GUTSAGA_API_URL}}/v1/public/placeholder.png"
       }
     },
     {
@@ -84,7 +84,7 @@
     {
       "id": "card",
       "type": "ui.render",
-      "config": { "layout": "media" }
+      "config": { "layout": "media", "fullWidth": true }
     },
     {
       "id": "output",
@@ -100,7 +100,7 @@
           "name": "view",
           "type": "object",
           "required": false,
-          "description": "Smia media card for the cover (or a blank placeholder when the saga has no image)."
+          "description": "Smia media card for the cover (or a full-width placeholder panel when the saga has no image)."
         }
       ]
     }

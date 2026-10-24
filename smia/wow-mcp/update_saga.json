@@ -12,12 +12,6 @@
           "description": "GutSaga quest UUID from list_quests / create_quest / get_quest."
         },
         {
-          "name": "updated_by",
-          "type": "string",
-          "required": true,
-          "description": "Your BattleTag (e.g. Magnus#2231). Must match the saga's created_by — you can only edit sagas you authored."
-        },
-        {
           "name": "title",
           "type": "string",
           "required": false,
@@ -33,7 +27,7 @@
           "name": "objectives",
           "type": "array",
           "required": false,
-          "description": "Full replacement step list (same contract as create_quest). Always send the complete list. Types: go, talk, item, kill, emote, sequence. memory visit|hold (go defaults visit, item defaults hold; talk/emote/kill/sequence are visit). sequence is one step with within_sec and 2–6 beats. A together-kill puts group {level, instance, optional size} on that kill: level is exact for every member. Do not use all_of, any_of, or objectives_ordered."
+          "description": "Full replacement step list (same contract as create_quest). Always send the complete list. Types: go, talk, item, kill, emote, sequence. memory visit|hold (go defaults visit, item defaults hold; talk/emote/kill/sequence are visit). sequence is one step with within_sec and 2-6 beats. A together-kill puts group {level, instance, optional size} on that kill: level is exact for every member. Do not use all_of, any_of, or objectives_ordered."
         },
         {
           "name": "reward",
@@ -78,6 +72,10 @@
       ]
     },
     {
+      "id": "ctx",
+      "type": "context.run"
+    },
+    {
       "id": "url",
       "type": "util.string.template",
       "config": {
@@ -98,9 +96,9 @@
           "assigned_character_ids",
           "objectives_ordered",
           "active",
-          "updated_by"
+          "editor_email"
         ],
-        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party_quest\": {{party_quest}}, \"assigned_character_ids\": {{assigned_character_ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"updated_by\": {{updated_by}}}"
+        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party_quest\": {{party_quest}}, \"assigned_character_ids\": {{assigned_character_ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"editor_email\": {{editor_email}}}"
       }
     },
     {
@@ -123,7 +121,7 @@
           "name": "quest",
           "type": "object",
           "required": true,
-          "description": "Updated quest. Text changes bump version; cover-only updates do not."
+          "description": "Updated quest. Text changes bump version; cover-only updates do not. Only sagas owned by the Smia caller (player email from companion login) can be edited."
         }
       ]
     }
@@ -139,7 +137,7 @@
     { "id": "e8", "source": "input", "target": "body", "sourceHandle": "assigned_character_ids", "targetHandle": "assigned_character_ids" },
     { "id": "e9", "source": "input", "target": "body", "sourceHandle": "objectives_ordered", "targetHandle": "objectives_ordered" },
     { "id": "e10", "source": "input", "target": "body", "sourceHandle": "active", "targetHandle": "active" },
-    { "id": "e11", "source": "input", "target": "body", "sourceHandle": "updated_by", "targetHandle": "updated_by" },
+    { "id": "e11", "source": "ctx", "target": "body", "sourceHandle": "user_email", "targetHandle": "editor_email" },
     { "id": "e12", "source": "url", "target": "patch", "sourceHandle": "value", "targetHandle": "url" },
     { "id": "e13", "source": "body", "target": "patch", "sourceHandle": "value", "targetHandle": "body" },
     { "id": "e14", "source": "input", "target": "patch", "sourceHandle": "image", "targetHandle": "files" },

@@ -3,7 +3,7 @@
 Player-authenticated endpoints for creating and maintaining your own sagas.
 Use the companion session API key (`Authorization: Bearer …` from `POST /v1/auth/session`).
 
-Admin can still use `/v1/admin/quests` (any creator). When the patch body includes `updated_by` (BattleTag), the API enforces the same ownership rule as players — only that author may edit (Smia MCP `update_quest` always sends it). Players use `/v1/sagas` and may only update sagas they own (`created_by_player_id`).
+Admin can still use `/v1/admin/quests` (any creator). When the patch body includes `editor_email` (Smia caller) or `updated_by` (BattleTag), the API enforces the same ownership rule as players — only that author may edit (Smia MCP `update_saga` sends `editor_email` from `context.run`). Players use `/v1/sagas` and may only update sagas they own (`created_by_player_id`).
 
 ## Goal types
 

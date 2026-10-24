@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,17 +17,28 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 )
 
-// Minimal 1×1 transparent PNG for Smia get_quest when a saga has no cover.
-var emptyPNG = []byte{
-	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
-	0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-	0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
-	0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
-	0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
-	0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+// placeholderPNG is a 640×360 dark panel used by Smia get_quest when a saga
+// has no cover. A 1×1 transparent pixel made Smia's media card collapse to a
+// one-word-wide column; a real-size image keeps the chat card readable.
+var placeholderPNG = mustPlaceholderPNG()
+
+func mustPlaceholderPNG() []byte {
+	const w, h = 640, 360
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	bg := color.NRGBA{R: 0x1a, G: 0x1a, B: 0x1e, A: 0xff}
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.SetNRGBA(x, y, bg)
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		panic("placeholder png: " + err.Error())
+	}
+	return buf.Bytes()
 }
 
-func serveEmptyPNG(w http.ResponseWriter, r *http.Request) {
+func servePlaceholderPNG(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -32,7 +47,7 @@ func serveEmptyPNG(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.WriteHeader(http.StatusOK)
 	if r.Method != http.MethodHead {
-		_, _ = w.Write(emptyPNG)
+		_, _ = w.Write(placeholderPNG)
 	}
 }
 

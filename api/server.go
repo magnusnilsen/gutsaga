@@ -59,7 +59,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/sagas/{id}/image", s.withPlayer(s.deleteSagaImage))
 	mux.HandleFunc("GET /v1/sagas/{id}/image", s.withPlayer(s.getSagaImage))
 	mux.HandleFunc("GET /v1/public/sagas/{id}/image", s.getPublicSagaImage)
-	mux.HandleFunc("GET /v1/public/empty.png", serveEmptyPNG)
+	mux.HandleFunc("GET /v1/public/placeholder.png", servePlaceholderPNG)
+	mux.HandleFunc("GET /v1/public/empty.png", servePlaceholderPNG) // alias; was a 1×1 that collapsed Smia media cards
 	mux.HandleFunc("POST /v1/admin/players", s.withAdmin(s.createPlayer))
 	mux.HandleFunc("GET /v1/admin/players", s.withAdmin(s.listPlayers))
 	mux.HandleFunc("POST /v1/admin/players/{id}/rotate-key", s.withAdmin(s.rotateKey))
@@ -485,8 +486,14 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	// When updated_by is set (Smia MCP always sends it), only the author may edit.
-	if body.UpdatedBy != nil {
+	// Smia MCP sends editor_email (caller). updated_by (BattleTag) is the older check.
+	if body.EditorEmail != nil {
+		if err := s.store.AssertQuestOwnerByEmail(r.Context(), id, *body.EditorEmail); err != nil {
+			s.fail(w, err)
+			return
+		}
+		patch.CreatedBy = nil
+	} else if body.UpdatedBy != nil {
 		if err := s.store.AssertQuestOwnerByBattleTag(r.Context(), id, *body.UpdatedBy); err != nil {
 			s.fail(w, err)
 			return
@@ -521,6 +528,9 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		actor := ""
 		if body.UpdatedBy != nil {
 			actor = strings.TrimSpace(*body.UpdatedBy)
+		}
+		if actor == "" && body.EditorEmail != nil {
+			actor = strings.TrimSpace(*body.EditorEmail)
 		}
 		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor)
 	}
@@ -724,8 +734,10 @@ type questPatchBody struct {
 	PartyQuest        *bool                 `json:"party_quest"`
 	Active            *bool                 `json:"active"`
 	CreatedBy         *string               `json:"created_by"`
-	// UpdatedBy is who edited the saga (Discord line). Admin optional; player routes set it from the session.
-	UpdatedBy            *string         `json:"updated_by"`
+	// UpdatedBy is who edited the saga (Discord line / BattleTag ownership). Admin optional.
+	UpdatedBy *string `json:"updated_by"`
+	// EditorEmail is the Smia caller's email. When set, only that player's sagas may be edited.
+	EditorEmail          *string         `json:"editor_email"`
 	AssignedCharacterIDs *[]string       `json:"assigned_character_ids"`
 	Requires             json.RawMessage `json:"requires"`
 	Chain                json.RawMessage `json:"chain"`
@@ -830,6 +842,9 @@ func readQuestPatch(w http.ResponseWriter, r *http.Request) (questPatchBody, []b
 		}
 		if v, ok := r.MultipartForm.Value["updated_by"]; ok {
 			body.UpdatedBy = &v[0]
+		}
+		if v, ok := r.MultipartForm.Value["editor_email"]; ok {
+			body.EditorEmail = &v[0]
 		}
 		if v, ok := r.MultipartForm.Value["party_quest"]; ok {
 			b := formBool(v[0])

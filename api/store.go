@@ -2040,6 +2040,28 @@ func (s *Store) AssertQuestOwnerByBattleTag(ctx context.Context, questID, battle
 	return nil
 }
 
+// AssertQuestOwnerByEmail resolves the Smia caller's email to a GutSaga player
+// (set when they sign in via the companion) and checks saga ownership.
+func (s *Store) AssertQuestOwnerByEmail(ctx context.Context, questID, email string) error {
+	if err := validUUID(questID); err != nil {
+		return err
+	}
+	mail := strings.ToLower(strings.TrimSpace(email))
+	if mail == "" {
+		return fmt.Errorf("%w: editor_email required", ErrInvalid)
+	}
+	var playerID string
+	err := s.pool.QueryRow(ctx, `
+		SELECT id::text FROM players WHERE lower(email)=$1 ORDER BY created_at LIMIT 1`, mail).Scan(&playerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotSagaAuthor
+	}
+	if err != nil {
+		return err
+	}
+	return s.assertQuestOwner(ctx, questID, playerID)
+}
+
 // ListQuestsByPlayer returns sagas created by this player.
 func (s *Store) ListQuestsByPlayer(ctx context.Context, playerID string) ([]contract.Quest, error) {
 	if err := validUUID(playerID); err != nil {
