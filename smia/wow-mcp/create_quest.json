@@ -69,7 +69,7 @@
           "name": "image",
           "type": "file",
           "required": false,
-          "description": "Optional cover image (PNG/JPEG/WebP/GIF, max 8 MiB). Shown under the description in the addon after companion sync. Omit to create without a cover."
+          "description": "Optional cover for Discord + in-game (PNG/JPEG/WebP/GIF, max 8 MiB). Create with a cover in one call: phase 1 pass { filename, content_type, confirm_sandbox: true }, HTTP PUT the bytes to the returned upload_url, then phase 2 call again with { file_ref }. Omit to create without a cover. After companion sync and /reload the cover shows under the description in the addon."
         }
       ]
     },

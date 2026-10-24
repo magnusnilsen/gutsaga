@@ -59,6 +59,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/sagas/{id}/image", s.withPlayer(s.deleteSagaImage))
 	mux.HandleFunc("GET /v1/sagas/{id}/image", s.withPlayer(s.getSagaImage))
 	mux.HandleFunc("GET /v1/public/sagas/{id}/image", s.getPublicSagaImage)
+	mux.HandleFunc("GET /v1/public/empty.png", serveEmptyPNG)
 	mux.HandleFunc("POST /v1/admin/players", s.withAdmin(s.createPlayer))
 	mux.HandleFunc("GET /v1/admin/players", s.withAdmin(s.listPlayers))
 	mux.HandleFunc("POST /v1/admin/players/{id}/rotate-key", s.withAdmin(s.rotateKey))
@@ -484,6 +485,14 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	// When updated_by is set (Smia MCP always sends it), only the author may edit.
+	if body.UpdatedBy != nil {
+		if err := s.store.AssertQuestOwnerByBattleTag(r.Context(), id, *body.UpdatedBy); err != nil {
+			s.fail(w, err)
+			return
+		}
+		patch.CreatedBy = nil
+	}
 	hasFields := questPatchHasFields(patch)
 	if !hasFields && len(image) == 0 {
 		writeErr(w, http.StatusBadRequest, "invalid", "empty patch")
@@ -586,6 +595,8 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusConflict, "conflict", "already exists")
 	case errors.Is(err, ErrInvalid):
 		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+	case errors.Is(err, ErrNotSagaAuthor):
+		writeErr(w, http.StatusForbidden, "forbidden", "only the saga author can edit this saga")
 	case errors.Is(err, ErrForbidden):
 		writeErr(w, http.StatusForbidden, "forbidden", "forbidden")
 	case errors.Is(err, ErrLocked):
@@ -702,22 +713,22 @@ type questBody struct {
 }
 
 type questPatchBody struct {
-	Title                *string               `json:"title"`
-	Description          *string               `json:"description"`
-	Objectives           *[]contract.Objective `json:"objectives"`
-	ObjectivesOrdered    *bool                 `json:"objectives_ordered"`
-	When                 json.RawMessage       `json:"when"`
-	Group                json.RawMessage       `json:"group"`
-	Reward               *string               `json:"reward"`
-	MinLevel             json.RawMessage       `json:"min_level"`
-	PartyQuest           *bool                 `json:"party_quest"`
-	Active               *bool                 `json:"active"`
-	CreatedBy            *string               `json:"created_by"`
+	Title             *string               `json:"title"`
+	Description       *string               `json:"description"`
+	Objectives        *[]contract.Objective `json:"objectives"`
+	ObjectivesOrdered *bool                 `json:"objectives_ordered"`
+	When              json.RawMessage       `json:"when"`
+	Group             json.RawMessage       `json:"group"`
+	Reward            *string               `json:"reward"`
+	MinLevel          json.RawMessage       `json:"min_level"`
+	PartyQuest        *bool                 `json:"party_quest"`
+	Active            *bool                 `json:"active"`
+	CreatedBy         *string               `json:"created_by"`
 	// UpdatedBy is who edited the saga (Discord line). Admin optional; player routes set it from the session.
-	UpdatedBy            *string               `json:"updated_by"`
-	AssignedCharacterIDs *[]string             `json:"assigned_character_ids"`
-	Requires             json.RawMessage       `json:"requires"`
-	Chain                json.RawMessage       `json:"chain"`
+	UpdatedBy            *string         `json:"updated_by"`
+	AssignedCharacterIDs *[]string       `json:"assigned_character_ids"`
+	Requires             json.RawMessage `json:"requires"`
+	Chain                json.RawMessage `json:"chain"`
 	// Announce skips the Discord note when false. Omitted posts a version note or a retirement.
 	Announce *bool `json:"announce"`
 }

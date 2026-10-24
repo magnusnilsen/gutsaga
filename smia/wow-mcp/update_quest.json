@@ -9,7 +9,13 @@
           "name": "quest_id",
           "type": "string",
           "required": true,
-          "description": "GutSaga quest UUID from list_quests / create_quest."
+          "description": "GutSaga quest UUID from list_quests / create_quest / get_quest."
+        },
+        {
+          "name": "updated_by",
+          "type": "string",
+          "required": true,
+          "description": "Your BattleTag (e.g. Magnus#2231). Must match the saga's created_by — you can only edit sagas you authored."
         },
         {
           "name": "title",
@@ -67,7 +73,7 @@
           "name": "image",
           "type": "file",
           "required": false,
-          "description": "Optional new cover image (PNG/JPEG/WebP/GIF, max 8 MiB). Can be sent alone to only update the cover."
+          "description": "Optional new cover image (PNG/JPEG/WebP/GIF, max 8 MiB). Can be sent alone to only update the cover. Phase 1: { filename, content_type, confirm_sandbox: true }. Phase 2 after PUT: { file_ref }."
         }
       ]
     },
@@ -91,9 +97,10 @@
           "party_quest",
           "assigned_character_ids",
           "objectives_ordered",
-          "active"
+          "active",
+          "updated_by"
         ],
-        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party_quest\": {{party_quest}}, \"assigned_character_ids\": {{assigned_character_ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}}"
+        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party_quest\": {{party_quest}}, \"assigned_character_ids\": {{assigned_character_ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"updated_by\": {{updated_by}}}"
       }
     },
     {
@@ -132,9 +139,10 @@
     { "id": "e8", "source": "input", "target": "body", "sourceHandle": "assigned_character_ids", "targetHandle": "assigned_character_ids" },
     { "id": "e9", "source": "input", "target": "body", "sourceHandle": "objectives_ordered", "targetHandle": "objectives_ordered" },
     { "id": "e10", "source": "input", "target": "body", "sourceHandle": "active", "targetHandle": "active" },
-    { "id": "e11", "source": "url", "target": "patch", "sourceHandle": "value", "targetHandle": "url" },
-    { "id": "e12", "source": "body", "target": "patch", "sourceHandle": "value", "targetHandle": "body" },
-    { "id": "e13", "source": "input", "target": "patch", "sourceHandle": "image", "targetHandle": "files" },
-    { "id": "e14", "source": "patch", "target": "output", "sourceHandle": "body", "targetHandle": "quest" }
+    { "id": "e11", "source": "input", "target": "body", "sourceHandle": "updated_by", "targetHandle": "updated_by" },
+    { "id": "e12", "source": "url", "target": "patch", "sourceHandle": "value", "targetHandle": "url" },
+    { "id": "e13", "source": "body", "target": "patch", "sourceHandle": "value", "targetHandle": "body" },
+    { "id": "e14", "source": "input", "target": "patch", "sourceHandle": "image", "targetHandle": "files" },
+    { "id": "e15", "source": "patch", "target": "output", "sourceHandle": "body", "targetHandle": "quest" }
   ]
 }

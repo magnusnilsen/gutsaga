@@ -21,11 +21,12 @@ import (
 )
 
 var (
-	ErrNotFound  = errors.New("not found")
-	ErrForbidden = errors.New("forbidden")
-	ErrConflict  = errors.New("conflict")
-	ErrInvalid   = errors.New("invalid")
-	uuidPattern  = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	ErrNotFound      = errors.New("not found")
+	ErrForbidden     = errors.New("forbidden")
+	ErrNotSagaAuthor = errors.New("not saga author")
+	ErrConflict      = errors.New("conflict")
+	ErrInvalid       = errors.New("invalid")
+	uuidPattern      = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 )
 
 type Store struct {
@@ -2011,6 +2012,30 @@ func (s *Store) assertQuestOwner(ctx context.Context, questID, playerID string) 
 	}
 	if !owner.Valid || owner.String != playerID {
 		return ErrForbidden
+	}
+	return nil
+}
+
+// AssertQuestOwnerByBattleTag allows admin patches that pass updated_by to
+// edit only sagas authored by that BattleTag (case-insensitive).
+func (s *Store) AssertQuestOwnerByBattleTag(ctx context.Context, questID, battleTag string) error {
+	if err := validUUID(questID); err != nil {
+		return err
+	}
+	tag := strings.TrimSpace(battleTag)
+	if tag == "" {
+		return fmt.Errorf("%w: updated_by required", ErrInvalid)
+	}
+	var createdBy string
+	err := s.pool.QueryRow(ctx, `SELECT created_by FROM quests WHERE id=$1`, questID).Scan(&createdBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(createdBy, tag) {
+		return ErrNotSagaAuthor
 	}
 	return nil
 }
