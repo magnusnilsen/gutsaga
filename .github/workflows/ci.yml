@@ -134,17 +134,17 @@ jobs:
             -f tag_name="v${VERSION}" \
             -f target_commitish="${GITHUB_SHA}" \
             --jq '.body // ""' > notes.md
-          cat >> notes.md <<'EOF'
-
-## Last ned
-
-- `gutsaga-darwin-arm64` og `gutsaga-darwin-amd64` (macOS)
-- `gutsaga-windows-amd64.exe`
-- `GutSaga-addon.zip`
-- `SHA256SUMS`
-
-Binærene er ikke signert. Se README for Gatekeeper og SmartScreen.
-EOF
+          {
+            echo ""
+            echo "## Last ned"
+            echo ""
+            echo "- \`gutsaga-darwin-arm64\` og \`gutsaga-darwin-amd64\` (macOS)"
+            echo "- \`gutsaga-windows-amd64.exe\`"
+            echo "- \`GutSaga-addon.zip\`"
+            echo "- \`SHA256SUMS\`"
+            echo ""
+            echo "Binærene er ikke signert. Se README for Gatekeeper og SmartScreen."
+          } >> notes.md
           gh release create "v${VERSION}" dist/* \
             --target "${GITHUB_SHA}" \
             --title "GutSaga v${VERSION}" \
