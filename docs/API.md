@@ -73,7 +73,7 @@ The companion upserts the character the addon reported. BattleTag is taken from 
 
 ## Objectives
 
-`objectives` is a JSON array of steps. A saga completes the first time every step is satisfied on the same check, and that completion stays. Smia MCP `create_saga` / `update_saga` pass this array through to `POST` / `PATCH /v1/admin/quests` unchanged.
+`objectives` is a JSON array of steps. A saga completes the first time every step is satisfied on the same check, and that completion stays. Smia MCP `create_saga` / `update_saga` pass this array through to `POST` / `PATCH /v1/admin/sagas` unchanged.
 
 Every step has `id` (`[A-Za-z0-9_-]{1,40}`, unique across the saga including sequence beats), `type`, and `text` (the quest-log line, max 300). At most 20 top-level steps and 40 nodes. Leave `objectives_ordered` false. Order inside one trick is a `sequence` step.
 
@@ -138,7 +138,7 @@ Optional on the saga, checked when the objectives are all done:
 
 - `size` (1–40) is how many party or raid members must be present, including the player. Members below `min_level` do not count. Extra members are fine.
 - `instance` matches `GetInstanceInfo()`'s name or the zone (`GetZoneText`), with the same `\|` / `;` alternatives as NPC names. Omit it for "anywhere, as long as they are grouped".
-- `party_quest` or `assigned_character_ids` still decide who can see the saga. Set `party_quest: true` for a Deadmines run the whole group should see.
+- `party` or `assigned_character_ids` still decide who can see the saga. Set `party: true` for a Deadmines run the whole group should see.
 
 The addon reads `GetNumGroupMembers` (or `GetNumPartyMembers` / `GetNumRaidMembers` on older calls), `UnitName`, and `UnitLevel`. On Forever those can be secret in combat, so the last plain roster is kept from the last moment names and levels were readable (walking in, out of combat). A member whose level was never read does not count.
 
@@ -173,7 +173,7 @@ Edwin VanCleef with the whole party at exactly level 17, inside the dungeon when
 ```json
 {
   "title": "Deadmines",
-  "party_quest": true,
+  "party": true,
   "min_level": 17,
   "objectives": [
     {"id": "vancleef", "type": "kill", "text": "Drep Edwin VanCleef sammen", "npc": "Edwin VanCleef",
@@ -199,11 +199,11 @@ Returns three arrays. The companion merges them; the server does not hide quests
   "characters": [
     {"id": "…", "name": "Magni", "realm": "Argent Dawn", "level": 12, "race": "Dwarf", "class": "Paladin", "battletag": "Magnus#2231"}
   ],
-  "quests": [
+  "sagas": [
     {
       "id": "…", "title": "Første vakt", "description": "…",
       "objectives": [{"id": "stay", "type": "location", "text": "Stå vakt", "zone": "Elwynn Forest"}],
-      "min_level": 10, "reward": "Ære", "party_quest": false,
+      "min_level": 10, "reward": "Ære", "party": false,
       "assigned_to": [{"id": "<character id>"}], "created_by": "Magnus",
       "active": true, "version": 3,
       "requires": [],
@@ -211,22 +211,22 @@ Returns three arrays. The companion merges them; the server does not hide quests
     }
   ],
   "progress": [
-    {"quest_id": "…", "character_id": "…", "quest_version": 3, "status": "completed", "completed_at": "2026-10-22T14:44:00Z", "screenshot_url": "https://…"}
+    {"saga_id": "…", "character_id": "…", "saga_version": 3, "status": "completed", "completed_at": "2026-10-22T14:44:00Z", "screenshot_url": "https://…"}
   ],
   "locks": [
-    {"quest_id": "…", "character_id": "…", "locked": false, "unlocked": true}
+    {"saga_id": "…", "character_id": "…", "locked": false, "unlocked": true}
   ]
 }
 ```
 
 `quests` is every active quest, plus inactive quests this player already has progress on. `progress` is only this player's rows. `screenshot_url` is set only when Discord returned a public attachment URL.
 
-`requires` lists prerequisite saga ids (all must be completed by that character). `chain` is optional display grouping; `index` and `total` are computed (`Kapittel 2 av 4`). `locks` is one row per character of this player and per quest in the payload. `locked` is false when that character has already completed the saga. A prerequisite completed on an older `quest_version` still counts. See the README section Saga-kjeder.
+`requires` lists prerequisite saga ids (all must be completed by that character). `chain` is optional display grouping; `index` and `total` are computed (`Kapittel 2 av 4`). `locks` is one row per character of this player and per quest in the payload. `locked` is false when that character has already completed the saga. A prerequisite completed on an older `saga_version` still counts. See the README section Saga-kjeder.
 
 Merge rule, applied by the companion when it writes `GutSagaData.lua`:
 
-- The quest is active, and either `party_quest` is true or `assigned_to` contains the character id. `min_level` is not a hard gate — the addon colors the title by expected difficulty (WoW-style red/orange/yellow/green/gray). No `min_level` uses yellow.
-- Status comes from the progress row with the same `quest_id` and `character_id`. No row means not started.
+- The quest is active, and either `party` is true or `assigned_to` contains the character id. `min_level` is not a hard gate — the addon colors the title by expected difficulty (WoW-style red/orange/yellow/green/gray). No `min_level` uses yellow.
+- Status comes from the progress row with the same `saga_id` and `character_id`. No row means not started.
 - A completed quest stays in the log even if it is later deactivated.
 - A locked saga stays in the log when the character is otherwise eligible. The addon shows it greyed out.
 
@@ -253,15 +253,15 @@ The frames are produced by Postgres triggers (`LISTEN`/`NOTIFY` on `gutsaga_even
 
 ### `POST /v1/complete`
 
-Idempotent on `(character_id, quest_id)`. The first call wins and stores `quest_version` — the version the player had loaded, which must exist in `quest_versions`. Repeating the call does not change the row, does not write another adventure-log line, and does not post to Discord again. A later quest version does not open a second completion.
+Idempotent on `(character_id, saga_id)`. The first call wins and stores `saga_version` — the version the player had loaded, which must exist in `quest_versions`. Repeating the call does not change the row, does not write another adventure-log line, and does not post to Discord again. A later quest version does not open a second completion.
 
 Multipart (`screenshot` file) or JSON. Send the screenshot only when one exists. Do not send a local file path.
 
 ```json
 {
   "character_id": "<uuid>",
-  "quest_id": "<uuid>",
-  "quest_version": 3,
+  "saga_id": "<uuid>",
+  "saga_version": 3,
   "battletag": "Magnus#2231",
   "level": 12,
   "completed_at": "2026-10-22T14:44:00Z",
@@ -278,7 +278,7 @@ Multipart (`screenshot` file) or JSON. Send the screenshot only when one exists.
 
 `battletag` must match the API key, and the character must belong to that player. Otherwise `403` and `"allowed": false`.
 
-A saga with unfinished prerequisites is rejected with `409` and `{"error":"locked","message":"Låst: fullfør … først"}`. The check uses the current `requires` list. Any completed progress row for a prerequisite counts, whatever `quest_version` it stored. Repeating a completion that already exists stays `200` / `already_completed`, even if a prerequisite was added later.
+A saga with unfinished prerequisites is rejected with `409` and `{"error":"locked","message":"Låst: fullfør … først"}`. The check uses the current `requires` list. Any completed progress row for a prerequisite counts, whatever `saga_version` it stored. Repeating a completion that already exists stays `200` / `already_completed`, even if a prerequisite was added later.
 
 ```json
 {
@@ -289,8 +289,8 @@ A saga with unfinished prerequisites is rejected with `409` and `{"error":"locke
   "log_written": true,
   "discord_posted": true,
   "character_name": "Magni",
-  "quest_title": "Første vakt",
-  "quest_version": 3
+  "saga_title": "Første vakt",
+  "saga_version": 3
 }
 ```
 
@@ -316,10 +316,10 @@ Updates the character. The same level again is a success with `"changed": false`
 
 ### `DELETE /v1/progress`
 
-Clears progress rows for the signed-in player so a local `/gutsaga wipe` or `/gutsaga reset …` is not undone by the next companion sync. Optional `?quest_id=<uuid>` limits to one saga; omit it to clear every row for that player's characters.
+Clears progress rows for the signed-in player so a local `/gutsaga wipe` or `/gutsaga reset …` is not undone by the next companion sync. Optional `?saga_id=<uuid>` limits to one saga; omit it to clear every row for that player's characters.
 
 ```json
-{"ok": true, "deleted": 2, "quest_id": ""}
+{"ok": true, "deleted": 2, "saga_id": ""}
 ```
 
 The companion reads `GutSagaDB.pending_resets` from SavedVariables (after `/reload`), calls this endpoint, then syncs again. Adventure-log lines are left in place.
@@ -338,18 +338,18 @@ These are the endpoints a later Smia MCP server should call with `ADMIN_TOKEN`.
 | `GET` | `/v1/admin/characters/{id}` | |
 | `PATCH` | `/v1/admin/characters/{id}` | any of name, realm, race, class, level, backstory |
 | `DELETE` | `/v1/admin/characters/{id}` | `204` |
-| `POST` | `/v1/admin/quests` | title, description, objectives, optional `when`, optional `group`, optional `requires` (saga ids), optional `chain` (`id`, `name`, `order`), reward, `min_level`, `party_quest`, `assigned_character_ids`, `active`, `created_by`. JSON or multipart. Optional cover via multipart file `image` or JSON `image_base64` (max 8 MiB; attached to the Discord announcement). Optional `announce` (default: post when the saga is active; `false` skips; `true` posts even a draft). Response includes `image_signed_url` when the saga has a cover and signing is configured. |
-| `GET` | `/v1/admin/quests?character_id=` | every quest; with `character_id`, includes `status` (`null` if not started), `eligible`, `completed_version`, `locked`, `unlocked`, `missing`. Quests that have a cover include `image_signed_url` when signing is configured. |
-| `GET` | `/v1/admin/quests/{id}` | quest plus `versions[]` snapshots (each snapshot includes `requires` and `chain`), `completed_by[]` (character, realm, class, level, when), `card` (Smia table columns/rows: Mål + Fullført), and `card_subtitle` (same content as plain text for media cards). Same `image_signed_url` as the list. |
-| `GET` | `/v1/admin/quests/{id}/image` | cover bytes and `Content-Type`, same as `GET /v1/sagas/{id}/image`. `404` when the saga has no image. |
-| `PUT` | `/v1/admin/quests/{id}/image` | raw or multipart `image` cover (same rules as player `/v1/sagas/{id}/image`) |
-| `DELETE` | `/v1/admin/quests/{id}/image` | clear cover |
-| `PATCH` | `/v1/admin/quests/{id}` | partial update. Text changes **bump `version` and write a snapshot.** `min_level: null` clears it. JSON or multipart; optional file field `image` (cover-only OK, no version bump); optional `when` / `group`. `requires: []` clears prerequisites. `chain: null` removes the saga from its chain. Optional `editor_email` (Smia caller): when set, only that player's sagas may be edited (`403` otherwise; Smia `update_saga` sends this from `context.run`). Optional `updated_by` (BattleTag) is the same check by tag. Optional `announce` (default true). A text, goal, reward, minimum-level, or party change posts a one-line version embed. `active: false` posts a retirement instead. Assignment-only edits stay quiet. `announce: false` skips both. Response includes `image_signed_url` when signing is configured. |
+| `POST` | `/v1/admin/sagas` | title, description, objectives, optional `when`, optional `group`, optional `requires` (saga ids), optional `chain` (`id`, `name`, `order`), reward, `min_level`, `party`, `assigned_character_ids`, `active`, `created_by`. JSON or multipart. Optional cover via multipart file `image` or JSON `image_base64` (max 8 MiB; attached to the Discord announcement). Optional `announce` (default: post when the saga is active; `false` skips; `true` posts even a draft). Response includes `image_signed_url` when the saga has a cover and signing is configured. |
+| `GET` | `/v1/admin/sagas?character_id=` | every quest; with `character_id`, includes `status` (`null` if not started), `eligible`, `completed_version`, `locked`, `unlocked`, `missing`. Quests that have a cover include `image_signed_url` when signing is configured. |
+| `GET` | `/v1/admin/sagas/{id}` | quest plus `versions[]` snapshots (each snapshot includes `requires` and `chain`), `completed_by[]` (character, realm, class, level, when), `card` (Smia table columns/rows: Mål + Fullført), and `card_subtitle` (same content as plain text for media cards). Same `image_signed_url` as the list. |
+| `GET` | `/v1/admin/sagas/{id}/image` | cover bytes and `Content-Type`, same as `GET /v1/sagas/{id}/image`. `404` when the saga has no image. |
+| `PUT` | `/v1/admin/sagas/{id}/image` | raw or multipart `image` cover (same rules as player `/v1/sagas/{id}/image`) |
+| `DELETE` | `/v1/admin/sagas/{id}/image` | clear cover |
+| `PATCH` | `/v1/admin/sagas/{id}` | partial update. Text changes **bump `version` and write a snapshot.** `min_level: null` clears it. JSON or multipart; optional file field `image` (cover-only OK, no version bump); optional `when` / `group`. `requires: []` clears prerequisites. `chain: null` removes the saga from its chain. Optional `editor_email` (Smia caller): when set, only that player's sagas may be edited (`403` otherwise; Smia `update_saga` sends this from `context.run`). Optional `updated_by` (BattleTag) is the same check by tag. Optional `announce` (default true). A text, goal, reward, minimum-level, or party change posts a one-line version embed. `active: false` posts a retirement instead. Assignment-only edits stay quiet. `announce: false` skips both. Response includes `image_signed_url` when signing is configured. |
 | `GET` | `/v1/public/placeholder.png` | 640×360 dark PNG (no auth). Used by Smia `get_saga` when a saga has no cover so the media card keeps a readable width (`/v1/public/empty.png` is an alias). |
 | `GET` | `/v1/public/sagas/{id}/image?exp=&sig=` | no `Authorization` header. HMAC-SHA256 of `id`, a newline, and the unix `exp`, hex-encoded, keyed with `IMAGE_URL_SECRET`. `403` bad signature (checked before the database, so a guess does not reveal whether the saga exists). `403` when `exp` is in the past. `404` when the signature is valid and there is no image. The body is only the image bytes. |
 | `GET` | `/v1/admin/log?battletag=&character_id=&limit=` | newest first, default 50 |
-| `POST` | `/v1/admin/log` | `type`, `title`, `body`, optional `battletag` / `player_id` / `character_id` / `quest_id` |
-| `DELETE` | `/v1/admin/progress` | `character_id` and/or `quest_id` (at least one) |
+| `POST` | `/v1/admin/log` | `type`, `title`, `body`, optional `battletag` / `player_id` / `character_id` / `saga_id` |
+| `DELETE` | `/v1/admin/progress` | `character_id` and/or `saga_id` (at least one) |
 
 Create quest starts at version 1 and stores that snapshot. Realm must match what the Forever client reports (`GetRealmName()`), including spaces.
 

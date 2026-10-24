@@ -93,7 +93,7 @@ components:
         group: {$ref: "#/components/schemas/GroupRule"}
         min_level: {type: integer, nullable: true}
         reward: {type: string}
-        party_quest: {type: boolean}
+        party: {type: boolean}
         assigned_to:
           type: array
           items: {type: object, properties: {id: {type: string}}}
@@ -108,7 +108,7 @@ components:
         requires:
           type: array
           items: {type: string, format: uuid}
-          description: Prerequisite saga ids. All must be completed by the character. An older quest_version still counts.
+          description: Prerequisite saga ids. All must be completed by the character. An older saga_version still counts.
         chain:
           type: object
           nullable: true
@@ -121,9 +121,9 @@ components:
             total: {type: integer}
     SagaLock:
       type: object
-      required: [quest_id, character_id, locked, unlocked]
+      required: [saga_id, character_id, locked, unlocked]
       properties:
-        quest_id: {type: string}
+        saga_id: {type: string}
         character_id: {type: string}
         locked: {type: boolean}
         unlocked: {type: boolean}
@@ -133,9 +133,9 @@ components:
     Progress:
       type: object
       properties:
-        quest_id: {type: string}
+        saga_id: {type: string}
         character_id: {type: string}
-        quest_version: {type: integer}
+        saga_version: {type: integer}
         status: {type: string, enum: [offered, active, completed]}
         completed_at: {type: string, format: date-time}
         screenshot_url: {type: string}
@@ -163,7 +163,7 @@ components:
         discord_posted: {type: boolean}
         character_name: {type: string}
         quest_title: {type: string}
-        quest_version: {type: integer}
+        saga_version: {type: integer}
     Level:
       type: object
       properties:
@@ -211,10 +211,10 @@ paths:
   /v1/progress:
     delete:
       security: [{playerKey: []}]
-      summary: Clear progress for this player so a local /gutsaga wipe or reset is not undone by the next sync. Optional quest_id limits to one saga.
+      summary: Clear progress for this player so a local /gutsaga wipe or reset is not undone by the next sync. Optional saga_id limits to one saga.
       parameters:
         - in: query
-          name: quest_id
+          name: saga_id
           schema: {type: string, format: uuid}
       responses:
         "200":
@@ -226,7 +226,7 @@ paths:
                 properties:
                   ok: {type: boolean}
                   deleted: {type: integer}
-                  quest_id: {type: string}
+                  saga_id: {type: string}
         "401": {description: Missing or unknown API key}
   /v1/complete:
     post:
@@ -238,11 +238,11 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [character_id, quest_id, quest_version, battletag]
+              required: [character_id, saga_id, saga_version, battletag]
               properties:
                 character_id: {type: string}
-                quest_id: {type: string}
-                quest_version: {type: integer}
+                saga_id: {type: string}
+                saga_version: {type: integer}
                 battletag: {type: string}
                 level: {type: integer}
                 completed_at: {type: string, format: date-time}
@@ -252,11 +252,11 @@ paths:
           application/json:
             schema:
               type: object
-              required: [character_id, quest_id, quest_version, battletag]
+              required: [character_id, saga_id, saga_version, battletag]
               properties:
                 character_id: {type: string}
-                quest_id: {type: string}
-                quest_version: {type: integer}
+                saga_id: {type: string}
+                saga_version: {type: integer}
                 battletag: {type: string}
                 level: {type: integer}
                 completed_at: {type: string}
@@ -376,7 +376,7 @@ paths:
       security: [{adminToken: []}]
       responses:
         "204": {description: Deleted}
-  /v1/admin/quests:
+  /v1/admin/sagas:
     get:
       security: [{adminToken: []}]
       parameters: [{in: query, name: character_id, schema: {type: string}}]
@@ -388,7 +388,7 @@ paths:
       description: Optional announce (omit to post an active saga, false to skip) and image_base64. The cover is stored and attached to the Discord announcement.
       responses:
         "201": {description: Created}
-  /v1/admin/quests/{id}:
+  /v1/admin/sagas/{id}:
     parameters: [{in: path, name: id, required: true, schema: {type: string}}]
     get:
       security: [{adminToken: []}]
@@ -400,7 +400,7 @@ paths:
       description: Optional announce. Significant edits and active=false are posted to Discord unless announce is false.
       responses:
         "200": {description: Updated}
-  /v1/admin/quests/{id}/image:
+  /v1/admin/sagas/{id}/image:
     parameters: [{in: path, name: id, required: true, schema: {type: string, format: uuid}}]
     get:
       security: [{adminToken: []}]

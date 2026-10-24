@@ -30,7 +30,7 @@
           "description": "Author BattleTag (e.g. Magnus#2231). Creates the GutSaga player if missing."
         },
         {
-          "name": "party_quest",
+          "name": "party",
           "type": "boolean",
           "required": true,
           "description": "true = every eligible character can take it; false = only assigned_character_ids."
@@ -51,7 +51,7 @@
           "name": "assigned_character_ids",
           "type": "array",
           "required": false,
-          "description": "GutSaga character UUIDs from list_characters. Use when party_quest=false."
+          "description": "GutSaga character UUIDs from list_characters. Use when party=false."
         },
         {
           "name": "objectives_ordered",
@@ -97,20 +97,20 @@
           "objectives",
           "reward",
           "min_level",
-          "party_quest",
+          "party",
           "ids",
           "objectives_ordered",
           "active",
           "created_by"
         ],
-        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party_quest\": {{party_quest}}, \"assigned_character_ids\": {{ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"created_by\": {{created_by}}}"
+        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party\": {{party}}, \"assigned_character_ids\": {{ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"created_by\": {{created_by}}}"
       }
     },
     {
       "id": "post",
       "type": "http.request",
       "config": {
-        "url": "{{env.GUTSAGA_API_URL}}/v1/admin/quests",
+        "url": "{{env.GUTSAGA_API_URL}}/v1/admin/sagas",
         "method": "POST",
         "headers": {
           "Authorization": "Bearer {{env.GUTSAGA_ADMIN_TOKEN}}"
@@ -179,8 +179,8 @@
       "id": "e7",
       "source": "input",
       "target": "body",
-      "sourceHandle": "party_quest",
-      "targetHandle": "party_quest"
+      "sourceHandle": "party",
+      "targetHandle": "party"
     },
     {
       "id": "e8",

@@ -13,7 +13,7 @@ type SyncResponse struct {
 	DisplayName string            `json:"display_name,omitempty"`
 	GeneratedAt string            `json:"generated_at"`
 	Characters  []Character       `json:"characters"`
-	Quests      []Quest           `json:"quests"`
+	Quests      []Quest           `json:"sagas"`
 	Progress    []Progress        `json:"progress"`
 	Completions []QuestCompletion `json:"completions,omitempty"`
 	Locks       []SagaLock        `json:"locks"`
@@ -22,7 +22,7 @@ type SyncResponse struct {
 // QuestCompletion is one character who has finished a saga. Sync includes
 // every character in the database, not only the signed-in player.
 type QuestCompletion struct {
-	QuestID     string `json:"quest_id"`
+	QuestID     string `json:"saga_id"`
 	Character   string `json:"character"`
 	Realm       string `json:"realm"`
 	BattleTag   string `json:"battletag,omitempty"`
@@ -59,7 +59,7 @@ type Quest struct {
 	Group             *GroupRule  `json:"group,omitempty"`
 	MinLevel          *int        `json:"min_level"`
 	Reward            string      `json:"reward"`
-	PartyQuest        bool        `json:"party_quest"`
+	PartyQuest        bool        `json:"party"`
 	AssignedTo        []IDRef     `json:"assigned_to"`
 	CreatedBy         string      `json:"created_by"`
 	Active            bool        `json:"active"`
@@ -72,9 +72,9 @@ type Quest struct {
 }
 
 type Progress struct {
-	QuestID       string `json:"quest_id"`
+	QuestID       string `json:"saga_id"`
 	CharacterID   string `json:"character_id"`
-	QuestVersion  int    `json:"quest_version"`
+	QuestVersion  int    `json:"saga_version"`
 	Status        string `json:"status"`
 	CompletedAt   string `json:"completed_at,omitempty"`
 	ScreenshotURL string `json:"screenshot_url,omitempty"`
@@ -84,8 +84,8 @@ type Progress struct {
 // screenshot_base64 is optional. Multipart uploads use the same fields plus a file part named "screenshot".
 type CompletionRequest struct {
 	CharacterID      string        `json:"character_id"`
-	QuestID          string        `json:"quest_id"`
-	QuestVersion     int           `json:"quest_version"`
+	QuestID          string        `json:"saga_id"`
+	QuestVersion     int           `json:"saga_version"`
 	BattleTag        string        `json:"battletag"`
 	Level            int           `json:"level,omitempty"`
 	CompletedAt      string        `json:"completed_at,omitempty"`
@@ -105,8 +105,8 @@ type CompletionResponse struct {
 	CharacterClass   string        `json:"character_class,omitempty"`
 	CharacterLevel   int           `json:"character_level,omitempty"`
 	Reward           string        `json:"reward,omitempty"`
-	QuestTitle       string        `json:"quest_title,omitempty"`
-	QuestVersion     int           `json:"quest_version,omitempty"`
+	QuestTitle       string        `json:"saga_title,omitempty"`
+	QuestVersion     int           `json:"saga_version,omitempty"`
 	GroupCredited    []GroupCredit `json:"group_credited,omitempty"`
 }
 
@@ -164,7 +164,7 @@ type QuestVersion struct {
 	Group       *GroupRule  `json:"group,omitempty"`
 	Reward      string      `json:"reward"`
 	MinLevel    *int        `json:"min_level"`
-	PartyQuest  bool        `json:"party_quest"`
+	PartyQuest  bool        `json:"party"`
 	Active      bool        `json:"active"`
 	AssignedTo  []IDRef     `json:"assigned_to"`
 	CreatedBy   string      `json:"created_by"`
@@ -234,7 +234,7 @@ type LogEntry struct {
 	ID          string `json:"id"`
 	PlayerID    string `json:"player_id,omitempty"`
 	CharacterID string `json:"character_id,omitempty"`
-	QuestID     string `json:"quest_id,omitempty"`
+	QuestID     string `json:"saga_id,omitempty"`
 	Type        string `json:"type"`
 	Title       string `json:"title"`
 	Body        string `json:"body"`

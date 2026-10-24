@@ -41,7 +41,7 @@ type Require struct {
 // Locked is false when the saga is already completed, even if requires were
 // added later. Missing lists prerequisite ids that still block a new completion.
 type SagaLock struct {
-	QuestID     string   `json:"quest_id"`
+	QuestID     string   `json:"saga_id"`
 	CharacterID string   `json:"character_id"`
 	Locked      bool     `json:"locked"`
 	Unlocked    bool     `json:"unlocked"`

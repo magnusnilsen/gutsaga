@@ -21,7 +21,7 @@ func TestHandleLineFlushPostsQuestVersion(t *testing.T) {
 		auth = r.Header.Get("Authorization")
 		switch r.URL.Path {
 		case "/v1/sync":
-			_, _ = w.Write([]byte(`{"battletag":"Magnus#2231","generated_at":"t","characters":[{"id":"char-1","name":"Magni","realm":"Argent Dawn","level":12}],"quests":[{"id":"quest-1","title":"Første vakt","version":3,"active":true,"objectives":[]}],"progress":[],"completions":[]}`))
+			_, _ = w.Write([]byte(`{"battletag":"Magnus#2231","generated_at":"t","characters":[{"id":"char-1","name":"Magni","realm":"Argent Dawn","level":12}],"sagas":[{"id":"quest-1","title":"Første vakt","version":3,"active":true,"objectives":[]}],"progress":[],"completions":[]}`))
 			return
 		case "/v1/complete":
 			_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -38,11 +38,11 @@ func TestHandleLineFlushPostsQuestVersion(t *testing.T) {
 					t.Fatal(err)
 				}
 				b, _ := io.ReadAll(p)
-				if p.FormName() == "quest_version" {
+				if p.FormName() == "saga_version" {
 					version = string(b)
 				}
 			}
-			_, _ = w.Write([]byte(`{"allowed":true,"completed":true,"quest_version":3}`))
+			_, _ = w.Write([]byte(`{"allowed":true,"completed":true,"saga_version":3}`))
 			return
 		default:
 			t.Fatalf("path %s", r.URL.Path)

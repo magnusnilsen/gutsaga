@@ -24,7 +24,7 @@
       "id": "url",
       "type": "util.string.template",
       "config": {
-        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/quests?character_id={{id}}"
+        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/sagas?character_id={{id}}"
       }
     },
     {
@@ -45,7 +45,7 @@
           "name": "result",
           "type": "object",
           "required": true,
-          "description": "{ quests: [...] } — API key is quests; each item is a saga."
+          "description": "{ sagas: [...] }"
         }
       ]
     }

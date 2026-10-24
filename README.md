@@ -182,7 +182,7 @@ En saga kan kreve at karakteren har fullført andre sagaer først, og kan ligge 
 
 `requires` er en liste med saga-id-er. **Alle** må være fullført av den samme karakteren. `chain` er bare visning: `id` er en stabil nøkkel (`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`), `name` er teksten i loggen, `order` er rekkefølgen (unikt innenfor samme `id`, fra 1). Samme `id` deler navn. Setter du et nytt navn, oppdateres navnet på de andre sagaene i kjeden. Versjonen deres økes ikke.
 
-Admin (`POST`/`PATCH /v1/admin/quests`) og spiller-API-et (`/v1/sagas`) tar samme JSON. Smia-verktøyene `create_saga` og `update_saga` sender feltene videre som de er.
+Admin (`POST`/`PATCH /v1/admin/sagas`) og spiller-API-et (`/v1/sagas`) tar samme JSON. Smia-verktøyene `create_saga` og `update_saga` sender feltene videre som de er.
 
 ```json
 {
@@ -193,7 +193,7 @@ Admin (`POST`/`PATCH /v1/admin/quests`) og spiller-API-et (`/v1/sagas`) tar samm
   ],
   "reward": "",
   "min_level": 1,
-  "party_quest": true,
+  "party": true,
   "active": true,
   "created_by": "Magnus#2231",
   "assigned_character_ids": [],
@@ -217,11 +217,11 @@ API-et avviser ukjent saga-id, selvkrav, sykluser og to sagaer med samme `chain.
 {"error": "locked", "message": "Låst: fullfør Kapittel 1 først"}
 ```
 
-`GET /v1/sync` har `locks` for hver av spillerens karakterer. `GET /v1/admin/quests?character_id=` setter `locked`, `unlocked` og `missing` i tillegg til `eligible`. Låsen er uavhengig av nivå og tildeling: en saga kan være synlig og likevel låst. Loggen viser den grå, med «Kapittel 2 av 4 — Låst: fullfør Kapittel 1 først». Når forrige saga fullføres, låses neste opp i klienten med en gang (kjeden ligger i `GutSagaData.lua`). Neste synk bekrefter det samme.
+`GET /v1/sync` har `locks` for hver av spillerens karakterer. `GET /v1/admin/sagas?character_id=` setter `locked`, `unlocked` og `missing` i tillegg til `eligible`. Låsen er uavhengig av nivå og tildeling: en saga kan være synlig og likevel låst. Loggen viser den grå, med «Kapittel 2 av 4 — Låst: fullfør Kapittel 1 først». Når forrige saga fullføres, låses neste opp i klienten med en gang (kjeden ligger i `GutSagaData.lua`). Neste synk bekrefter det samme.
 
 ### Versjon
 
-Fullføring lagres én gang per karakter og saga, med `quest_version` de hadde lastet. En forutsetning teller så snart den raden har `status: completed`, uansett versjon. Har du fullført kapittel 1 på versjon 1, er kapittel 2 åpent selv om kapittel 1 siden er redigert til versjon 4.
+Fullføring lagres én gang per karakter og saga, med `saga_version` de hadde lastet. En forutsetning teller så snart den raden har `status: completed`, uansett versjon. Har du fullført kapittel 1 på versjon 1, er kapittel 2 åpent selv om kapittel 1 siden er redigert til versjon 4.
 
 Låsen leser `requires` på sagaen slik den er nå, ikke på øyeblikksbildet i versjonen spilleren har lastet. Å endre `requires` eller `chain` øker versjonen og lagrer et nytt øyeblikksbilde, men sletter ingen fullføringer og krever ikke at forutsetningen tas om igjen. En saga som allerede er fullført, blir ikke låst igjen om noen senere legger på en forutsetning. Et nytt forsøk på en saga som alt er fullført, svarer som før (`already_completed`), også om den ville vært låst for en som ikke har gjort den.
 
@@ -245,7 +245,7 @@ Brukernavnet er alltid **GutSaga**. Teksten er norsk. Meldingene er embeds med s
 
 Innlegget skjer i bakgrunnen. API-kallet venter ikke, og en feil fra Discord (også HTTP 429) ruller ikke tilbake sagaen eller fullføringen. 429 venter `retry_after` fra JSON-kroppen, ellers `Retry-After`. Nettverksfeil og 5xx prøves på nytt med økende pause. Etter noen forsøk logges feilen.
 
-`POST /v1/admin/quests` (det Smia-verktøyet `create_saga` kaller) kunngjør en aktiv saga. `announce: false` hopper over. Et inaktivt utkast kunngjøres ikke med mindre `announce` er `true`. Valgfri `image_base64` lagres som cover og legges ved Discord-meldingen som fil (`attachment://cover.png`). Fullføring gjør det samme med skjermbildet (`attachment://screenshot.png`). Chatklienter som trenger en adresse bruker i stedet `image_signed_url` fra `PUBLIC_BASE_URL` og `IMAGE_URL_SECRET`.
+`POST /v1/admin/sagas` (det Smia-verktøyet `create_saga` kaller) kunngjør en aktiv saga. `announce: false` hopper over. Et inaktivt utkast kunngjøres ikke med mindre `announce` er `true`. Valgfri `image_base64` lagres som cover og legges ved Discord-meldingen som fil (`attachment://cover.png`). Fullføring gjør det samme med skjermbildet (`attachment://screenshot.png`). Chatklienter som trenger en adresse bruker i stedet `image_signed_url` fra `PUBLIC_BASE_URL` og `IMAGE_URL_SECRET`.
 
 En endring av tekst, mål, belønning, minstenivå eller parti legger ut en kort versjonsmelding. `active: false` legger sagaen bort. Bare å bytte hvem den er tildelt, er stille. `announce: false` på `PATCH` demper begge. Samme regler gjelder `PATCH /v1/sagas/{id}`. Nivå 10, 20, 30, … får en kort melding. Andre nivåer gjør det ikke.
 

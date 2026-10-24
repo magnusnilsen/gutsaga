@@ -12,8 +12,8 @@ type Entry struct {
 	Character         string               `json:"character"`
 	CharacterID       string               `json:"character_id"`
 	Realm             string               `json:"realm"`
-	QuestID           string               `json:"quest_id"`
-	QuestVersion      int                  `json:"quest_version"`
+	QuestID           string               `json:"saga_id"`
+	QuestVersion      int                  `json:"saga_version"`
 	Title             string               `json:"title"`
 	Description       string               `json:"description"`
 	Objectives        []contract.Objective `json:"objectives"`
@@ -24,7 +24,7 @@ type Entry struct {
 	MinLevel          *int                 `json:"min_level"`
 	Status            string               `json:"status"`
 	CompletedAt       string               `json:"completed_at"`
-	PartyQuest        bool                 `json:"party_quest"`
+	PartyQuest        bool                 `json:"party"`
 	CreatedBy         string               `json:"created_by"`
 	CompletedBy       []Completer          `json:"completed_by"`
 	Requires          []contract.Require   `json:"requires,omitempty"`

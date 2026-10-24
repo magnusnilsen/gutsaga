@@ -24,7 +24,7 @@
       "id": "qurl",
       "type": "util.string.template",
       "config": {
-        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/quests"
+        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/sagas"
       }
     },
     {
@@ -38,7 +38,7 @@
       }
     },
     {
-      "id": "quests",
+      "id": "sagas",
       "type": "http.request",
       "config": {
         "method": "GET",
@@ -54,9 +54,9 @@
         "inputs": [
           "battletag",
           "characters",
-          "quests"
+          "sagas"
         ],
-        "template": "{\"battletag\": {{battletag}}, \"characters\": {{characters}}, \"quests\": {{quests}}}"
+        "template": "{\"battletag\": {{battletag}}, \"characters\": {{characters}}, \"sagas\": {{sagas}}}"
       }
     },
     {
@@ -67,7 +67,7 @@
           "name": "sync",
           "type": "object",
           "required": true,
-          "description": "Characters for the BattleTag plus all sagas (companion uses /v1/sync with Smia session; this is for chat/debug). API payload still uses a quests key."
+          "description": "Characters for the BattleTag plus all sagas (companion uses /v1/sync with Smia session; this is for chat/debug). Returns characters plus sagas."
         }
       ]
     }
@@ -90,7 +90,7 @@
     {
       "id": "e3",
       "source": "qurl",
-      "target": "quests",
+      "target": "sagas",
       "sourceHandle": "value",
       "targetHandle": "url"
     },
@@ -110,10 +110,10 @@
     },
     {
       "id": "e6",
-      "source": "quests",
+      "source": "sagas",
       "target": "merge",
       "sourceHandle": "body",
-      "targetHandle": "quests"
+      "targetHandle": "sagas"
     },
     {
       "id": "e7",

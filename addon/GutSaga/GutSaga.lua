@@ -163,7 +163,7 @@ local function queueReset(questID)
     initDB()
     local row = { at = unixNow() }
     if questID and questID ~= "" then
-        row.quest_id = questID
+        row.saga_id = questID
     else
         row.all = true
     end
@@ -306,7 +306,7 @@ local function isComplete(entry)
     if entry.status == "completed" then
         return true
     end
-    local id = entry.quest_id
+    local id = entry.saga_id
     return type(id) == "string" and type(GutSagaDB) == "table"
         and type(GutSagaDB.completions) == "table" and GutSagaDB.completions[id] ~= nil
 end
@@ -394,7 +394,7 @@ end
 local function findEntry(id)
     local entries = currentEntries()
     for i = 1, #entries do
-        if entries[i].quest_id == id then
+        if entries[i].saga_id == id then
             return entries[i]
         end
     end
@@ -402,7 +402,7 @@ local function findEntry(id)
 end
 
 -- GutSagaDB is SavedVariablesPerCharacter, so read state is already per toon.
--- Flat map: read[quest_id] = true. read_bootstrapped means the one-time
+-- Flat map: read[saga_id] = true. read_bootstrapped means the one-time
 -- upgrade seed already ran. Incomplete sagas missing from read are unread.
 local function flattenReadMap(raw)
     local flat = {}
@@ -436,7 +436,7 @@ local function ensureReadMap()
     -- not a wall of blue. /gutsaga wipe|unread clears this for playtesting.
     local entries = currentEntries()
     for i = 1, #entries do
-        local id = entries[i].quest_id
+        local id = entries[i].saga_id
         if type(id) == "string" and id ~= "" then
             flat[id] = true
         end
@@ -462,8 +462,8 @@ local function markAllUnread()
     local entries = currentEntries()
     for i = 1, #entries do
         local e = entries[i]
-        if isComplete(e) and type(e.quest_id) == "string" then
-            GutSagaDB.read[e.quest_id] = true
+        if isComplete(e) and type(e.saga_id) == "string" then
+            GutSagaDB.read[e.saga_id] = true
         end
     end
 end
@@ -485,7 +485,7 @@ local function countUnreadSagas()
     local n = 0
     for i = 1, #entries do
         local e = entries[i]
-        if not isComplete(e) and type(e.quest_id) == "string" and bucket[e.quest_id] ~= true then
+        if not isComplete(e) and type(e.saga_id) == "string" and bucket[e.saga_id] ~= true then
             n = n + 1
         end
     end
@@ -739,9 +739,9 @@ local function activityList(entry)
         end
     end
     -- Local finishes before the companion has synced them to the API.
-    if type(entry) == "table" and type(entry.quest_id) == "string" then
+    if type(entry) == "table" and type(entry.saga_id) == "string" then
         initDB()
-        local localDone = GutSagaDB.completions and GutSagaDB.completions[entry.quest_id]
+        local localDone = GutSagaDB.completions and GutSagaDB.completions[entry.saga_id]
         if type(localDone) == "table" then
             add({
                 character = localDone.character or player.name,
@@ -765,11 +765,11 @@ end
 
 local function savedSteps(entry)
     initDB()
-    local version = tonumber(entry.quest_version) or 0
-    local bucket = GutSagaDB.objectives[entry.quest_id]
+    local version = tonumber(entry.saga_version) or 0
+    local bucket = GutSagaDB.objectives[entry.saga_id]
     if type(bucket) ~= "table" or tonumber(bucket.version) ~= version then
         bucket = { version = version, steps = {} }
-        GutSagaDB.objectives[entry.quest_id] = bucket
+        GutSagaDB.objectives[entry.saga_id] = bucket
     end
     if type(bucket.steps) ~= "table" then
         bucket.steps = {}
@@ -1564,7 +1564,7 @@ local function checkAll()
             if not isComplete(entry) and not entryLocked(entry, entries) and type(entry.objectives) == "table" and #entry.objectives > 0 then
                 local bucket = savedSteps(entry)
                 local ordered = entry.objectives_ordered and true or false
-                state.attests = world.attests[entry.quest_id]
+                state.attests = world.attests[entry.saga_id]
                 local steps, done = GutSagaObjectives.evaluate(entry.objectives, state, bucket.steps, ordered, entry.when)
                 if state.emote and state.emote ~= "" then
                     for _, row in pairs(steps) do
@@ -1828,7 +1828,7 @@ refresh = function()
             selectedEntry = doneList[1]
         end
         if selectedEntry then
-            selectedID = selectedEntry.quest_id
+            selectedID = selectedEntry.saga_id
         end
     end
 
@@ -1849,10 +1849,10 @@ refresh = function()
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", listChild, "TOPLEFT", 4, -listY)
             row:Show()
-            row.questID = item.quest_id
+            row.questID = item.saga_id
             row.title:SetText(item.title or "Saga")
             row.sub:SetText(listSubtitle(item, entries))
-            layoutListRow(row, isUnread(item.quest_id, item))
+            layoutListRow(row, isUnread(item.saga_id, item))
             if entryLocked(item, entries) then
                 row.title:SetTextColor(LOCKED_TITLE.r, LOCKED_TITLE.g, LOCKED_TITLE.b)
                 row.sub:SetTextColor(LOCKED_SUB.r, LOCKED_SUB.g, LOCKED_SUB.b)
@@ -1861,7 +1861,7 @@ refresh = function()
                 row.title:SetTextColor(c.r, c.g, c.b)
                 row.sub:SetTextColor(0.72, 0.68, 0.58)
             end
-            if item.quest_id == selectedID then
+            if item.saga_id == selectedID then
                 row.bg:SetAlpha(0.7)
             else
                 row.bg:SetAlpha(0)
@@ -1883,13 +1883,13 @@ refresh = function()
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", listChild, "TOPLEFT", 4, -listY)
             row:Show()
-            row.questID = item.quest_id
+            row.questID = item.saga_id
             row.title:SetText(item.title or "Saga")
             row.sub:SetText(creatorName(item))
             layoutListRow(row, false)
             row.title:SetTextColor(0.55, 0.75, 0.45)
             row.sub:SetTextColor(0.55, 0.52, 0.45)
-            if item.quest_id == selectedID then
+            if item.saga_id == selectedID then
                 row.bg:SetAlpha(0.55)
             else
                 row.bg:SetAlpha(0)
@@ -2253,8 +2253,8 @@ local function witnessGroupKills(deathName)
                         or GutSagaObjectives.listed(inst, group.instance)
                         or GutSagaObjectives.listed(inst, group.zone)
                     if here and (tonumber(player.level) or 0) == level and GutSagaObjectives.listed(obj.npc, deathName) then
-                        rememberAttest(entry.quest_id, obj.id, player.name, now)
-                        sendHerePing(entry.quest_id, obj.id)
+                        rememberAttest(entry.saga_id, obj.id, player.name, now)
+                        sendHerePing(entry.saga_id, obj.id)
                     end
                 end
             end
@@ -2299,14 +2299,14 @@ finishQuest = function(entry, group)
         return
     end
     local before = completionSet()
-    local version = tonumber(entry.quest_version) or 0
+    local version = tonumber(entry.saga_version) or 0
     local level = player.level
     if level < 1 then
         level = 1
     end
     local ts = unixNow()
     local row = {
-        quest_id = entry.quest_id,
+        saga_id = entry.saga_id,
         version = version,
         level = level,
         completed_at = ts,
@@ -2319,18 +2319,18 @@ finishQuest = function(entry, group)
         row.group_members = encodeMembers(group.members)
         row.instance = placeLabel(entry.group, group)
     end
-    GutSagaDB.completions[entry.quest_id] = row
+    GutSagaDB.completions[entry.saga_id] = row
     if type(entry.group) == "table" then
-        sendGroupPing(entry.quest_id, version)
+        sendGroupPing(entry.saga_id, version)
     end
     local title = entry.title or "Saga"
-    local questID = entry.quest_id
+    local questID = entry.saga_id
     local unlocked = {}
     if type(GutSagaChains) == "table" and type(GutSagaChains.newlyUnlocked) == "function" then
         unlocked = GutSagaChains.newlyUnlocked(entries, before, completionSet()) or {}
     end
-    if unlocked[1] and type(unlocked[1].quest_id) == "string" then
-        selectedID = unlocked[1].quest_id
+    if unlocked[1] and type(unlocked[1].saga_id) == "string" then
+        selectedID = unlocked[1].saga_id
     end
     showSagaToast(title, questID)
     broadcast(string.format("C|%s|%d|%d|%d", questID, version, level, ts))
@@ -3078,7 +3078,7 @@ SlashCmdList.GUTSAGA = function(msg)
             local entries = GutSagaData and GutSagaData.entries
             if type(entries) == "table" then
                 for _, e in ipairs(entries) do
-                    if type(e) == "table" and e.quest_id == selectedID and type(e.title) == "string" then
+                    if type(e) == "table" and e.saga_id == selectedID and type(e.title) == "string" then
                         label = e.title
                         break
                     end
@@ -3444,7 +3444,7 @@ events:SetScript("OnEvent", function(_, event, ...)
             end
             local entry
             for _, e in ipairs(currentEntries()) do
-                if e.quest_id == qid then
+                if e.saga_id == qid then
                     entry = e
                     break
                 end

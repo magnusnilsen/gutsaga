@@ -59,7 +59,7 @@
           "character_id",
           "saga_id"
         ],
-        "template": "{\"title\": {{title}}, \"body\": {{body}}, \"type\": {{type}}, \"battletag\": {{battletag}}, \"character_id\": {{character_id}}, \"quest_id\": {{saga_id}}}"
+        "template": "{\"title\": {{title}}, \"body\": {{body}}, \"type\": {{type}}, \"battletag\": {{battletag}}, \"character_id\": {{character_id}}, \"saga_id\": {{saga_id}}}"
       }
     },
     {

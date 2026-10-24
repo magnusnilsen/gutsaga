@@ -43,10 +43,10 @@ func TestSagaChains(t *testing.T) {
 	}
 
 	var first contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Kapittel 1", "description": "Start",
 		"objectives":  []map[string]any{chainObjective("talk", "Snakk med Farley")},
-		"party_quest": true, "created_by": "Magnus#2231",
+		"party": true, "created_by": "Magnus#2231",
 		"chain": map[string]any{"id": "goldshire", "name": "Goldshire", "order": 1},
 	}, &first)
 	if err != nil || resp.StatusCode != http.StatusCreated {
@@ -57,10 +57,10 @@ func TestSagaChains(t *testing.T) {
 	}
 
 	var unknown contract.ErrorBody
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Ukjent", "description": "x",
 		"objectives":  []map[string]any{chainObjective("talk", "Snakk")},
-		"party_quest": true,
+		"party": true,
 		"created_by":  "Magnus#2231",
 		"requires":    []string{"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
 	}, &unknown)
@@ -69,10 +69,10 @@ func TestSagaChains(t *testing.T) {
 	}
 
 	var second contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Kapittel 2", "description": "Videre",
 		"objectives":  []map[string]any{chainObjective("road", "Stå på veien")},
-		"party_quest": true, "created_by": "Magnus#2231",
+		"party": true, "created_by": "Magnus#2231",
 		"requires": []string{first.ID},
 		"chain":    map[string]any{"id": "goldshire", "name": "Goldshire", "order": 2},
 	}, &second)
@@ -83,29 +83,29 @@ func TestSagaChains(t *testing.T) {
 		t.Fatalf("chapter 2 %+v requires %v", second.Chain, second.Requires)
 	}
 
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Kapittel 2 igjen", "description": "x",
 		"objectives":  []map[string]any{chainObjective("talk", "Snakk")},
-		"party_quest": true, "created_by": "Magnus#2231",
+		"party": true, "created_by": "Magnus#2231",
 		"chain": map[string]any{"id": "goldshire", "name": "Goldshire", "order": 2},
 	}, &unknown)
 	if err != nil || resp.StatusCode != http.StatusBadRequest || !strings.Contains(unknown.Message, "chain order") {
 		t.Fatalf("duplicate order %d %+v %v", statusOf(resp), unknown, err)
 	}
 
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+first.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+first.ID, map[string]any{
 		"requires": []string{second.ID},
 	}, &unknown)
 	if err != nil || resp.StatusCode != http.StatusBadRequest || !strings.Contains(unknown.Message, "cycle") {
 		t.Fatalf("cycle %d %+v %v", statusOf(resp), unknown, err)
 	}
 	var detail contract.QuestDetail
-	resp, err = admin.do(http.MethodGet, "/v1/admin/quests/"+first.ID, nil, &detail)
+	resp, err = admin.do(http.MethodGet, "/v1/admin/sagas/"+first.ID, nil, &detail)
 	if err != nil || detail.Version != 1 || detail.Chain == nil || detail.Chain.Total != 2 {
 		t.Fatalf("cycle must roll back %+v %v", detail.Quest, err)
 	}
 
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+second.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+second.ID, map[string]any{
 		"requires": []map[string]any{{"id": second.ID}},
 	}, &unknown)
 	if err != nil || resp.StatusCode != http.StatusBadRequest || !strings.Contains(unknown.Message, "itself") {
@@ -113,9 +113,9 @@ func TestSagaChains(t *testing.T) {
 	}
 
 	var listed struct {
-		Quests []contract.QuestListItem `json:"quests"`
+		Quests []contract.QuestListItem `json:"sagas"`
 	}
-	resp, err = admin.do(http.MethodGet, "/v1/admin/quests?character_id="+magni.ID, nil, &listed)
+	resp, err = admin.do(http.MethodGet, "/v1/admin/sagas?character_id="+magni.ID, nil, &listed)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatal(err, statusOf(resp))
 	}
@@ -148,7 +148,7 @@ func TestSagaChains(t *testing.T) {
 	}
 
 	var edited contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+first.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+first.ID, map[string]any{
 		"title": "Kapittel 1, redigert",
 	}, &edited)
 	if err != nil || edited.Version != 2 {
@@ -186,14 +186,14 @@ func TestSagaChains(t *testing.T) {
 	}
 
 	var cleared contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+second.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+second.ID, map[string]any{
 		"requires": []string{},
 		"chain":    nil,
 	}, &cleared)
 	if err != nil || resp.StatusCode != 200 || cleared.Chain != nil || len(cleared.Requires) != 0 {
 		t.Fatalf("clear %+v %d %v", cleared, statusOf(resp), err)
 	}
-	resp, err = admin.do(http.MethodGet, "/v1/admin/quests/"+second.ID, nil, &detail)
+	resp, err = admin.do(http.MethodGet, "/v1/admin/sagas/"+second.ID, nil, &detail)
 	if err != nil || len(detail.Versions) < 2 {
 		t.Fatalf("versions %+v", detail.Versions)
 	}

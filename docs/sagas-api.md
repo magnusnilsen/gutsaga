@@ -3,7 +3,7 @@
 Player-authenticated endpoints for creating and maintaining your own sagas.
 Use the companion session API key (`Authorization: Bearer …` from `POST /v1/auth/session`).
 
-Admin can still use `/v1/admin/quests` (any creator). When the patch body includes `editor_email` (Smia caller) or `updated_by` (BattleTag), the API enforces the same ownership rule as players — only that author may edit (Smia MCP `update_saga` sends `editor_email` from `context.run`). Players use `/v1/sagas` and may only update sagas they own (`created_by_player_id`).
+Admin can still use `/v1/admin/sagas` (any creator). When the patch body includes `editor_email` (Smia caller) or `updated_by` (BattleTag), the API enforces the same ownership rule as players — only that author may edit (Smia MCP `update_saga` sends `editor_email` from `context.run`). Players use `/v1/sagas` and may only update sagas they own (`created_by_player_id`).
 
 ## Goal types
 
@@ -118,13 +118,13 @@ Create a saga owned by you. Body:
   "when": { "clock": "local", "start": "22:00", "end": "02:00" },
   "reward": "",
   "min_level": 1,
-  "party_quest": false,
+  "party": false,
   "active": true,
   "assigned_character_ids": []
 }
 ```
 
-Empty `assigned_character_ids` with `party_quest: true` offers the saga to everyone eligible by level.
+Empty `assigned_character_ids` with `party: true` offers the saga to everyone eligible by level.
 
 Optional chain fields, same shape as the admin API (see the README section Saga-kjeder):
 
@@ -152,11 +152,11 @@ Update fields (same shape as create, all optional). Only the owner may patch. Ca
 - `PUT /v1/sagas/{id}/image` — raw body or multipart field `image` (max 8 MiB; stored as PNG)
 - `GET /v1/sagas/{id}/image` — download (any signed-in player; used by the companion)
 - `DELETE /v1/sagas/{id}/image` — clear
-- Admin (Smia MCP): optional `image` file on `POST`/`PATCH` `/v1/admin/quests`, or `PUT`/`DELETE` `/v1/admin/quests/{id}/image`
+- Admin (Smia MCP): optional `image` file on `POST`/`PATCH` `/v1/admin/sagas`, or `PUT`/`DELETE` `/v1/admin/sagas/{id}/image`
 
-When present, `has_image` is true and `image_url` points at the GET path. The companion converts the cover to TGA and writes `Interface/AddOns/GutSaga/media/<quest_id>.tga` on sync (Classic Era cannot load loose PNGs as addon textures). The addon shows it under the description, above goals.
+When present, `has_image` is true and `image_url` points at the GET path. The companion converts the cover to TGA and writes `Interface/AddOns/GutSaga/media/<saga_id>.tga` on sync (Classic Era cannot load loose PNGs as addon textures). The addon shows it under the description, above goals.
 
-The player GET stays session-authenticated. Smia, which only has the admin token, fetches the same bytes at `GET /v1/admin/quests/{id}/image`. Admin quest list and admin quest get also include `image_signed_url` (absolute, expiring, no auth header) when `PUBLIC_BASE_URL` and `IMAGE_URL_SECRET` are set. That URL is `GET /v1/public/sagas/{id}/image` and returns only the image. See [API.md](API.md).
+The player GET stays session-authenticated. Smia, which only has the admin token, fetches the same bytes at `GET /v1/admin/sagas/{id}/image`. Admin quest list and admin quest get also include `image_signed_url` (absolute, expiring, no auth header) when `PUBLIC_BASE_URL` and `IMAGE_URL_SECRET` are set. That URL is `GET /v1/public/sagas/{id}/image` and returns only the image. See [API.md](API.md).
 
 ## After create / update
 

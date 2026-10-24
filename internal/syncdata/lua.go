@@ -33,8 +33,8 @@ func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, notice
 		fmt.Fprintf(&b, "      character = %s,\n", luaString(e.Character))
 		fmt.Fprintf(&b, "      character_id = %s,\n", luaString(e.CharacterID))
 		fmt.Fprintf(&b, "      realm = %s,\n", luaString(e.Realm))
-		fmt.Fprintf(&b, "      quest_id = %s,\n", luaString(e.QuestID))
-		fmt.Fprintf(&b, "      quest_version = %d,\n", e.QuestVersion)
+		fmt.Fprintf(&b, "      saga_id = %s,\n", luaString(e.QuestID))
+		fmt.Fprintf(&b, "      saga_version = %d,\n", e.QuestVersion)
 		fmt.Fprintf(&b, "      title = %s,\n", luaString(e.Title))
 		fmt.Fprintf(&b, "      description = %s,\n", luaString(e.Description))
 		fmt.Fprintf(&b, "      objectives = %s,\n", luaObjectives(e.Objectives))
@@ -54,9 +54,9 @@ func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, notice
 		fmt.Fprintf(&b, "      status = %s,\n", luaString(e.Status))
 		fmt.Fprintf(&b, "      completed_at = %s,\n", luaString(e.CompletedAt))
 		if e.PartyQuest {
-			b.WriteString("      party_quest = true,\n")
+			b.WriteString("      party = true,\n")
 		} else {
-			b.WriteString("      party_quest = false,\n")
+			b.WriteString("      party = false,\n")
 		}
 		fmt.Fprintf(&b, "      created_by = %s,\n", luaString(e.CreatedBy))
 		fmt.Fprintf(&b, "      requires = %s,\n", luaRequires(e.Requires))

@@ -74,7 +74,7 @@ func (c *Client) Sync(ctx context.Context) (contract.SyncResponse, error) {
 func (c *Client) ResetProgress(ctx context.Context, questID string) (deleted int64, err error) {
 	path := "/v1/progress"
 	if q := strings.TrimSpace(questID); q != "" {
-		path += "?quest_id=" + url.QueryEscape(q)
+		path += "?saga_id=" + url.QueryEscape(q)
 	}
 	var out struct {
 		Deleted int64 `json:"deleted"`
@@ -124,8 +124,8 @@ func (c *Client) Complete(ctx context.Context, req contract.CompletionRequest, i
 	w := multipart.NewWriter(&body)
 	fields := map[string]string{
 		"character_id":  req.CharacterID,
-		"quest_id":      req.QuestID,
-		"quest_version": strconv.Itoa(req.QuestVersion),
+		"saga_id":      req.QuestID,
+		"saga_version": strconv.Itoa(req.QuestVersion),
 		"battletag":     req.BattleTag,
 		"level":         strconv.Itoa(req.Level),
 		"completed_at":  req.CompletedAt,

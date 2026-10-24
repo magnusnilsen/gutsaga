@@ -1468,7 +1468,7 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 		return contract.CompletionResponse{}, err
 	}
 	if in.QuestVersion < 1 {
-		return contract.CompletionResponse{}, fmt.Errorf("%w: quest_version", ErrInvalid)
+		return contract.CompletionResponse{}, fmt.Errorf("%w: saga_version", ErrInvalid)
 	}
 	in.BattleTag = strings.TrimSpace(in.BattleTag)
 	if in.BattleTag != "" {
@@ -1770,7 +1770,7 @@ func (s *Store) DeletePlayerProgress(ctx context.Context, playerID, questID stri
 // At least one of characterID or questID must be set.
 func (s *Store) DeleteAdminProgress(ctx context.Context, characterID, questID string) (int64, error) {
 	if characterID == "" && questID == "" {
-		return 0, fmt.Errorf("character_id or quest_id is required")
+		return 0, fmt.Errorf("character_id or saga_id is required")
 	}
 	if characterID != "" {
 		if err := validUUID(characterID); err != nil {

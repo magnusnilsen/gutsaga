@@ -41,7 +41,7 @@
           "description": "New minimum level. Text-field patches bump saga version."
         },
         {
-          "name": "party_quest",
+          "name": "party",
           "type": "boolean",
           "required": false
         },
@@ -79,7 +79,7 @@
       "id": "url",
       "type": "util.string.template",
       "config": {
-        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/quests/{{id}}"
+        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/sagas/{{id}}"
       }
     },
     {
@@ -92,13 +92,13 @@
           "objectives",
           "reward",
           "min_level",
-          "party_quest",
+          "party",
           "assigned_character_ids",
           "objectives_ordered",
           "active",
           "editor_email"
         ],
-        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party_quest\": {{party_quest}}, \"assigned_character_ids\": {{assigned_character_ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"editor_email\": {{editor_email}}}"
+        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party\": {{party}}, \"assigned_character_ids\": {{assigned_character_ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"editor_email\": {{editor_email}}}"
       }
     },
     {
@@ -173,8 +173,8 @@
       "id": "e7",
       "source": "input",
       "target": "body",
-      "sourceHandle": "party_quest",
-      "targetHandle": "party_quest"
+      "sourceHandle": "party",
+      "targetHandle": "party"
     },
     {
       "id": "e8",

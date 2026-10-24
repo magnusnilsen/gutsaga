@@ -20,9 +20,9 @@ func TestPushRewritesLuaAndNotifies(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		body := `{"battletag":"Magnus#2231","generated_at":"t0","characters":[{"id":"c1","name":"Magni","realm":"Argent Dawn","level":20}],"quests":[{"id":"q1","title":"Første vakt","version":1,"active":true,"party_quest":true,"objectives":[]}],"progress":[]}`
+		body := `{"battletag":"Magnus#2231","generated_at":"t0","characters":[{"id":"c1","name":"Magni","realm":"Argent Dawn","level":20}],"sagas":[{"id":"q1","title":"Første vakt","version":1,"active":true,"party":true,"objectives":[]}],"progress":[]}`
 		if gen.Load() > 0 {
-			body = `{"battletag":"Magnus#2231","generated_at":"t1","characters":[{"id":"c1","name":"Magni","realm":"Argent Dawn","level":20}],"quests":[{"id":"q1","title":"Første vakt","version":1,"active":true,"party_quest":true,"objectives":[]},{"id":"q2","title":"En kveld i Goldshire","version":1,"active":true,"party_quest":true,"objectives":[]}],"progress":[]}`
+			body = `{"battletag":"Magnus#2231","generated_at":"t1","characters":[{"id":"c1","name":"Magni","realm":"Argent Dawn","level":20}],"sagas":[{"id":"q1","title":"Første vakt","version":1,"active":true,"party":true,"objectives":[]},{"id":"q2","title":"En kveld i Goldshire","version":1,"active":true,"party":true,"objectives":[]}],"progress":[]}`
 		}
 		_, _ = w.Write([]byte(body))
 	}))

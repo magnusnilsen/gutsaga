@@ -19,7 +19,7 @@ type ResetRequest struct {
 var (
 	resetBlock = regexp.MustCompile(`(?s)\{\s*(.*?)\},`)
 	resetAll   = regexp.MustCompile(`\["all"\]\s*=\s*true`)
-	resetQuest = regexp.MustCompile(`\["quest_id"\]\s*=\s*"([^"]+)"`)
+	resetQuest = regexp.MustCompile(`\["saga_id"\]\s*=\s*"([^"]+)"`)
 	resetAt    = regexp.MustCompile(`\["at"\]\s*=\s*(-?\d+)`)
 )
 

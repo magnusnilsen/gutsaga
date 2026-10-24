@@ -43,7 +43,7 @@ func TestAdminDiscordNotices(t *testing.T) {
 
 	png := tinyPNG(t)
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title":       "Første vakt",
 		"description": "Stå vakt ved porten.\n\nMer som ikke trengs i kortteksten.",
 		"objectives": []map[string]any{
@@ -53,7 +53,7 @@ func TestAdminDiscordNotices(t *testing.T) {
 		"objectives_ordered":     true,
 		"reward":                 "Ære",
 		"min_level":              10,
-		"party_quest":            true,
+		"party":            true,
 		"created_by":             "Magnus#2231",
 		"assigned_character_ids": []string{magni.ID},
 		"image_base64":           base64.StdEncoding.EncodeToString(png),
@@ -83,7 +83,7 @@ func TestAdminDiscordNotices(t *testing.T) {
 		t.Fatalf("objectives/image %+v img %d", note.Objectives, len(note.Image))
 	}
 
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Stille utkast", "description": "Ikke klar.",
 		"objectives": []map[string]any{{"id": "x", "type": "interact", "text": "Vent", "npc": "Vakt"}},
 		"created_by": "Magnus#2231", "active": false,
@@ -91,7 +91,7 @@ func TestAdminDiscordNotices(t *testing.T) {
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("draft %d %v", statusOf(resp), err)
 	}
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Hemmelig", "description": "Ikke post.",
 		"objectives": []map[string]any{{"id": "x", "type": "interact", "text": "Vent", "npc": "Vakt"}},
 		"created_by": "Magnus#2231", "announce": false,
@@ -105,7 +105,7 @@ func TestAdminDiscordNotices(t *testing.T) {
 	}
 	fake.mu.Unlock()
 
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Ødelagt", "description": "x",
 		"objectives":   []map[string]any{{"id": "x", "type": "interact", "text": "Vent", "npc": "Vakt"}},
 		"created_by":   "Magnus#2231",
@@ -115,7 +115,7 @@ func TestAdminDiscordNotices(t *testing.T) {
 		t.Fatalf("bad image %d %v", statusOf(resp), err)
 	}
 
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"assigned_character_ids": []string{magni.ID},
 	}, &contract.Quest{})
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -128,7 +128,7 @@ func TestAdminDiscordNotices(t *testing.T) {
 	fake.mu.Unlock()
 
 	var updated contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"title": "Første vakt, igjen",
 	}, &updated)
 	if err != nil || resp.StatusCode != http.StatusOK || updated.Version != 3 {
@@ -143,14 +143,14 @@ func TestAdminDiscordNotices(t *testing.T) {
 	}
 	fake.mu.Unlock()
 
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"reward": "Mer ære", "announce": false,
 	}, &contract.Quest{})
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("silent edit %d %v", statusOf(resp), err)
 	}
 	active := false
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"active": active,
 	}, &contract.Quest{})
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -204,7 +204,7 @@ func TestDiscordFailureDoesNotFailTheAPI(t *testing.T) {
 		t.Fatal(err, statusOf(resp))
 	}
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Vakt", "description": "Stå.",
 		"objectives": []map[string]any{{"id": "a", "type": "interact", "text": "Møt", "npc": "Vakt"}},
 		"reward":     "Ære", "created_by": "Magnus#2231", "assigned_character_ids": []string{magni.ID},
@@ -271,7 +271,7 @@ func TestDiscordQueueDoesNotBlockTheRequest(t *testing.T) {
 
 	start := time.Now()
 	var quest contract.Quest
-	resp, err := admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err := admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Køtest", "description": "Kort tekst.",
 		"objectives": []map[string]any{{"id": "a", "type": "interact", "text": "Møt opp", "npc": "Vakt"}},
 		"reward":     "Ære", "min_level": 10, "created_by": "Magnus#2231",

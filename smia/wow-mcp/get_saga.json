@@ -17,7 +17,7 @@
       "id": "url",
       "type": "util.string.template",
       "config": {
-        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/quests/{{id}}"
+        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/sagas/{{id}}"
       }
     },
     {

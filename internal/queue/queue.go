@@ -16,9 +16,9 @@ import (
 type Item struct {
 	Kind           string                 `json:"kind"`
 	Key            string                 `json:"key"`
-	QuestID        string                 `json:"quest_id,omitempty"`
-	QuestVersion   int                    `json:"quest_version,omitempty"`
-	QuestTitle     string                 `json:"quest_title,omitempty"`
+	QuestID        string                 `json:"saga_id,omitempty"`
+	QuestVersion   int                    `json:"saga_version,omitempty"`
+	QuestTitle     string                 `json:"saga_title,omitempty"`
 	Character      string                 `json:"character"`
 	Realm          string                 `json:"realm,omitempty"`
 	Race           string                 `json:"race,omitempty"`

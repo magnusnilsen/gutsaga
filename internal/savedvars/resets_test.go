@@ -12,7 +12,7 @@ func TestParseResets(t *testing.T) {
       ["at"] = 1761312000,
     },
     {
-      ["quest_id"] = "68a6b8dc-8cbf-4b36-9db0-dff4e6d605a0",
+      ["saga_id"] = "68a6b8dc-8cbf-4b36-9db0-dff4e6d605a0",
       ["at"] = 1761312100,
     },
   },

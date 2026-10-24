@@ -69,13 +69,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/admin/characters/{id}", s.withAdmin(s.getCharacter))
 	mux.HandleFunc("PATCH /v1/admin/characters/{id}", s.withAdmin(s.patchCharacter))
 	mux.HandleFunc("DELETE /v1/admin/characters/{id}", s.withAdmin(s.deleteCharacter))
-	mux.HandleFunc("POST /v1/admin/quests", s.withAdmin(s.createQuest))
-	mux.HandleFunc("GET /v1/admin/quests", s.withAdmin(s.listQuests))
-	mux.HandleFunc("GET /v1/admin/quests/{id}", s.withAdmin(s.getQuest))
-	mux.HandleFunc("GET /v1/admin/quests/{id}/image", s.withAdmin(s.getAdminQuestImage))
-	mux.HandleFunc("PATCH /v1/admin/quests/{id}", s.withAdmin(s.patchQuest))
-	mux.HandleFunc("PUT /v1/admin/quests/{id}/image", s.withAdmin(s.putAdminQuestImage))
-	mux.HandleFunc("DELETE /v1/admin/quests/{id}/image", s.withAdmin(s.deleteAdminQuestImage))
+	mux.HandleFunc("POST /v1/admin/sagas", s.withAdmin(s.createQuest))
+	mux.HandleFunc("GET /v1/admin/sagas", s.withAdmin(s.listQuests))
+	mux.HandleFunc("GET /v1/admin/sagas/{id}", s.withAdmin(s.getQuest))
+	mux.HandleFunc("GET /v1/admin/sagas/{id}/image", s.withAdmin(s.getAdminQuestImage))
+	mux.HandleFunc("PATCH /v1/admin/sagas/{id}", s.withAdmin(s.patchQuest))
+	mux.HandleFunc("PUT /v1/admin/sagas/{id}/image", s.withAdmin(s.putAdminQuestImage))
+	mux.HandleFunc("DELETE /v1/admin/sagas/{id}/image", s.withAdmin(s.deleteAdminQuestImage))
 	mux.HandleFunc("GET /v1/admin/log", s.withAdmin(s.listLog))
 	mux.HandleFunc("POST /v1/admin/log", s.withAdmin(s.createLog))
 	mux.HandleFunc("POST /v1/admin/complete", s.withAdmin(s.adminComplete))
@@ -214,10 +214,10 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 
 // deleteProgress clears API progress for the signed-in player so a local
 // /gutsaga reset is not undone by the next companion sync.
-// Optional query quest_id limits to one saga; omit it to clear all.
+// Optional query saga_id limits to one saga; omit it to clear all.
 func (s *Server) deleteProgress(w http.ResponseWriter, r *http.Request) {
 	p := playerFrom(r)
-	questID := strings.TrimSpace(r.URL.Query().Get("quest_id"))
+	questID := strings.TrimSpace(r.URL.Query().Get("saga_id"))
 	n, err := s.store.DeletePlayerProgress(r.Context(), p.ID, questID)
 	if err != nil {
 		if errors.Is(err, ErrInvalid) {
@@ -227,14 +227,14 @@ func (s *Server) deleteProgress(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": n, "quest_id": questID})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": n, "saga_id": questID})
 }
 
 func (s *Server) deleteAdminProgress(w http.ResponseWriter, r *http.Request) {
 	characterID := strings.TrimSpace(r.URL.Query().Get("character_id"))
-	questID := strings.TrimSpace(r.URL.Query().Get("quest_id"))
+	questID := strings.TrimSpace(r.URL.Query().Get("saga_id"))
 	if characterID == "" && questID == "" {
-		writeErr(w, http.StatusBadRequest, "invalid", "character_id or quest_id is required")
+		writeErr(w, http.StatusBadRequest, "invalid", "character_id or saga_id is required")
 		return
 	}
 	n, err := s.store.DeleteAdminProgress(r.Context(), characterID, questID)
@@ -246,7 +246,7 @@ func (s *Server) deleteAdminProgress(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": n, "character_id": characterID, "quest_id": questID})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": n, "character_id": characterID, "saga_id": questID})
 }
 
 func (s *Server) level(w http.ResponseWriter, r *http.Request) {
@@ -431,7 +431,7 @@ func (s *Server) listQuests(w http.ResponseWriter, r *http.Request) {
 	for i := range out {
 		out[i].Quest = s.withSignedCoverURL(out[i].Quest)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"quests": out})
+	writeJSON(w, http.StatusOK, map[string]any{"sagas": out})
 }
 
 func (s *Server) getQuest(w http.ResponseWriter, r *http.Request) {
@@ -552,7 +552,7 @@ func (s *Server) createLog(w http.ResponseWriter, r *http.Request) {
 		BattleTag   string `json:"battletag"`
 		PlayerID    string `json:"player_id"`
 		CharacterID string `json:"character_id"`
-		QuestID     string `json:"quest_id"`
+		QuestID     string `json:"saga_id"`
 		Type        string `json:"type"`
 		Title       string `json:"title"`
 		Body        string `json:"body"`
@@ -581,8 +581,8 @@ func (s *Server) createLog(w http.ResponseWriter, r *http.Request) {
 func (s *Server) adminComplete(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		CharacterID  string `json:"character_id"`
-		QuestID      string `json:"quest_id"`
-		QuestVersion int    `json:"quest_version"`
+		QuestID      string `json:"saga_id"`
+		QuestVersion int    `json:"saga_version"`
 		Level        int    `json:"level"`
 	}
 	if err := readJSON(r, &body, 1<<20); err != nil {
@@ -710,7 +710,7 @@ type questBody struct {
 	Group                *contract.GroupRule  `json:"group"`
 	Reward               string               `json:"reward"`
 	MinLevel             *int                 `json:"min_level"`
-	PartyQuest           bool                 `json:"party_quest"`
+	PartyQuest           bool                 `json:"party"`
 	Active               *bool                `json:"active"`
 	CreatedBy            string               `json:"created_by"`
 	AssignedCharacterIDs []string             `json:"assigned_character_ids"`
@@ -731,7 +731,7 @@ type questPatchBody struct {
 	Group             json.RawMessage       `json:"group"`
 	Reward            *string               `json:"reward"`
 	MinLevel          json.RawMessage       `json:"min_level"`
-	PartyQuest        *bool                 `json:"party_quest"`
+	PartyQuest        *bool                 `json:"party"`
 	Active            *bool                 `json:"active"`
 	CreatedBy         *string               `json:"created_by"`
 	// UpdatedBy is who edited the saga (Discord line / BattleTag ownership). Admin optional.
@@ -775,7 +775,7 @@ func readQuestCreate(w http.ResponseWriter, r *http.Request) (questBody, []byte,
 		body.Description = r.FormValue("description")
 		body.Reward = r.FormValue("reward")
 		body.CreatedBy = r.FormValue("created_by")
-		body.PartyQuest = formBool(r.FormValue("party_quest"))
+		body.PartyQuest = formBool(r.FormValue("party"))
 		if v := r.FormValue("min_level"); v != "" {
 			n, err := strconv.Atoi(v)
 			if err != nil {
@@ -846,7 +846,7 @@ func readQuestPatch(w http.ResponseWriter, r *http.Request) (questPatchBody, []b
 		if v, ok := r.MultipartForm.Value["editor_email"]; ok {
 			body.EditorEmail = &v[0]
 		}
-		if v, ok := r.MultipartForm.Value["party_quest"]; ok {
+		if v, ok := r.MultipartForm.Value["party"]; ok {
 			b := formBool(v[0])
 			body.PartyQuest = &b
 		}
@@ -955,8 +955,8 @@ func readCompletion(w http.ResponseWriter, r *http.Request) (contract.Completion
 			return in, nil, "", err
 		}
 		in.CharacterID = r.FormValue("character_id")
-		in.QuestID = r.FormValue("quest_id")
-		in.QuestVersion, _ = strconv.Atoi(r.FormValue("quest_version"))
+		in.QuestID = r.FormValue("saga_id")
+		in.QuestVersion, _ = strconv.Atoi(r.FormValue("saga_version"))
 		in.BattleTag = r.FormValue("battletag")
 		in.Level, _ = strconv.Atoi(r.FormValue("level"))
 		in.CompletedAt = r.FormValue("completed_at")

@@ -76,10 +76,10 @@ func TestRealtimeTwoInstances(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Første vakt", "description": "Stå vakt.",
 		"objectives": []map[string]any{{"id": "stay", "type": "location", "text": "Hold ut", "zone": "Elwynn Forest"}},
-		"reward":     "Ære", "party_quest": true, "created_by": "Magnus#2231",
+		"reward":     "Ære", "party": true, "created_by": "Magnus#2231",
 		"assigned_character_ids": []string{magni.ID},
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated || quest.Version != 1 {
@@ -106,7 +106,7 @@ func TestRealtimeTwoInstances(t *testing.T) {
 	})
 
 	var updated contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"title": "Første vakt, igjen",
 	}, &updated)
 	if err != nil || updated.Version != 2 {
@@ -115,7 +115,7 @@ func TestRealtimeTwoInstances(t *testing.T) {
 	wantBoth(t, a, b, realtime.TypeUpdated, quest.ID, 2)
 
 	var retired contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"active": false,
 	}, &retired)
 	if err != nil || retired.Version != 3 || retired.Active {

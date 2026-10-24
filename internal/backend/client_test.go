@@ -17,7 +17,7 @@ func TestCompleteSendsVersionAndOmitsEmptyScreenshot(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		if r.URL.Path == "/v1/sync" {
-			_, _ = w.Write([]byte(`{"battletag":"Magnus#2231","characters":[],"quests":[],"progress":[]}`))
+			_, _ = w.Write([]byte(`{"battletag":"Magnus#2231","characters":[],"sagas":[],"progress":[]}`))
 			return
 		}
 		_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -34,14 +34,14 @@ func TestCompleteSendsVersionAndOmitsEmptyScreenshot(t *testing.T) {
 				t.Fatal(err)
 			}
 			b, _ := io.ReadAll(p)
-			if p.FormName() == "quest_version" {
+			if p.FormName() == "saga_version" {
 				gotVersion = string(b)
 			}
 			if p.FormName() == "screenshot" {
 				gotFile = string(b)
 			}
 		}
-		_, _ = w.Write([]byte(`{"allowed":true,"completed":true,"quest_version":3}`))
+		_, _ = w.Write([]byte(`{"allowed":true,"completed":true,"saga_version":3}`))
 	}))
 	defer srv.Close()
 	c := &Client{BaseURL: srv.URL + "/", APIKey: "gsk_test", HTTP: srv.Client()}

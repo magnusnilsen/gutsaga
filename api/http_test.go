@@ -184,13 +184,13 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 		t.Fatalf("character %d %v", resp.StatusCode, err)
 	}
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Første vakt", "description": "Stå vakt.",
 		"objectives": []map[string]any{
 			{"id": "meet", "type": "interact", "text": "Møt opp", "npc": "Vakt"},
 			{"id": "stay", "type": "location", "text": "Hold ut", "zone": "Elwynn Forest"},
 		},
-		"reward": "Ære", "min_level": 10, "party_quest": false, "created_by": "Magnus#2231",
+		"reward": "Ære", "min_level": 10, "party": false, "created_by": "Magnus#2231",
 		"assigned_character_ids": []string{magni.ID},
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated {
@@ -205,7 +205,7 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	body := &bytes.Buffer{}
 	mw := multipart.NewWriter(body)
 	for k, v := range map[string]string{
-		"character_id": magni.ID, "quest_id": quest.ID, "quest_version": "1",
+		"character_id": magni.ID, "saga_id": quest.ID, "saga_version": "1",
 		"battletag": "Magnus#2231", "level": "12", "completed_at": "2026-10-22T14:44:00Z",
 	} {
 		if err := mw.WriteField(k, v); err != nil {
@@ -259,7 +259,7 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	}
 
 	var updated contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"title": "Første vakt, igjen",
 	}, &updated)
 	if err != nil || resp.StatusCode != 200 {
@@ -269,7 +269,7 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 		t.Fatalf("updated %+v", updated)
 	}
 	var detail contract.QuestDetail
-	resp, err = admin.do(http.MethodGet, "/v1/admin/quests/"+quest.ID, nil, &detail)
+	resp, err = admin.do(http.MethodGet, "/v1/admin/sagas/"+quest.ID, nil, &detail)
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatal(err, resp.StatusCode)
 	}
@@ -334,9 +334,9 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	}
 
 	var listed struct {
-		Quests []contract.QuestListItem `json:"quests"`
+		Quests []contract.QuestListItem `json:"sagas"`
 	}
-	resp, err = admin.do(http.MethodGet, "/v1/admin/quests?character_id="+magni.ID, nil, &listed)
+	resp, err = admin.do(http.MethodGet, "/v1/admin/sagas?character_id="+magni.ID, nil, &listed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,8 +426,8 @@ func TestGroupSagaCreditsEachCharacter(t *testing.T) {
 	}
 
 	var bad contract.ErrorBody
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
-		"title": "Ugyldig emote", "created_by": "Magnus#2231", "party_quest": true,
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
+		"title": "Ugyldig emote", "created_by": "Magnus#2231", "party": true,
 		"objectives": []map[string]any{{"id": "hi", "type": "emote", "text": "Hils"}},
 	}, &bad)
 	if err != nil || resp.StatusCode != http.StatusBadRequest || !strings.Contains(bad.Message, "emote") {
@@ -436,9 +436,9 @@ func TestGroupSagaCreditsEachCharacter(t *testing.T) {
 
 	level := 17
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Deadmines", "description": "Fire stykker.", "created_by": "Magnus#2231",
-		"party_quest": true, "min_level": 17,
+		"party": true, "min_level": 17,
 		"when":  map[string]any{"clock": "game", "start": "18:00", "end": "06:00"},
 		"group": map[string]any{"size": 2, "min_level": level, "instance": "The Deadmines"},
 		"objectives": []map[string]any{
@@ -565,12 +565,12 @@ func TestAdminQuestCreateWithOptionalImage(t *testing.T) {
 	}
 
 	var noImg contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Uten bilde", "description": "Bare tekst.",
 		"objectives": []map[string]any{
 			{"id": "talk", "type": "interact", "text": "Snakk", "npc": "Tharynn Bouden"},
 		},
-		"party_quest": true, "created_by": "Magnus#2231",
+		"party": true, "created_by": "Magnus#2231",
 	}, &noImg)
 	if err != nil || resp.StatusCode != http.StatusCreated || noImg.HasImage {
 		t.Fatalf("json create %+v %d %v", noImg, statusOf(resp), err)
@@ -582,7 +582,7 @@ func TestAdminQuestCreateWithOptionalImage(t *testing.T) {
 	_ = mw.WriteField("title", "Med bilde")
 	_ = mw.WriteField("description", "Cover.")
 	_ = mw.WriteField("objectives", `[{"id":"talk","type":"interact","text":"Snakk","npc":"Tharynn Bouden"}]`)
-	_ = mw.WriteField("party_quest", "true")
+	_ = mw.WriteField("party", "true")
 	_ = mw.WriteField("created_by", "Magnus#2231")
 	fw, err := mw.CreateFormFile("image", "cover.png")
 	if err != nil {
@@ -594,7 +594,7 @@ func TestAdminQuestCreateWithOptionalImage(t *testing.T) {
 	if err := mw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/admin/quests", bytes.NewReader(body.Bytes()))
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/admin/sagas", bytes.NewReader(body.Bytes()))
 	req.Header.Set("Authorization", "Bearer admin-img")
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	resp, err = admin.http.Do(req)
@@ -623,7 +623,7 @@ func TestAdminQuestCreateWithOptionalImage(t *testing.T) {
 	if err := pmw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	req, _ = http.NewRequest(http.MethodPatch, srv.URL+"/v1/admin/quests/"+noImg.ID, bytes.NewReader(patchBody.Bytes()))
+	req, _ = http.NewRequest(http.MethodPatch, srv.URL+"/v1/admin/sagas/"+noImg.ID, bytes.NewReader(patchBody.Bytes()))
 	req.Header.Set("Authorization", "Bearer admin-img")
 	req.Header.Set("Content-Type", pmw.FormDataContentType())
 	resp, err = admin.http.Do(req)

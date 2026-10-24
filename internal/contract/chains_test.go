@@ -69,7 +69,7 @@ func TestRequireCycleAndLockMessage(t *testing.T) {
 }
 
 func TestGateIgnoresCompletionVersion(t *testing.T) {
-	// done is keyed only by saga id. An older quest_version still counts.
+	// done is keyed only by saga id. An older saga_version still counts.
 	done := map[string]bool{"chapter-1": true}
 	locked, missing := Gate("chapter-2", []string{"chapter-1"}, done)
 	if locked || missing != nil {

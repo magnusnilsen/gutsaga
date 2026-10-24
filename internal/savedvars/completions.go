@@ -29,7 +29,7 @@ type Completion struct {
 
 var (
 	completionBlock = regexp.MustCompile(`(?s)\["([0-9a-fA-F-]{36})"\]\s*=\s*\{(.*?)\},`)
-	fieldString     = regexp.MustCompile(`\["(quest_id|character|realm|group_members|instance)"\]\s*=\s*"([^"]*)"`)
+	fieldString     = regexp.MustCompile(`\["(saga_id|character|realm|group_members|instance)"\]\s*=\s*"([^"]*)"`)
 	fieldNumber     = regexp.MustCompile(`\["(version|level|completed_at)"\]\s*=\s*(-?\d+)`)
 )
 
@@ -78,7 +78,7 @@ func ParseCompletions(path string, body string) []Completion {
 		c := Completion{QuestID: m[1], Path: path, Level: 1}
 		for _, f := range fieldString.FindAllStringSubmatch(block, -1) {
 			switch f[1] {
-			case "quest_id":
+			case "saga_id":
 				if f[2] != "" {
 					c.QuestID = f[2]
 				}

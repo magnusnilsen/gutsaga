@@ -41,7 +41,7 @@
           "saga_version",
           "level"
         ],
-        "template": "{\"character_id\": {{character_id}}, \"quest_id\": {{saga_id}}, \"quest_version\": {{saga_version}}, \"level\": {{level}}}"
+        "template": "{\"character_id\": {{character_id}}, \"saga_id\": {{saga_id}}, \"saga_version\": {{saga_version}}, \"level\": {{level}}}"
       }
     },
     {

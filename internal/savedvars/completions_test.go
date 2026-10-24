@@ -10,7 +10,7 @@ func TestParseCompletions(t *testing.T) {
 GutSagaDB = {
 ["completions"] = {
 ["4cc34091-0e9b-4c18-800a-3162c90acc56"] = {
-["quest_id"] = "4cc34091-0e9b-4c18-800a-3162c90acc56",
+["saga_id"] = "4cc34091-0e9b-4c18-800a-3162c90acc56",
 ["character"] = "Magní",
 ["version"] = 3,
 ["level"] = 2,
@@ -20,7 +20,7 @@ GutSagaDB = {
 ["instance"] = "The Deadmines",
 },
 ["81006099-ddf8-4bc3-9ba0-b78a2614ba30"] = {
-["quest_id"] = "81006099-ddf8-4bc3-9ba0-b78a2614ba30",
+["saga_id"] = "81006099-ddf8-4bc3-9ba0-b78a2614ba30",
 ["character"] = "Magní",
 ["version"] = 3,
 ["level"] = 2,

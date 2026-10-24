@@ -33,7 +33,7 @@ local function titleOf(id, hinted, entries)
     if type(entries) == "table" then
         for i = 1, #entries do
             local entry = entries[i]
-            if type(entry) == "table" and entry.quest_id == id and type(entry.title) == "string" and entry.title ~= "" then
+            if type(entry) == "table" and entry.saga_id == id and type(entry.title) == "string" and entry.title ~= "" then
                 return entry.title
             end
         end
@@ -51,7 +51,7 @@ function M.isDone(id, entries, done)
     if type(entries) == "table" then
         for i = 1, #entries do
             local entry = entries[i]
-            if type(entry) == "table" and entry.quest_id == id and entry.status == "completed" then
+            if type(entry) == "table" and entry.saga_id == id and entry.status == "completed" then
                 return true
             end
         end
@@ -77,7 +77,7 @@ function M.isLocked(entry, entries, done)
     if type(entry) ~= "table" then
         return false
     end
-    if M.isDone(entry.quest_id, entries, done) then
+    if M.isDone(entry.saga_id, entries, done) then
         return false
     end
     return #M.missing(entry, entries, done) > 0
@@ -133,11 +133,11 @@ function M.chapterLabel(entry, entries)
             if ao ~= bo then
                 return ao < bo
             end
-            return (a.quest_id or "") < (b.quest_id or "")
+            return (a.saga_id or "") < (b.saga_id or "")
         end)
         total = #group
         for i = 1, #group do
-            if group[i].quest_id == entry.quest_id then
+            if group[i].saga_id == entry.saga_id then
                 index = i
                 break
             end
@@ -176,7 +176,7 @@ function M.detailLines(entry, entries, done)
     if chapter then
         lines[#lines + 1] = chapter
     end
-    if type(entry) == "table" and not M.isDone(entry.quest_id, entries, done) then
+    if type(entry) == "table" and not M.isDone(entry.saga_id, entries, done) then
         local lock = M.lockText(M.missing(entry, entries, done))
         if lock then
             lines[#lines + 1] = lock
@@ -192,7 +192,7 @@ function M.newlyUnlocked(entries, before, after)
     end
     for i = 1, #entries do
         local entry = entries[i]
-        if type(entry) == "table" and not M.isDone(entry.quest_id, entries, before) then
+        if type(entry) == "table" and not M.isDone(entry.saga_id, entries, before) then
             if M.isLocked(entry, entries, before) and not M.isLocked(entry, entries, after) then
                 out[#out + 1] = entry
             end

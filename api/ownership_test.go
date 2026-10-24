@@ -17,16 +17,16 @@ func TestAdminPatchRequiresMatchingUpdatedBy(t *testing.T) {
 	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
 
 	var quest contract.Quest
-	resp, err := admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err := admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Eies av Magnus", "description": "Kun forfatteren.",
 		"objectives": []map[string]any{{"id": "x", "type": "talk", "text": "Snakk", "npc": "Farley"}},
-		"created_by": "Magnus#2231", "party_quest": true,
+		"created_by": "Magnus#2231", "party": true,
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create %d %v", statusOf(resp), err)
 	}
 
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"title": "Hijack", "updated_by": "Other#9999",
 	}, nil)
 	if err != nil {
@@ -37,7 +37,7 @@ func TestAdminPatchRequiresMatchingUpdatedBy(t *testing.T) {
 	}
 
 	var ok contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"title": "Oppdatert", "updated_by": "magnus#2231",
 	}, &ok)
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -48,7 +48,7 @@ func TestAdminPatchRequiresMatchingUpdatedBy(t *testing.T) {
 	}
 
 	// Omitting updated_by keeps full admin power (ops / scripts).
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"title": "Admin override",
 	}, &ok)
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -63,10 +63,10 @@ func TestAdminPatchRequiresMatchingEditorEmail(t *testing.T) {
 	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
 
 	var quest contract.Quest
-	resp, err := admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err := admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Eies via e-post", "description": "Smia-bruker.",
 		"objectives": []map[string]any{{"id": "x", "type": "talk", "text": "Snakk", "npc": "Farley"}},
-		"created_by": "Magnus#2231", "party_quest": true,
+		"created_by": "Magnus#2231", "party": true,
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create %d %v", statusOf(resp), err)
@@ -76,7 +76,7 @@ func TestAdminPatchRequiresMatchingEditorEmail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"title": "Hijack", "editor_email": "other@example.com",
 	}, nil)
 	if err != nil {
@@ -87,7 +87,7 @@ func TestAdminPatchRequiresMatchingEditorEmail(t *testing.T) {
 	}
 
 	var ok contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{
+	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"title": "Oppdatert", "editor_email": "Magnus@Sparkel.io",
 	}, &ok)
 	if err != nil || resp.StatusCode != http.StatusOK {

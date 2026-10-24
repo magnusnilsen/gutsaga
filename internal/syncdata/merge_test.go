@@ -54,7 +54,7 @@ func TestMergeRules(t *testing.T) {
 	if e := got["Magni/q-done"]; e.Status != "completed" {
 		t.Fatal("completed inactive quest should remain")
 	}
-	if !strings.Contains(WriteLua("Magnus#2231", "2026-10-22T00:00:00Z", entries), `quest_version = 4`) {
+	if !strings.Contains(WriteLua("Magnus#2231", "2026-10-22T00:00:00Z", entries), `saga_version = 4`) {
 		t.Fatal(WriteLua("Magnus#2231", "2026-10-22T00:00:00Z", entries))
 	}
 }

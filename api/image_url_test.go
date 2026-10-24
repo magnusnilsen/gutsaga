@@ -37,12 +37,12 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	player := apiClient{base: srv.URL, token: created.APIKey, http: srv.Client()}
 
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/quests", map[string]any{
+	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Forside", "description": "Et bilde.",
 		"objectives": []map[string]any{
 			{"id": "stay", "type": "location", "text": "Stå i Goldshire", "zone": "Elwynn Forest"},
 		},
-		"party_quest": true, "created_by": "Magnus#2231",
+		"party": true, "created_by": "Magnus#2231",
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("quest %d %v", statusOf(resp), err)
@@ -51,11 +51,11 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 		t.Fatalf("unsigned create leaked a signed url: %+v", quest)
 	}
 
-	status, hdr, body := rawGet(t, srv.Client(), srv.URL+"/v1/admin/quests/"+quest.ID+"/image", "admin-test")
+	status, hdr, body := rawGet(t, srv.Client(), srv.URL+"/v1/admin/sagas/"+quest.ID+"/image", "admin-test")
 	if status != http.StatusNotFound {
 		t.Fatalf("admin missing image status %d body %s", status, body)
 	}
-	status, _, body = rawGet(t, srv.Client(), srv.URL+"/v1/admin/quests/"+quest.ID+"/image", "")
+	status, _, body = rawGet(t, srv.Client(), srv.URL+"/v1/admin/sagas/"+quest.ID+"/image", "")
 	if status != http.StatusUnauthorized {
 		t.Fatalf("admin image without token %d %s", status, body)
 	}
@@ -77,7 +77,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status, adminHdr, adminBody := rawGet(t, srv.Client(), srv.URL+"/v1/admin/quests/"+quest.ID+"/image", "admin-test")
+	status, adminHdr, adminBody := rawGet(t, srv.Client(), srv.URL+"/v1/admin/sagas/"+quest.ID+"/image", "admin-test")
 	if status != http.StatusOK || adminHdr.Get("Content-Type") != "image/png" || adminHdr.Get("Cache-Control") != "private, max-age=300" {
 		t.Fatalf("admin image %d type %q cache %q", status, adminHdr.Get("Content-Type"), adminHdr.Get("Cache-Control"))
 	}
@@ -93,7 +93,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	}
 
 	var detail contract.QuestDetail
-	resp, err = admin.do(http.MethodGet, "/v1/admin/quests/"+quest.ID, nil, &detail)
+	resp, err = admin.do(http.MethodGet, "/v1/admin/sagas/"+quest.ID, nil, &detail)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("get quest %d %v", statusOf(resp), err)
 	}
@@ -108,9 +108,9 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	}
 
 	var listed struct {
-		Quests []contract.QuestListItem `json:"quests"`
+		Quests []contract.QuestListItem `json:"sagas"`
 	}
-	resp, err = admin.do(http.MethodGet, "/v1/admin/quests", nil, &listed)
+	resp, err = admin.do(http.MethodGet, "/v1/admin/sagas", nil, &listed)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("list %d %v", statusOf(resp), err)
 	}
@@ -173,7 +173,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 		"objectives": []map[string]any{
 			{"id": "stay", "type": "location", "text": "Stå", "zone": "Elwynn Forest"},
 		},
-		"party_quest": true,
+		"party": true,
 	}, &saga)
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("saga %d %v", statusOf(resp), err)
@@ -201,7 +201,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	t.Cleanup(plain.Close)
 	plainAdmin := apiClient{base: plain.URL, token: "admin-test", http: plain.Client()}
 	var plainDetail contract.QuestDetail
-	resp, err = plainAdmin.do(http.MethodGet, "/v1/admin/quests/"+quest.ID, nil, &plainDetail)
+	resp, err = plainAdmin.do(http.MethodGet, "/v1/admin/sagas/"+quest.ID, nil, &plainDetail)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("unsigned admin get %d %v", statusOf(resp), err)
 	}
