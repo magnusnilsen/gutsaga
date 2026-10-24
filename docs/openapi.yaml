@@ -279,6 +279,19 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Level"}
+  /v1/ws:
+    get:
+      security: [{playerKey: []}]
+      summary: Player event stream (WebSocket upgrade)
+      description: |
+        `101 Switching Protocols`. Same bearer as `GET /v1/sync`.
+        Text frames are JSON hints (`type`, `saga_id`, `version`, and
+        `player_id` on `level.changed`). The companion then calls
+        `GET /v1/sync`. Heartbeat frame is `{"type":"ping"}` about every 25s.
+        See docs/realtime.md for Railway and the payload list.
+      responses:
+        "101": {description: Switching Protocols}
+        "401": {description: Missing or invalid session}
   /v1/admin/players:
     post:
       security: [{adminToken: []}]

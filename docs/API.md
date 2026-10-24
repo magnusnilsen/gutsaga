@@ -212,6 +212,25 @@ Merge rule, applied by the companion when it writes `GutSagaData.lua`:
 
 `?battletag=` is optional and must match the key.
 
+### `GET /v1/ws`
+
+WebSocket upgrade. Same `Authorization: Bearer` as `/v1/sync`. A missing or unknown session is `401` and the socket is not upgraded.
+
+Each text frame is one JSON object. It is a hint, not the saga. The companion calls `GET /v1/sync` and rewrites `GutSagaData.lua`.
+
+```json
+{"type":"saga.created","saga_id":"<uuid>","version":1}
+{"type":"saga.updated","saga_id":"<uuid>","version":2}
+{"type":"saga.retired","saga_id":"<uuid>","version":3}
+{"type":"saga.completed","saga_id":"<uuid>","version":1}
+{"type":"level.changed","player_id":"<uuid>"}
+{"type":"ping"}
+```
+
+`saga.created`, `saga.updated`, `saga.retired`, and `saga.completed` go to every connected companion. `level.changed` goes only to that player. `ping` is a heartbeat, every 25 seconds, and is not a reason to sync.
+
+The frames are produced by Postgres triggers (`LISTEN`/`NOTIFY` on `gutsaga_events`) so every API process sees them. Image-only updates do not notify. Railway notes, reconnect, and shutdown are in [realtime.md](realtime.md).
+
 ### `POST /v1/complete`
 
 Idempotent on `(character_id, quest_id)`. The first call wins and stores `quest_version` — the version the player had loaded, which must exist in `quest_versions`. Repeating the call does not change the row, does not write another adventure-log line, and does not post to Discord again. A later quest version does not open a second completion.
@@ -329,3 +348,5 @@ The machine-readable contract is also in [`openapi.yaml`](openapi.yaml).
 ## Railway
 
 Connect the GitHub repo to Railway project `gutsaga`. The service root directory must be the **repository root** (the Dockerfile context is the whole module). `railway.json` builds `api/Dockerfile` and checks `/healthz`. Add the Postgres plugin and set `DATABASE_URL`, `DISCORD_WEBHOOK_URL`, and `ADMIN_TOKEN`. For chat clients that render a saga cover as a markdown image, also set `PUBLIC_BASE_URL` to the public Railway origin (`https://gutsaga-production.up.railway.app`) and `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` is optional and defaults to `1h`. Pushes to `main` deploy through Railway's GitHub integration.
+
+WebSockets need no extra Railway setting. The public proxy upgrades `GET /v1/ws` and does not apply the HTTP idle timeout to that socket. Leave `ReadTimeout` and `WriteTimeout` unset on the Go server (they are). Details, heartbeats, and deploys: [realtime.md](realtime.md).
