@@ -98,6 +98,8 @@ Update fields (same shape as create, all optional). Only the owner may patch. Ca
 
 When present, `has_image` is true and `image_url` points at the GET path. The companion converts the cover to TGA and writes `Interface/AddOns/GutSaga/media/<quest_id>.tga` on sync (Classic Era cannot load loose PNGs as addon textures). The addon shows it under the description, above goals.
 
+The player GET stays session-authenticated. Smia, which only has the admin token, fetches the same bytes at `GET /v1/admin/quests/{id}/image`. Admin quest list and admin quest get also include `image_signed_url` (absolute, expiring, no auth header) when `PUBLIC_BASE_URL` and `IMAGE_URL_SECRET` are set. That URL is `GET /v1/public/sagas/{id}/image` and returns only the image. See [API.md](API.md).
+
 ## After create / update
 
 The companion syncs into `GutSagaData.lua`. Players need `/reload` in-game to see new or changed sagas.

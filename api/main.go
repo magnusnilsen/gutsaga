@@ -52,6 +52,9 @@ Environment:
   DATABASE_URL          Postgres connection string (required)
   DISCORD_WEBHOOK_URL   optional; completions post here as GutSaga
   ADMIN_TOKEN           bearer token for /v1/admin
+  PUBLIC_BASE_URL       public origin for signed cover URLs (no trailing slash)
+  IMAGE_URL_SECRET      HMAC secret for those URLs (openssl rand -hex 32)
+  IMAGE_URL_TTL         signed URL lifetime (Go duration, default 1h)
   PORT                  listen port (default 8080)
   SMIA_AUTH_MODE        smia (default) or dev
   SMIA_DEV_TOKEN        static token when SMIA_AUTH_MODE=dev
@@ -98,7 +101,29 @@ func serve(args []string) int {
 		slog.Warn("ADMIN_TOKEN is empty; admin routes are disabled")
 	}
 	store := NewStore(pool)
-	srv := &Server{store: store, adminToken: os.Getenv("ADMIN_TOKEN"), discord: notifier, smia: newVerifier(store)}
+	imageTTL := time.Hour
+	if raw := strings.TrimSpace(os.Getenv("IMAGE_URL_TTL")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil || d <= 0 {
+			slog.Warn("IMAGE_URL_TTL is invalid; using 1h", "value", raw)
+		} else {
+			imageTTL = d
+		}
+	}
+	publicBase := strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")), "/")
+	imageSecret := strings.TrimSpace(os.Getenv("IMAGE_URL_SECRET"))
+	if (publicBase == "") != (imageSecret == "") {
+		slog.Warn("signed saga image URLs need both PUBLIC_BASE_URL and IMAGE_URL_SECRET")
+	}
+	srv := &Server{
+		store:          store,
+		adminToken:     os.Getenv("ADMIN_TOKEN"),
+		publicBaseURL:  publicBase,
+		imageURLSecret: imageSecret,
+		imageURLTTL:    imageTTL,
+		discord:        notifier,
+		smia:           newVerifier(store),
+	}
 	if strings.EqualFold(os.Getenv("SMIA_AUTH_MODE"), "dev") && strings.TrimSpace(os.Getenv("SMIA_DEV_TOKEN")) == "" {
 		slog.Warn("SMIA_AUTH_MODE=dev but SMIA_DEV_TOKEN is empty; login will fail")
 	}
