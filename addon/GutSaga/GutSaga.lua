@@ -149,7 +149,13 @@ local function initDB()
     if type(GutSagaDB.pending_resets) ~= "table" then
         GutSagaDB.pending_resets = {}
     end
+    if type(GutSagaDB.read) ~= "table" then
+        GutSagaDB.read = {}
+    end
 end
+
+local minimapBtn
+local updateMinimapUnread
 
 -- Queue an API progress wipe for the companion (after /reload writes SV).
 -- Without this, the next sync restores completed status and local reset looks broken.
@@ -393,6 +399,100 @@ local function findEntry(id)
         end
     end
     return nil
+end
+
+local function characterKey()
+    local name = plainString(player.name)
+    if not name then
+        return nil
+    end
+    local realm = plainString(player.realm) or ""
+    return string.lower(name) .. "\n" .. string.lower(realm)
+end
+
+-- Per-character read set. First visit seeds every current saga as read so an
+-- upgrade does not paint the whole log blue — only sagas that appear later.
+local function ensureReadBucket()
+    initDB()
+    local key = characterKey()
+    if not key then
+        return nil
+    end
+    local bucket = GutSagaDB.read[key]
+    if type(bucket) ~= "table" then
+        bucket = {}
+        local entries = currentEntries()
+        for i = 1, #entries do
+            local id = entries[i].quest_id
+            if type(id) == "string" and id ~= "" then
+                bucket[id] = true
+            end
+        end
+        GutSagaDB.read[key] = bucket
+    end
+    return bucket
+end
+
+local function markRead(questID)
+    if type(questID) ~= "string" or questID == "" then
+        return
+    end
+    local bucket = ensureReadBucket()
+    if bucket then
+        bucket[questID] = true
+    end
+end
+
+local function isUnread(questID, entry)
+    if type(questID) ~= "string" or questID == "" then
+        return false
+    end
+    if entry and isComplete(entry) then
+        return false
+    end
+    local bucket = ensureReadBucket()
+    if not bucket then
+        return false
+    end
+    return bucket[questID] ~= true
+end
+
+local function hasUnreadSagas()
+    local bucket = ensureReadBucket()
+    if not bucket then
+        return false
+    end
+    local entries = currentEntries()
+    for i = 1, #entries do
+        local e = entries[i]
+        if not isComplete(e) and type(e.quest_id) == "string" and bucket[e.quest_id] ~= true then
+            return true
+        end
+    end
+    return false
+end
+
+local function paintUnreadDot(tex)
+    if not tex then
+        return
+    end
+    if tex.SetColorTexture then
+        tex:SetColorTexture(0.22, 0.55, 1.0, 1)
+    else
+        tex:SetTexture("Interface\\Buttons\\WHITE8X8")
+        tex:SetVertexColor(0.22, 0.55, 1.0)
+    end
+end
+
+updateMinimapUnread = function()
+    if not minimapBtn or not minimapBtn.unread then
+        return
+    end
+    if hasUnreadSagas() then
+        minimapBtn.unread:Show()
+    else
+        minimapBtn.unread:Hide()
+    end
 end
 
 local function formatDescription(text)
@@ -1598,6 +1698,12 @@ local function ensureRow(i)
     hover:SetVertexColor(0.55, 0.42, 0.22)
     hover:SetAlpha(0)
     row.hover = hover
+    local unread = row:CreateTexture(nil, "OVERLAY")
+    unread:SetSize(7, 7)
+    unread:SetPoint("TOPLEFT", 4, -7)
+    paintUnreadDot(unread)
+    unread:Hide()
+    row.unread = unread
     local title = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", 8, -4)
     title:SetPoint("TOPRIGHT", -8, -4)
@@ -1614,6 +1720,7 @@ local function ensureRow(i)
     bindWheel(sub, listScroll, 36)
     row:SetScript("OnClick", function(self)
         selectedID = self.questID
+        markRead(self.questID)
         refresh()
     end)
     row:SetScript("OnEnter", function(self)
@@ -1690,6 +1797,17 @@ refresh = function()
             row.questID = item.quest_id
             row.title:SetText(item.title or "Saga")
             row.sub:SetText(listSubtitle(item, entries))
+            if isUnread(item.quest_id, item) then
+                row.unread:Show()
+                row.title:ClearAllPoints()
+                row.title:SetPoint("TOPLEFT", 16, -4)
+                row.title:SetPoint("TOPRIGHT", -8, -4)
+            else
+                row.unread:Hide()
+                row.title:ClearAllPoints()
+                row.title:SetPoint("TOPLEFT", 8, -4)
+                row.title:SetPoint("TOPRIGHT", -8, -4)
+            end
             if entryLocked(item, entries) then
                 row.title:SetTextColor(LOCKED_TITLE.r, LOCKED_TITLE.g, LOCKED_TITLE.b)
                 row.sub:SetTextColor(LOCKED_SUB.r, LOCKED_SUB.g, LOCKED_SUB.b)
@@ -1722,6 +1840,10 @@ refresh = function()
             row:Show()
             row.questID = item.quest_id
             row.title:SetText(item.title or "Saga")
+            row.unread:Hide()
+            row.title:ClearAllPoints()
+            row.title:SetPoint("TOPLEFT", 8, -4)
+            row.title:SetPoint("TOPRIGHT", -8, -4)
             row.title:SetTextColor(0.55, 0.75, 0.45)
             row.sub:SetText(creatorName(item))
             row.sub:SetTextColor(0.55, 0.52, 0.45)
@@ -1989,6 +2111,7 @@ refresh = function()
     detailScroll.range = math.max(0, detailH - 410)
     pcall(syncScrollBar, listScroll)
     pcall(syncScrollBar, detailScroll)
+    updateMinimapUnread()
 end
 
 local function encodeMembers(members)
@@ -2199,6 +2322,8 @@ local function onWorld()
     checkAll()
     if frame and frame:IsShown() then
         refresh()
+    else
+        updateMinimapUnread()
     end
 end
 
@@ -2744,6 +2869,7 @@ local function build()
         self:Hide()
         if type(questID) == "string" and questID ~= "" then
             selectedID = questID
+            markRead(questID)
             show()
             refresh()
         end
@@ -2773,6 +2899,7 @@ local function build()
 
     if Minimap then
         local btn = CreateFrame("Button", "GutSagaMinimapButton", Minimap)
+        minimapBtn = btn
         btn:SetSize(32, 32)
         btn:SetFrameStrata("MEDIUM")
         btn:RegisterForClicks("LeftButtonUp")
@@ -2784,6 +2911,12 @@ local function build()
         local icon = btn:CreateTexture(nil, "ARTWORK")
         icon:SetAllPoints()
         icon:SetTexture("Interface\\AddOns\\GutSaga\\GutSaga")
+        local unread = btn:CreateTexture(nil, "OVERLAY")
+        unread:SetSize(9, 9)
+        unread:SetPoint("TOPRIGHT", -1, -1)
+        paintUnreadDot(unread)
+        unread:Hide()
+        btn.unread = unread
         local function placeMinimap(self)
             local angle = self.angle or (math.pi * 0.75)
             local radius = (Minimap:GetWidth() / 2) + 5
@@ -2835,6 +2968,7 @@ local function build()
                 GameTooltip:Hide()
             end
         end)
+        updateMinimapUnread()
     end
 end
 
