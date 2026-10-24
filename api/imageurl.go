@@ -17,7 +17,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 )
 
-// placeholderPNG is a 640×360 dark panel used by Smia get_quest when a saga
+// placeholderPNG is a 640×360 dark panel used by Smia get_saga when a saga
 // has no cover. A 1×1 transparent pixel made Smia's media card collapse to a
 // one-word-wide column; a real-size image keeps the chat card readable.
 var placeholderPNG = mustPlaceholderPNG()

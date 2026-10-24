@@ -20,7 +20,7 @@
           "name": "type",
           "type": "string",
           "required": false,
-          "description": "e.g. Personal, Party event, quest — defaults to note"
+          "description": "e.g. Personal, Party event, saga — defaults to note"
         },
         {
           "name": "battletag",
@@ -33,23 +33,33 @@
           "required": false
         },
         {
-          "name": "quest_id",
+          "name": "saga_id",
           "type": "string",
-          "required": false
+          "required": false,
+          "description": "Optional related saga UUID"
         }
       ]
     },
     {
       "id": "type_s",
       "type": "util.convert",
-      "config": { "toType": "string" }
+      "config": {
+        "toType": "string"
+      }
     },
     {
       "id": "body",
       "type": "util.json.build",
       "config": {
-        "inputs": ["title", "body", "type", "battletag", "character_id", "quest_id"],
-        "template": "{\"title\": {{title}}, \"body\": {{body}}, \"type\": {{type}}, \"battletag\": {{battletag}}, \"character_id\": {{character_id}}, \"quest_id\": {{quest_id}}}"
+        "inputs": [
+          "title",
+          "body",
+          "type",
+          "battletag",
+          "character_id",
+          "saga_id"
+        ],
+        "template": "{\"title\": {{title}}, \"body\": {{body}}, \"type\": {{type}}, \"battletag\": {{battletag}}, \"character_id\": {{character_id}}, \"quest_id\": {{saga_id}}}"
       }
     },
     {
@@ -67,18 +77,78 @@
     {
       "id": "output",
       "type": "tool.output",
-      "fields": [{ "name": "entry", "type": "object", "required": true }]
+      "fields": [
+        {
+          "name": "entry",
+          "type": "object",
+          "required": true
+        }
+      ]
     }
   ],
   "edges": [
-    { "id": "e1", "source": "input", "target": "body", "sourceHandle": "title", "targetHandle": "title" },
-    { "id": "e2", "source": "input", "target": "body", "sourceHandle": "body", "targetHandle": "body" },
-    { "id": "e3", "source": "input", "target": "type_s", "sourceHandle": "type", "targetHandle": "value" },
-    { "id": "e4", "source": "type_s", "target": "body", "sourceHandle": "out", "targetHandle": "type" },
-    { "id": "e5", "source": "input", "target": "body", "sourceHandle": "battletag", "targetHandle": "battletag" },
-    { "id": "e6", "source": "input", "target": "body", "sourceHandle": "character_id", "targetHandle": "character_id" },
-    { "id": "e7", "source": "input", "target": "body", "sourceHandle": "quest_id", "targetHandle": "quest_id" },
-    { "id": "e8", "source": "body", "target": "post", "sourceHandle": "value", "targetHandle": "body" },
-    { "id": "e9", "source": "post", "target": "output", "sourceHandle": "body", "targetHandle": "entry" }
+    {
+      "id": "e1",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "title",
+      "targetHandle": "title"
+    },
+    {
+      "id": "e2",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "body",
+      "targetHandle": "body"
+    },
+    {
+      "id": "e3",
+      "source": "input",
+      "target": "type_s",
+      "sourceHandle": "type",
+      "targetHandle": "value"
+    },
+    {
+      "id": "e4",
+      "source": "type_s",
+      "target": "body",
+      "sourceHandle": "out",
+      "targetHandle": "type"
+    },
+    {
+      "id": "e5",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "battletag",
+      "targetHandle": "battletag"
+    },
+    {
+      "id": "e6",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "character_id",
+      "targetHandle": "character_id"
+    },
+    {
+      "id": "e7",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "saga_id",
+      "targetHandle": "saga_id"
+    },
+    {
+      "id": "e8",
+      "source": "body",
+      "target": "post",
+      "sourceHandle": "value",
+      "targetHandle": "body"
+    },
+    {
+      "id": "e9",
+      "source": "post",
+      "target": "output",
+      "sourceHandle": "body",
+      "targetHandle": "entry"
+    }
   ]
 }

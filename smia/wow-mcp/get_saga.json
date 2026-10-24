@@ -1,0 +1,341 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "input",
+      "type": "tool.input",
+      "fields": [
+        {
+          "name": "saga_id",
+          "type": "string",
+          "required": true,
+          "description": "GutSaga saga UUID from list_sagas / create_saga."
+        }
+      ]
+    },
+    {
+      "id": "url",
+      "type": "util.string.template",
+      "config": {
+        "template": "{{env.GUTSAGA_API_URL}}/v1/admin/quests/{{id}}"
+      }
+    },
+    {
+      "id": "get",
+      "type": "http.request",
+      "config": {
+        "method": "GET",
+        "headers": {
+          "Authorization": "Bearer {{env.GUTSAGA_ADMIN_TOKEN}}"
+        }
+      }
+    },
+    {
+      "id": "title",
+      "type": "util.get_path",
+      "config": {
+        "path": "title"
+      }
+    },
+    {
+      "id": "desc",
+      "type": "util.get_path",
+      "config": {
+        "path": "description"
+      }
+    },
+    {
+      "id": "card_sub",
+      "type": "util.get_path",
+      "config": {
+        "path": "card_subtitle"
+      }
+    },
+    {
+      "id": "has_image",
+      "type": "util.get_path",
+      "config": {
+        "path": "has_image"
+      }
+    },
+    {
+      "id": "signed_url",
+      "type": "util.get_path",
+      "config": {
+        "path": "image_signed_url"
+      }
+    },
+    {
+      "id": "card_cols",
+      "type": "util.get_path",
+      "config": {
+        "path": "card.columns"
+      }
+    },
+    {
+      "id": "card_rows",
+      "type": "util.get_path",
+      "config": {
+        "path": "card.rows"
+      }
+    },
+    {
+      "id": "empty_url",
+      "type": "util.string.template",
+      "config": {
+        "template": "{{env.GUTSAGA_API_URL}}/v1/public/placeholder.png"
+      }
+    },
+    {
+      "id": "true_flag",
+      "type": "util.constant",
+      "config": {
+        "valueType": "boolean",
+        "value": true
+      }
+    },
+    {
+      "id": "has_cover",
+      "type": "logic.compare",
+      "config": {
+        "op": "eq"
+      }
+    },
+    {
+      "id": "pick_url",
+      "type": "logic.switch",
+      "config": {
+        "valueType": "string"
+      }
+    },
+    {
+      "id": "signed_s",
+      "type": "util.convert",
+      "config": {
+        "toType": "string"
+      }
+    },
+    {
+      "id": "fetch",
+      "type": "file.fetch"
+    },
+    {
+      "id": "cover",
+      "type": "ui.render",
+      "config": {
+        "layout": "media",
+        "fullWidth": true
+      }
+    },
+    {
+      "id": "detail",
+      "type": "ui.render",
+      "config": {
+        "layout": "table",
+        "fullWidth": true,
+        "allowRefresh": true
+      }
+    },
+    {
+      "id": "output",
+      "type": "tool.output",
+      "fields": [
+        {
+          "name": "card",
+          "type": "object",
+          "required": false,
+          "description": "Table card: Mål (objectives) and Fullført (who completed). Primary chat view."
+        },
+        {
+          "name": "cover",
+          "type": "object",
+          "required": false,
+          "description": "Media card with the cover (or placeholder)."
+        },
+        {
+          "name": "saga",
+          "type": "object",
+          "required": true,
+          "description": "Full saga with versions, completed_by, and card (table payload)."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input",
+      "target": "url",
+      "sourceHandle": "saga_id",
+      "targetHandle": "id"
+    },
+    {
+      "id": "e2",
+      "source": "url",
+      "target": "get",
+      "sourceHandle": "value",
+      "targetHandle": "url"
+    },
+    {
+      "id": "e3",
+      "source": "get",
+      "target": "title",
+      "sourceHandle": "body",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e4",
+      "source": "get",
+      "target": "desc",
+      "sourceHandle": "body",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e4b",
+      "source": "get",
+      "target": "card_sub",
+      "sourceHandle": "body",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e5",
+      "source": "get",
+      "target": "has_image",
+      "sourceHandle": "body",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e6",
+      "source": "get",
+      "target": "signed_url",
+      "sourceHandle": "body",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e6b",
+      "source": "get",
+      "target": "card_cols",
+      "sourceHandle": "body",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e6c",
+      "source": "get",
+      "target": "card_rows",
+      "sourceHandle": "body",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e7",
+      "source": "has_image",
+      "target": "has_cover",
+      "sourceHandle": "value",
+      "targetHandle": "a"
+    },
+    {
+      "id": "e8",
+      "source": "true_flag",
+      "target": "has_cover",
+      "sourceHandle": "value",
+      "targetHandle": "b"
+    },
+    {
+      "id": "e9",
+      "source": "signed_url",
+      "target": "signed_s",
+      "sourceHandle": "value",
+      "targetHandle": "value"
+    },
+    {
+      "id": "e10",
+      "source": "has_cover",
+      "target": "pick_url",
+      "sourceHandle": "result",
+      "targetHandle": "switch"
+    },
+    {
+      "id": "e11",
+      "source": "signed_s",
+      "target": "pick_url",
+      "sourceHandle": "out",
+      "targetHandle": "true"
+    },
+    {
+      "id": "e12",
+      "source": "empty_url",
+      "target": "pick_url",
+      "sourceHandle": "value",
+      "targetHandle": "false"
+    },
+    {
+      "id": "e13",
+      "source": "pick_url",
+      "target": "fetch",
+      "sourceHandle": "result",
+      "targetHandle": "url"
+    },
+    {
+      "id": "e14",
+      "source": "title",
+      "target": "cover",
+      "sourceHandle": "value",
+      "targetHandle": "title"
+    },
+    {
+      "id": "e15b",
+      "source": "card_sub",
+      "target": "cover",
+      "sourceHandle": "value",
+      "targetHandle": "subtitle"
+    },
+    {
+      "id": "e16",
+      "source": "fetch",
+      "target": "cover",
+      "sourceHandle": "file",
+      "targetHandle": "file"
+    },
+    {
+      "id": "e17",
+      "source": "title",
+      "target": "detail",
+      "sourceHandle": "value",
+      "targetHandle": "title"
+    },
+    {
+      "id": "e18",
+      "source": "card_cols",
+      "target": "detail",
+      "sourceHandle": "value",
+      "targetHandle": "columns"
+    },
+    {
+      "id": "e19",
+      "source": "card_rows",
+      "target": "detail",
+      "sourceHandle": "value",
+      "targetHandle": "rows"
+    },
+    {
+      "id": "e20",
+      "source": "get",
+      "target": "output",
+      "sourceHandle": "body",
+      "targetHandle": "saga"
+    },
+    {
+      "id": "e21",
+      "source": "cover",
+      "target": "output",
+      "sourceHandle": "view",
+      "targetHandle": "cover"
+    },
+    {
+      "id": "e22b",
+      "source": "detail",
+      "target": "output",
+      "sourceHandle": "view",
+      "targetHandle": "card"
+    }
+  ]
+}

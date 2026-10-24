@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "input",
+      "type": "tool.input",
+      "fields": [
+        {
+          "name": "character_id",
+          "type": "string",
+          "required": true,
+          "description": "GutSaga character UUID"
+        },
+        {
+          "name": "saga_id",
+          "type": "string",
+          "required": true,
+          "description": "GutSaga saga UUID"
+        },
+        {
+          "name": "saga_version",
+          "type": "number",
+          "required": false,
+          "description": "Omit to use the current saga version"
+        },
+        {
+          "name": "level",
+          "type": "number",
+          "required": false,
+          "description": "Character level at completion"
+        }
+      ]
+    },
+    {
+      "id": "body",
+      "type": "util.json.build",
+      "config": {
+        "inputs": [
+          "character_id",
+          "saga_id",
+          "saga_version",
+          "level"
+        ],
+        "template": "{\"character_id\": {{character_id}}, \"quest_id\": {{saga_id}}, \"quest_version\": {{saga_version}}, \"level\": {{level}}}"
+      }
+    },
+    {
+      "id": "post",
+      "type": "http.request",
+      "config": {
+        "url": "{{env.GUTSAGA_API_URL}}/v1/admin/complete",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer {{env.GUTSAGA_ADMIN_TOKEN}}"
+        }
+      }
+    },
+    {
+      "id": "output",
+      "type": "tool.output",
+      "fields": [
+        {
+          "name": "result",
+          "type": "object",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "character_id",
+      "targetHandle": "character_id"
+    },
+    {
+      "id": "e2",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "saga_id",
+      "targetHandle": "saga_id"
+    },
+    {
+      "id": "e3",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "saga_version",
+      "targetHandle": "saga_version"
+    },
+    {
+      "id": "e4",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "level",
+      "targetHandle": "level"
+    },
+    {
+      "id": "e5",
+      "source": "body",
+      "target": "post",
+      "sourceHandle": "value",
+      "targetHandle": "body"
+    },
+    {
+      "id": "e6",
+      "source": "post",
+      "target": "output",
+      "sourceHandle": "body",
+      "targetHandle": "result"
+    }
+  ]
+}

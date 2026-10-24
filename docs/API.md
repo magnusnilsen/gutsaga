@@ -73,7 +73,7 @@ The companion upserts the character the addon reported. BattleTag is taken from 
 
 ## Objectives
 
-`objectives` is a JSON array of steps. A saga completes the first time every step is satisfied on the same check, and that completion stays. Smia MCP `create_quest` / `update_quest` pass this array through to `POST` / `PATCH /v1/admin/quests` unchanged.
+`objectives` is a JSON array of steps. A saga completes the first time every step is satisfied on the same check, and that completion stays. Smia MCP `create_saga` / `update_saga` pass this array through to `POST` / `PATCH /v1/admin/quests` unchanged.
 
 Every step has `id` (`[A-Za-z0-9_-]{1,40}`, unique across the saga including sequence beats), `type`, and `text` (the quest-log line, max 300). At most 20 top-level steps and 40 nodes. Leave `objectives_ordered` false. Order inside one trick is a `sequence` step.
 
@@ -345,7 +345,7 @@ These are the endpoints a later Smia MCP server should call with `ADMIN_TOKEN`.
 | `PUT` | `/v1/admin/quests/{id}/image` | raw or multipart `image` cover (same rules as player `/v1/sagas/{id}/image`) |
 | `DELETE` | `/v1/admin/quests/{id}/image` | clear cover |
 | `PATCH` | `/v1/admin/quests/{id}` | partial update. Text changes **bump `version` and write a snapshot.** `min_level: null` clears it. JSON or multipart; optional file field `image` (cover-only OK, no version bump); optional `when` / `group`. `requires: []` clears prerequisites. `chain: null` removes the saga from its chain. Optional `editor_email` (Smia caller): when set, only that player's sagas may be edited (`403` otherwise; Smia `update_saga` sends this from `context.run`). Optional `updated_by` (BattleTag) is the same check by tag. Optional `announce` (default true). A text, goal, reward, minimum-level, or party change posts a one-line version embed. `active: false` posts a retirement instead. Assignment-only edits stay quiet. `announce: false` skips both. Response includes `image_signed_url` when signing is configured. |
-| `GET` | `/v1/public/placeholder.png` | 640×360 dark PNG (no auth). Used by Smia `get_quest` when a saga has no cover so the media card keeps a readable width (`/v1/public/empty.png` is an alias). |
+| `GET` | `/v1/public/placeholder.png` | 640×360 dark PNG (no auth). Used by Smia `get_saga` when a saga has no cover so the media card keeps a readable width (`/v1/public/empty.png` is an alias). |
 | `GET` | `/v1/public/sagas/{id}/image?exp=&sig=` | no `Authorization` header. HMAC-SHA256 of `id`, a newline, and the unix `exp`, hex-encoded, keyed with `IMAGE_URL_SECRET`. `403` bad signature (checked before the database, so a guess does not reveal whether the saga exists). `403` when `exp` is in the past. `404` when the signature is valid and there is no image. The body is only the image bytes. |
 | `GET` | `/v1/admin/log?battletag=&character_id=&limit=` | newest first, default 50 |
 | `POST` | `/v1/admin/log` | `type`, `title`, `body`, optional `battletag` / `player_id` / `character_id` / `quest_id` |

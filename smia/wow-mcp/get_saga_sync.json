@@ -67,7 +67,7 @@
           "name": "sync",
           "type": "object",
           "required": true,
-          "description": "Characters for the BattleTag plus all quests (companion uses /v1/sync with Smia session; this is for chat/debug)"
+          "description": "Characters for the BattleTag plus all sagas (companion uses /v1/sync with Smia session; this is for chat/debug). API payload still uses a quests key."
         }
       ]
     }

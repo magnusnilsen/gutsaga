@@ -9,7 +9,7 @@
           "name": "character_id",
           "type": "string",
           "required": false,
-          "description": "Optional GutSaga character UUID \u2014 includes status/eligible for that character. Omit or leave empty to list all quests."
+          "description": "Optional GutSaga character UUID — includes status/eligible for that character. Omit or leave empty to list all sagas."
         }
       ]
     },
@@ -45,7 +45,7 @@
           "name": "result",
           "type": "object",
           "required": true,
-          "description": "{ quests: [...] }"
+          "description": "{ quests: [...] } — API key is quests; each item is a saga."
         }
       ]
     }

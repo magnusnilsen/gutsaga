@@ -9,13 +9,13 @@
           "name": "title",
           "type": "string",
           "required": true,
-          "description": "Short saga title shown in the in-game quest log (Norwegian flavour is fine)."
+          "description": "Short saga title shown in the in-game saga log (Norwegian flavour is fine)."
         },
         {
           "name": "description",
           "type": "string",
           "required": true,
-          "description": "Quest-giver flavour text. Write it with the player; fit Classic/Forever lore. Newlines OK."
+          "description": "Saga-giver flavour text. Write it with the player; fit Classic/Forever lore. Newlines OK."
         },
         {
           "name": "objectives",
@@ -76,12 +76,16 @@
     {
       "id": "reward_s",
       "type": "util.convert",
-      "config": { "toType": "string" }
+      "config": {
+        "toType": "string"
+      }
     },
     {
       "id": "ids",
       "type": "util.convert",
-      "config": { "toType": "array" }
+      "config": {
+        "toType": "array"
+      }
     },
     {
       "id": "body",
@@ -120,29 +124,119 @@
       "type": "tool.output",
       "fields": [
         {
-          "name": "quest",
+          "name": "saga",
           "type": "object",
           "required": true,
-          "description": "Created GutSaga quest (has_image true when a cover was uploaded)"
+          "description": "Created GutSaga saga (has_image true when a cover was uploaded)."
         }
       ]
     }
   ],
   "edges": [
-    { "id": "e1", "source": "input", "target": "body", "sourceHandle": "title", "targetHandle": "title" },
-    { "id": "e2", "source": "input", "target": "body", "sourceHandle": "description", "targetHandle": "description" },
-    { "id": "e3", "source": "input", "target": "body", "sourceHandle": "objectives", "targetHandle": "objectives" },
-    { "id": "e4", "source": "input", "target": "reward_s", "sourceHandle": "reward", "targetHandle": "value" },
-    { "id": "e5", "source": "reward_s", "target": "body", "sourceHandle": "out", "targetHandle": "reward" },
-    { "id": "e6", "source": "input", "target": "body", "sourceHandle": "min_level", "targetHandle": "min_level" },
-    { "id": "e7", "source": "input", "target": "body", "sourceHandle": "party_quest", "targetHandle": "party_quest" },
-    { "id": "e8", "source": "input", "target": "ids", "sourceHandle": "assigned_character_ids", "targetHandle": "value" },
-    { "id": "e9", "source": "ids", "target": "body", "sourceHandle": "out", "targetHandle": "ids" },
-    { "id": "e10", "source": "input", "target": "body", "sourceHandle": "objectives_ordered", "targetHandle": "objectives_ordered" },
-    { "id": "e11", "source": "input", "target": "body", "sourceHandle": "active", "targetHandle": "active" },
-    { "id": "e12", "source": "input", "target": "body", "sourceHandle": "created_by", "targetHandle": "created_by" },
-    { "id": "e13", "source": "body", "target": "post", "sourceHandle": "value", "targetHandle": "body" },
-    { "id": "e14", "source": "input", "target": "post", "sourceHandle": "image", "targetHandle": "files" },
-    { "id": "e15", "source": "post", "target": "output", "sourceHandle": "body", "targetHandle": "quest" }
+    {
+      "id": "e1",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "title",
+      "targetHandle": "title"
+    },
+    {
+      "id": "e2",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "description",
+      "targetHandle": "description"
+    },
+    {
+      "id": "e3",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "objectives",
+      "targetHandle": "objectives"
+    },
+    {
+      "id": "e4",
+      "source": "input",
+      "target": "reward_s",
+      "sourceHandle": "reward",
+      "targetHandle": "value"
+    },
+    {
+      "id": "e5",
+      "source": "reward_s",
+      "target": "body",
+      "sourceHandle": "out",
+      "targetHandle": "reward"
+    },
+    {
+      "id": "e6",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "min_level",
+      "targetHandle": "min_level"
+    },
+    {
+      "id": "e7",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "party_quest",
+      "targetHandle": "party_quest"
+    },
+    {
+      "id": "e8",
+      "source": "input",
+      "target": "ids",
+      "sourceHandle": "assigned_character_ids",
+      "targetHandle": "value"
+    },
+    {
+      "id": "e9",
+      "source": "ids",
+      "target": "body",
+      "sourceHandle": "out",
+      "targetHandle": "ids"
+    },
+    {
+      "id": "e10",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "objectives_ordered",
+      "targetHandle": "objectives_ordered"
+    },
+    {
+      "id": "e11",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "active",
+      "targetHandle": "active"
+    },
+    {
+      "id": "e12",
+      "source": "input",
+      "target": "body",
+      "sourceHandle": "created_by",
+      "targetHandle": "created_by"
+    },
+    {
+      "id": "e13",
+      "source": "body",
+      "target": "post",
+      "sourceHandle": "value",
+      "targetHandle": "body"
+    },
+    {
+      "id": "e14",
+      "source": "input",
+      "target": "post",
+      "sourceHandle": "image",
+      "targetHandle": "files"
+    },
+    {
+      "id": "e15",
+      "source": "post",
+      "target": "output",
+      "sourceHandle": "body",
+      "targetHandle": "saga"
+    }
   ]
 }
