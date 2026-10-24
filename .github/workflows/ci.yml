@@ -33,7 +33,7 @@ jobs:
         with:
           go-version: "1.22"
       - name: Test
-        run: go test ./...
+        run: go test ./... -count=1 -timeout 3m
       - name: Build API and Windows companion
         run: |
           CGO_ENABLED=0 go build -o /tmp/gutsaga-api ./api

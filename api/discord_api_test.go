@@ -228,6 +228,9 @@ func TestDiscordFailureDoesNotFailTheAPI(t *testing.T) {
 func TestDiscordQueueDoesNotBlockTheRequest(t *testing.T) {
 	resetDB(t)
 	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(unblock)
 	var once sync.Once
 	started := make(chan struct{})
 	var payload discordWire
@@ -290,16 +293,16 @@ func TestDiscordQueueDoesNotBlockTheRequest(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("webhook was not called")
 	}
-	if payload.Username != "GutSaga" || !strings.Contains(payload.Content, "Køtest") {
+	if payload.Username != "GutSaga" || !strings.Contains(payload.Content, "opprettet") {
 		t.Fatalf("payload %+v", payload)
 	}
-	if len(payload.Embeds) != 1 || payload.Embeds[0].Color != discord.ColorSaga || payload.Embeds[0].Image == nil {
+	if len(payload.Embeds) != 1 || payload.Embeds[0].Title != "Køtest" || payload.Embeds[0].Color != discord.ColorSaga || payload.Embeds[0].Image == nil {
 		t.Fatalf("embed %+v", payload.Embeds)
 	}
 	if payload.Embeds[0].Image.URL != "attachment://"+fileName || fileName != "cover.png" || len(fileBody) == 0 {
 		t.Fatalf("file %s %d image %+v", fileName, len(fileBody), payload.Embeds[0].Image)
 	}
-	close(release)
+	unblock()
 
 	player := apiClient{base: apiSrv.URL, token: created.APIKey, http: &http.Client{Timeout: 3 * time.Second}}
 	var done contract.CompletionResponse

@@ -759,7 +759,7 @@ func (s *Server) applyAdminQuestImage(ctx context.Context, q contract.Quest, ima
 func questPatchHasFields(p QuestPatch) bool {
 	return p.Title != nil || p.Description != nil || p.Objectives != nil || p.ObjectivesOrdered != nil ||
 		p.Reward != nil || p.MinLevelSet || p.PartyQuest != nil || p.Active != nil || p.CreatedBy != nil ||
-		p.AssignedCharacterIDs != nil
+		p.AssignedCharacterIDs != nil || p.RequiresSet || p.ChainSet
 }
 
 // readQuestCreate accepts JSON or multipart. Multipart may include optional file field "image".
