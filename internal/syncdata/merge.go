@@ -52,10 +52,10 @@ type Completer struct {
 	When        string `json:"when,omitempty"` // "dd mmmm yyyy hh:mm" Europe/Oslo
 }
 
-// Merge applies the companion rule: a character sees an active quest when
-// min_level is null or <= their level, and the quest is a party quest or
-// assigned to them. A completed quest stays visible even if it later becomes
-// inactive or the character would no longer be eligible.
+// Merge applies the companion rule: a character sees an active quest when it
+// is a party quest or assigned to them. min_level is advice for the addon
+// (difficulty color), not a filter. A completed quest stays visible even if
+// it later becomes inactive or the character would no longer be eligible.
 func Merge(sync contract.SyncResponse) []Entry {
 	progress := map[string]contract.Progress{}
 	doneBy := map[string]map[string]bool{}

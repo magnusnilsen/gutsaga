@@ -93,6 +93,8 @@ func TestReloadNews(t *testing.T) {
 		t.Fatal(a)
 	}
 
+	// Leveling past min_level is not a sync event — sagas stay visible and
+	// the addon only recolors the title.
 	low := baseSync()
 	low.Characters[0].Level = 5
 	low.Quests = []contract.Quest{{
@@ -102,8 +104,8 @@ func TestReloadNews(t *testing.T) {
 	high.Characters = []contract.Character{{ID: "c1", Name: "Magni", Realm: "Argent Dawn", Level: 10}}
 	high.Quests = low.Quests
 	d, _ = ReloadNews(low, high)
-	if d != "Ny saga: Vaktpost — skriv /reload i WoW" {
-		t.Fatal(d)
+	if d != "" {
+		t.Fatalf("level-only change should be quiet, got %q", d)
 	}
 
 	mira := next

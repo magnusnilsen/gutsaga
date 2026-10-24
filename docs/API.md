@@ -225,7 +225,7 @@ Returns three arrays. The companion merges them; the server does not hide quests
 
 Merge rule, applied by the companion when it writes `GutSagaData.lua`:
 
-- The quest is active, `min_level` is null or `<=` the character's level, and either `party_quest` is true or `assigned_to` contains the character id.
+- The quest is active, and either `party_quest` is true or `assigned_to` contains the character id. `min_level` is not a hard gate — the addon colors the title by expected difficulty (WoW-style red/orange/yellow/green/gray). No `min_level` uses yellow.
 - Status comes from the progress row with the same `quest_id` and `character_id`. No row means not started.
 - A completed quest stays in the log even if it is later deactivated.
 - A locked saga stays in the log when the character is otherwise eligible. The addon shows it greyed out.

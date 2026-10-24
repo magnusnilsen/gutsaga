@@ -210,14 +210,13 @@ type ErrorBody struct {
 }
 
 // Eligible reports whether a character should see a quest.
-// A character sees a quest when it is active, min_level is null or <= the
-// character's level, and either it is a party quest or assigned_to contains
-// the character id.
+// A character sees a quest when it is active and either it is a party quest
+// or assigned_to contains the character id. min_level is not a hard gate —
+// the addon colors the title by difficulty (like the WoW quest log) instead.
+// level is kept for call-site compatibility and is unused.
 func Eligible(level int, characterID string, quest Quest) bool {
+	_ = level
 	if !quest.Active {
-		return false
-	}
-	if quest.MinLevel != nil && level < *quest.MinLevel {
 		return false
 	}
 	if quest.PartyQuest {

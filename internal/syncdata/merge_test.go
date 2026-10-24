@@ -36,8 +36,8 @@ func TestMergeRules(t *testing.T) {
 	if _, ok := got["Magni/q-party"]; !ok {
 		t.Fatal("party quest should show for Magni")
 	}
-	if _, ok := got["Mira/q-party"]; ok {
-		t.Fatal("Mira is under min level")
+	if _, ok := got["Mira/q-party"]; !ok {
+		t.Fatal("min_level is not a hard gate; Mira should still see the party quest")
 	}
 	if e := got["Magni/q-mine"]; e.QuestVersion != 4 {
 		t.Fatalf("version %d", e.QuestVersion)
@@ -45,8 +45,8 @@ func TestMergeRules(t *testing.T) {
 	if _, ok := got["Mira/q-mine"]; ok {
 		t.Fatal("assigned only to Magni")
 	}
-	if _, ok := got["Magni/q-high"]; ok {
-		t.Fatal("min level")
+	if _, ok := got["Magni/q-high"]; !ok {
+		t.Fatal("high min_level should still appear (colored in the addon)")
 	}
 	if _, ok := got["Magni/q-off"]; ok {
 		t.Fatal("inactive")

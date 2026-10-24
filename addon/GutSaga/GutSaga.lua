@@ -24,6 +24,12 @@ local detailPanel
 local GOLD = { r = 0.99, g = 0.93, b = 0.59 }
 local LOCKED_TITLE = { r = 0.45, g = 0.42, b = 0.38 }
 local LOCKED_SUB = { r = 0.40, g = 0.37, b = 0.34 }
+-- Fallback difficulty colors when GetQuestDifficultyColor is missing.
+local DIFF_YELLOW = { r = 1.00, g = 1.00, b = 0.00 }
+local DIFF_RED = { r = 1.00, g = 0.10, b = 0.10 }
+local DIFF_ORANGE = { r = 1.00, g = 0.50, b = 0.25 }
+local DIFF_GREEN = { r = 0.25, g = 0.75, b = 0.25 }
+local DIFF_GRAY = { r = 0.50, g = 0.50, b = 0.50 }
 local listChild
 local listScroll
 local detailFS
@@ -297,6 +303,42 @@ local function isComplete(entry)
     local id = entry.quest_id
     return type(id) == "string" and type(GutSagaDB) == "table"
         and type(GutSagaDB.completions) == "table" and GutSagaDB.completions[id] ~= nil
+end
+
+-- WoW-style quest-log colors from saga min_level vs player level.
+-- No min_level → yellow. Far below → red, a bit below → orange,
+-- around / slight above → yellow, a bit above → green, a lot above → gray.
+local function difficultyColor(minLevel, playerLevel)
+    local level = tonumber(minLevel)
+    if not level or level < 1 then
+        return DIFF_YELLOW
+    end
+    local pl = tonumber(playerLevel) or 1
+    if GetQuestDifficultyColor then
+        local ok, c = pcall(GetQuestDifficultyColor, level)
+        if ok and type(c) == "table" and type(c.r) == "number" then
+            return c
+        end
+    end
+    local diff = level - pl
+    if diff >= 5 then
+        return DIFF_RED
+    elseif diff >= 3 then
+        return DIFF_ORANGE
+    elseif diff >= -2 then
+        return DIFF_YELLOW
+    end
+    local greenRange = 5
+    if GetQuestGreenRange then
+        local ok, n = pcall(GetQuestGreenRange)
+        if ok and type(n) == "number" and n > 0 then
+            greenRange = n
+        end
+    end
+    if -diff <= greenRange then
+        return DIFF_GREEN
+    end
+    return DIFF_GRAY
 end
 
 local function currentEntries()
@@ -1652,7 +1694,8 @@ refresh = function()
                 row.title:SetTextColor(LOCKED_TITLE.r, LOCKED_TITLE.g, LOCKED_TITLE.b)
                 row.sub:SetTextColor(LOCKED_SUB.r, LOCKED_SUB.g, LOCKED_SUB.b)
             else
-                row.title:SetTextColor(GOLD.r, GOLD.g, GOLD.b)
+                local c = difficultyColor(item.min_level, player.level)
+                row.title:SetTextColor(c.r, c.g, c.b)
                 row.sub:SetTextColor(0.72, 0.68, 0.58)
             end
             if item.quest_id == selectedID then
@@ -1737,9 +1780,17 @@ refresh = function()
         detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
         detailY = detailY + (detailFS:GetStringHeight() or 14) + 8
     else
+        local selectedLocked = entryLocked(selectedEntry, entries)
         detailTitle:Show()
         detailTitle:SetText(selectedEntry.title or "Saga")
-        detailTitle:SetTextColor(INK.r, INK.g, INK.b)
+        if selectedLocked then
+            detailTitle:SetTextColor(LOCKED_TITLE.r, LOCKED_TITLE.g, LOCKED_TITLE.b)
+        elseif isComplete(selectedEntry) then
+            detailTitle:SetTextColor(0.35, 0.55, 0.28)
+        else
+            local c = difficultyColor(selectedEntry.min_level, player.level)
+            detailTitle:SetTextColor(c.r, c.g, c.b)
+        end
         detailTitle:SetWidth(width)
         detailTitle:ClearAllPoints()
         detailTitle:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
@@ -1756,7 +1807,7 @@ refresh = function()
                 detailMeta:SetWidth(width)
                 detailMeta:ClearAllPoints()
                 detailMeta:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-                if entryLocked(selectedEntry, entries) then
+                if selectedLocked then
                     detailMeta:SetTextColor(0.45, 0.28, 0.18)
                 else
                     detailMeta:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
