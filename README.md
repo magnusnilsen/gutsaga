@@ -2,7 +2,7 @@
 
 GutSaga er oppdragsloggen til gutane i World of Warcraft: Forever. Spillet har ingen plass til våre egne oppdrag, så vi har et tillegg i klienten og et lite program på maskinen som snakker med et eget API.
 
-Koden er [MIT](LICENSE). Følgeprogrammets standard-API peker på gutane sin server; for egen drift, se [Lokal testing](#lokal-testing) og [For den som driver serveren](#for-den-som-driver-serveren) (`--api-url` / `GUTSAGA_API_URL`). Pull requests er skrudd av i GitHub for nå — fork og issues er greit; PRs kan skrus på senere.
+Koden er [MIT](LICENSE). Følgeprogrammets standard-API peker på gutane sin server; for egen drift, se [Lokal testing](#lokal-testing) og [For den som driver serveren](#for-den-som-driver-serveren) (`--api-url` / `GUTSAGA_API_URL`). Offentlige pull requests er begrenset til collaborators for nå — fork og issues er greit.
 
 Forever-klienten er 1.60.1 og bruker det moderne tilleggs-API-et (Midnight), ikke 1.12. Grensesnittnummeret står i `addon/INTERFACE` og i `.toc`-filene. Forever bruker `16001` til det blir endret.
 

@@ -7,41 +7,45 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 )
 
-func TestBuildQuestCard(t *testing.T) {
+func TestBuildGoalsMarkdown(t *testing.T) {
 	q := contract.Quest{
-		Title: "Test",
 		Objectives: []contract.Objective{
 			{ID: "a", Type: "talk", Text: "Snakk med Farley"},
 			{ID: "b", Type: "go", Text: "Stå i Goldshire"},
 		},
 	}
-	card := buildQuestCard(q, nil)
-	if card == nil || len(card.Columns) != 1 {
-		t.Fatalf("columns %+v", card)
+	got := buildGoalsMarkdown(q)
+	if got != "1. Snakk med Farley\n2. Stå i Goldshire" {
+		t.Fatalf("goals %q", got)
 	}
-	if len(card.Rows) != 3 { // 2 goals + empty completers
-		t.Fatalf("rows %d %+v", len(card.Rows), card.Rows)
+	if buildGoalsMarkdown(contract.Quest{}) != "(ingen mål)" {
+		t.Fatal("empty")
 	}
-	if card.Rows[0].Group != "Mål" || card.Rows[0].Cells["detail"] != "1. Snakk med Farley" {
-		t.Fatalf("goal0 %+v", card.Rows[0])
+}
+
+func TestBuildActivityCard(t *testing.T) {
+	card := buildActivityCard(nil)
+	if card == nil || len(card.Columns) != 3 || len(card.Rows) != 1 {
+		t.Fatalf("empty %+v", card)
 	}
-	if card.Rows[2].Group != "Fullført" {
-		t.Fatalf("done %+v", card.Rows[2])
+	if card.Rows[0].Cells["character"] != "Ingen har fullført ennå" {
+		t.Fatalf("empty row %+v", card.Rows[0])
 	}
 
-	card = buildQuestCard(q, []contract.QuestCompleter{{
+	card = buildActivityCard([]contract.QuestCompleter{{
 		Character: "Magni", Class: "Paladin", Level: 12, Realm: "Celebras", When: "22 oktober 2026 19:00",
 	}})
-	if len(card.Rows) != 3 {
-		t.Fatalf("with completer rows %d", len(card.Rows))
+	if len(card.Rows) != 1 {
+		t.Fatalf("rows %d", len(card.Rows))
 	}
-	got, _ := card.Rows[2].Cells["detail"].(string)
-	if got == "" || got[:5] != "Magni" {
-		t.Fatalf("completer line %q", got)
+	if card.Rows[0].Cells["character"] != "Magni fullførte" {
+		t.Fatalf("character %v", card.Rows[0].Cells["character"])
 	}
-
-	sub := buildQuestCardSubtitle(card)
-	if !strings.Contains(sub, "Mål") || !strings.Contains(sub, "Fullført") || !strings.Contains(sub, "Magni") {
-		t.Fatalf("subtitle %q", sub)
+	detail, _ := card.Rows[0].Cells["detail"].(string)
+	if !strings.Contains(detail, "Paladin") || !strings.Contains(detail, "Celebras") {
+		t.Fatalf("detail %q", detail)
+	}
+	if card.Rows[0].Cells["when"] != "22 oktober 2026 19:00" {
+		t.Fatalf("when %v", card.Rows[0].Cells["when"])
 	}
 }

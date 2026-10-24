@@ -45,10 +45,10 @@
       }
     },
     {
-      "id": "card_sub",
+      "id": "goals_md",
       "type": "util.get_path",
       "config": {
-        "path": "card_subtitle"
+        "path": "goals_markdown"
       }
     },
     {
@@ -120,18 +120,88 @@
       "type": "file.fetch"
     },
     {
-      "id": "cover",
-      "type": "ui.render",
+      "id": "heading_desc",
+      "type": "util.constant",
       "config": {
-        "layout": "media",
-        "fullWidth": true
+        "valueType": "json",
+        "value": {
+          "type": "heading",
+          "text": "Beskrivelse"
+        }
       }
     },
     {
-      "id": "detail",
+      "id": "heading_act",
+      "type": "util.constant",
+      "config": {
+        "valueType": "json",
+        "value": {
+          "type": "heading",
+          "text": "Aktivitet"
+        }
+      }
+    },
+    {
+      "id": "goals_block",
+      "type": "util.json.build",
+      "config": {
+        "template": "{\"type\":\"text\",\"body\":{{body}}}",
+        "inputs": ["body"]
+      }
+    },
+    {
+      "id": "desc_block",
+      "type": "util.json.build",
+      "config": {
+        "template": "{\"type\":\"text\",\"body\":{{body}}}",
+        "inputs": ["body"]
+      }
+    },
+    {
+      "id": "media_block",
+      "type": "util.json.build",
+      "config": {
+        "template": "{\"type\":\"media\",\"file\":{{file}}}",
+        "inputs": ["file"]
+      }
+    },
+    {
+      "id": "table_block",
+      "type": "util.json.build",
+      "config": {
+        "template": "{\"type\":\"table\",\"columns\":{{columns}},\"rows\":{{rows}}}",
+        "inputs": ["columns", "rows"]
+      }
+    },
+    {
+      "id": "blocks1",
+      "type": "array.append"
+    },
+    {
+      "id": "blocks2",
+      "type": "array.append"
+    },
+    {
+      "id": "blocks3",
+      "type": "array.append"
+    },
+    {
+      "id": "blocks4",
+      "type": "array.append"
+    },
+    {
+      "id": "blocks5",
+      "type": "array.append"
+    },
+    {
+      "id": "blocks6",
+      "type": "array.append"
+    },
+    {
+      "id": "card",
       "type": "ui.render",
       "config": {
-        "layout": "table",
+        "layout": "stack",
         "fullWidth": true,
         "allowRefresh": true
       }
@@ -144,19 +214,13 @@
           "name": "card",
           "type": "object",
           "required": false,
-          "description": "Table card: Mål (objectives) and Fullført (who completed). Primary chat view."
-        },
-        {
-          "name": "cover",
-          "type": "object",
-          "required": false,
-          "description": "Media card with the cover (or placeholder)."
+          "description": "Stack card: goals, Beskrivelse, cover, Aktivitet table."
         },
         {
           "name": "saga",
           "type": "object",
           "required": true,
-          "description": "Full saga with versions, completed_by, and card (table payload)."
+          "description": "Full saga with versions, completed_by, goals_markdown, and activity card."
         }
       ]
     }
@@ -191,9 +255,9 @@
       "targetHandle": "in"
     },
     {
-      "id": "e4b",
+      "id": "e4g",
       "source": "get",
-      "target": "card_sub",
+      "target": "goals_md",
       "sourceHandle": "body",
       "targetHandle": "in"
     },
@@ -276,63 +340,140 @@
     },
     {
       "id": "e14",
-      "source": "title",
-      "target": "cover",
+      "source": "goals_md",
+      "target": "goals_block",
       "sourceHandle": "value",
-      "targetHandle": "title"
+      "targetHandle": "body"
     },
     {
-      "id": "e15b",
-      "source": "card_sub",
-      "target": "cover",
+      "id": "e15",
+      "source": "desc",
+      "target": "desc_block",
       "sourceHandle": "value",
-      "targetHandle": "subtitle"
+      "targetHandle": "body"
     },
     {
       "id": "e16",
       "source": "fetch",
-      "target": "cover",
+      "target": "media_block",
       "sourceHandle": "file",
       "targetHandle": "file"
     },
     {
       "id": "e17",
-      "source": "title",
-      "target": "detail",
-      "sourceHandle": "value",
-      "targetHandle": "title"
-    },
-    {
-      "id": "e18",
       "source": "card_cols",
-      "target": "detail",
+      "target": "table_block",
       "sourceHandle": "value",
       "targetHandle": "columns"
     },
     {
-      "id": "e19",
+      "id": "e18",
       "source": "card_rows",
-      "target": "detail",
+      "target": "table_block",
       "sourceHandle": "value",
       "targetHandle": "rows"
     },
     {
+      "id": "e19",
+      "source": "goals_block",
+      "target": "blocks1",
+      "sourceHandle": "value",
+      "targetHandle": "item"
+    },
+    {
       "id": "e20",
+      "source": "blocks1",
+      "target": "blocks2",
+      "sourceHandle": "items",
+      "targetHandle": "list"
+    },
+    {
+      "id": "e21",
+      "source": "heading_desc",
+      "target": "blocks2",
+      "sourceHandle": "value",
+      "targetHandle": "item"
+    },
+    {
+      "id": "e22",
+      "source": "blocks2",
+      "target": "blocks3",
+      "sourceHandle": "items",
+      "targetHandle": "list"
+    },
+    {
+      "id": "e23",
+      "source": "desc_block",
+      "target": "blocks3",
+      "sourceHandle": "value",
+      "targetHandle": "item"
+    },
+    {
+      "id": "e24",
+      "source": "blocks3",
+      "target": "blocks4",
+      "sourceHandle": "items",
+      "targetHandle": "list"
+    },
+    {
+      "id": "e25",
+      "source": "media_block",
+      "target": "blocks4",
+      "sourceHandle": "value",
+      "targetHandle": "item"
+    },
+    {
+      "id": "e26",
+      "source": "blocks4",
+      "target": "blocks5",
+      "sourceHandle": "items",
+      "targetHandle": "list"
+    },
+    {
+      "id": "e27",
+      "source": "heading_act",
+      "target": "blocks5",
+      "sourceHandle": "value",
+      "targetHandle": "item"
+    },
+    {
+      "id": "e28",
+      "source": "blocks5",
+      "target": "blocks6",
+      "sourceHandle": "items",
+      "targetHandle": "list"
+    },
+    {
+      "id": "e29",
+      "source": "table_block",
+      "target": "blocks6",
+      "sourceHandle": "value",
+      "targetHandle": "item"
+    },
+    {
+      "id": "e30",
+      "source": "title",
+      "target": "card",
+      "sourceHandle": "value",
+      "targetHandle": "title"
+    },
+    {
+      "id": "e31",
+      "source": "blocks6",
+      "target": "card",
+      "sourceHandle": "items",
+      "targetHandle": "blocks"
+    },
+    {
+      "id": "e32",
       "source": "get",
       "target": "output",
       "sourceHandle": "body",
       "targetHandle": "saga"
     },
     {
-      "id": "e21",
-      "source": "cover",
-      "target": "output",
-      "sourceHandle": "view",
-      "targetHandle": "cover"
-    },
-    {
-      "id": "e22b",
-      "source": "detail",
+      "id": "e33",
+      "source": "card",
       "target": "output",
       "sourceHandle": "view",
       "targetHandle": "card"

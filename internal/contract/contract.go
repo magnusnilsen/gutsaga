@@ -177,10 +177,10 @@ type QuestDetail struct {
 	Quest
 	Versions    []QuestVersion   `json:"versions"`
 	CompletedBy []QuestCompleter `json:"completed_by"`
-	// Card is a Smia ui.render table payload (goals + who finished).
+	// GoalsMarkdown is the objective list for Smia stack text (addon-style, under the title).
+	GoalsMarkdown string `json:"goals_markdown,omitempty"`
+	// Card is a Smia ui.render table payload for Aktivitet (who finished).
 	Card *QuestCard `json:"card,omitempty"`
-	// CardSubtitle is Mål + Fullført text for the Smia media cover card.
-	CardSubtitle string `json:"card_subtitle,omitempty"`
 }
 
 // QuestCompleter is someone who finished this saga (admin/detail views).

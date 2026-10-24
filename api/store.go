@@ -1092,10 +1092,10 @@ func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, 
 	if err != nil {
 		return contract.QuestDetail{}, err
 	}
-	card := buildQuestCard(q, completers)
 	return contract.QuestDetail{
 		Quest: q, Versions: versions, CompletedBy: completers,
-		Card: card, CardSubtitle: buildQuestCardSubtitle(card),
+		GoalsMarkdown: buildGoalsMarkdown(q),
+		Card:          buildActivityCard(completers),
 	}, nil
 }
 
@@ -1133,80 +1133,72 @@ func (s *Store) listQuestCompleters(ctx context.Context, questID string) ([]cont
 	return out, rows.Err()
 }
 
-func buildQuestCard(q contract.Quest, completers []contract.QuestCompleter) *contract.QuestCard {
-	card := &contract.QuestCard{
-		Columns: []contract.QuestCardColumn{
-			{ID: "detail", Label: "", Fill: true, Bold: true, IsMultiline: true},
-		},
-	}
+// buildGoalsMarkdown lists objectives like the addon detail pane (under the title, no section header).
+func buildGoalsMarkdown(q contract.Quest) string {
+	var b strings.Builder
 	for i, o := range q.Objectives {
 		text := strings.TrimSpace(o.Text)
 		if text == "" {
 			text = o.ID
 		}
-		card.Rows = append(card.Rows, contract.QuestCardRow{
-			ID:    fmt.Sprintf("goal-%d", i+1),
-			Group: "Mål",
-			Cells: map[string]any{"detail": fmt.Sprintf("%d. %s", i+1, text)},
-		})
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(fmt.Sprintf("%d. %s", i+1, text))
 	}
-	if len(card.Rows) == 0 {
-		card.Rows = append(card.Rows, contract.QuestCardRow{
-			ID: "goal-none", Group: "Mål", Cells: map[string]any{"detail": "(ingen mål)"},
-		})
+	if b.Len() == 0 {
+		return "(ingen mål)"
+	}
+	return b.String()
+}
+
+// buildActivityCard is a Smia table for Aktivitet (who finished), matching the addon.
+func buildActivityCard(completers []contract.QuestCompleter) *contract.QuestCard {
+	card := &contract.QuestCard{
+		Columns: []contract.QuestCardColumn{
+			{ID: "character", Label: "Karakter", Fill: true, Bold: true},
+			{ID: "detail", Label: "Detaljer", Fill: true},
+			{ID: "when", Label: "Når"},
+		},
 	}
 	if len(completers) == 0 {
-		card.Rows = append(card.Rows, contract.QuestCardRow{
-			ID: "done-none", Group: "Fullført", Cells: map[string]any{"detail": "Ingen har fullført ennå"},
-		})
+		card.Rows = []contract.QuestCardRow{{
+			ID: "done-none",
+			Cells: map[string]any{
+				"character": "Ingen har fullført ennå",
+				"detail":    "",
+				"when":      "",
+			},
+		}}
 		return card
 	}
 	for i, c := range completers {
-		line := c.Character
+		who := c.Character
+		if who != "" {
+			who += " fullførte"
+		}
+		detail := ""
 		if c.Class != "" && c.Level > 0 {
-			line = fmt.Sprintf("%s · %s %d", c.Character, c.Class, c.Level)
+			detail = fmt.Sprintf("%s %d", c.Class, c.Level)
 		} else if c.Class != "" {
-			line = fmt.Sprintf("%s · %s", c.Character, c.Class)
+			detail = c.Class
 		}
 		if c.Realm != "" {
-			line += " · " + c.Realm
-		}
-		if c.When != "" {
-			line += "\n" + c.When
+			if detail != "" {
+				detail += " · "
+			}
+			detail += c.Realm
 		}
 		card.Rows = append(card.Rows, contract.QuestCardRow{
-			ID:    fmt.Sprintf("done-%d", i+1),
-			Group: "Fullført",
-			Cells: map[string]any{"detail": line},
+			ID: fmt.Sprintf("done-%d", i+1),
+			Cells: map[string]any{
+				"character": who,
+				"detail":    detail,
+				"when":      c.When,
+			},
 		})
 	}
 	return card
-}
-
-// buildQuestCardSubtitle flattens the table card into media-card subtitle text
-// (Smia MCP embeds the media view when both cover + table are returned).
-func buildQuestCardSubtitle(card *contract.QuestCard) string {
-	if card == nil || len(card.Rows) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	var lastGroup string
-	for _, row := range card.Rows {
-		if row.Group != "" && row.Group != lastGroup {
-			if b.Len() > 0 {
-				b.WriteString("\n\n")
-			}
-			b.WriteString(row.Group)
-			lastGroup = row.Group
-		}
-		detail, _ := row.Cells["detail"].(string)
-		if detail == "" {
-			continue
-		}
-		b.WriteByte('\n')
-		b.WriteString(detail)
-	}
-	return strings.TrimSpace(b.String())
 }
 
 func (s *Store) ListQuests(ctx context.Context, characterID string) ([]contract.QuestListItem, error) {
