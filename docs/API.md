@@ -12,7 +12,7 @@ Environment:
 |---|---|---|
 | `DATABASE_URL` | yes | Postgres URL. Railway's Postgres plugin sets this. |
 | `ADMIN_TOKEN` | for admin routes | Bearer token for `/v1/admin/*`. Not a player key. |
-| `DISCORD_WEBHOOK_URL` | no | Incoming webhook. New completions are posted as username `GutSaga`. |
+| `DISCORD_WEBHOOK_URL` | no | Incoming webhook. Saga announcements, version notes, retirements, milestone levels, and completions are posted as username `GutSaga`. There is no second Discord variable. |
 | `PORT` | no | Listen port. Railway sets this. Default `8080`. |
 | `SMIA_AUTH_MODE` | no | `smia` (default) calls `https://smia.tools/wow/mcp`. `dev` accepts `SMIA_DEV_TOKEN` instead. |
 | `SMIA_MCP_URL` | no | Override the MCP resource URL. |
@@ -165,11 +165,15 @@ On a new completion the API:
 
 1. Stores the image in Postgres (TGA is converted to PNG).
 2. Inserts progress and an adventure-log line: `Magni fullførte «Første vakt» (versjon 3).`
-3. Posts to Discord, username `GutSaga`, content `**Magni** fullførte *Første vakt*!`, with the file attached when there is one.
+3. Queues a Discord embed, username `GutSaga`. The content line is still `**Magni** fullførte *Første vakt*!`. The embed adds class, level, saga title, version, reward, a timestamp, and the screenshot as the embed image (`attachment://screenshot.png`, so Discord does not need a public GutSaga URL).
 
-Discord failure does not roll back the completion. `discord_posted` is false and the error is in the API log.
+The HTTP call does not wait for Discord. `discord_posted` is true when the notice was accepted onto the queue (or delivered, if a synchronous notifier is plugged in). The progress row's `discord_url` is written when Discord returns the attachment URL. A webhook error, including HTTP 429, is retried in the background (`retry_after` on 429, backoff on network errors and 5xx) and then logged. It does not change the HTTP status and does not roll back the completion. When the queue cannot accept the notice, `discord_posted` is false.
+
+The completion body also echoes `character_class`, `character_level`, and `reward` from the version that was completed.
 
 ### `POST /v1/level`
+
+Milestone levels (10, 20, 30, …) are queued as a short embed: `**Magni** nådde nivå 20.` Other levels only update the character and the adventure log.
 
 ```json
 {"character_id": "<uuid>", "battletag": "Magnus#2231", "level": 13}
@@ -191,10 +195,10 @@ These are the endpoints a later Smia MCP server should call with `ADMIN_TOKEN`.
 | `GET` | `/v1/admin/characters/{id}` | |
 | `PATCH` | `/v1/admin/characters/{id}` | any of name, realm, race, class, level, backstory |
 | `DELETE` | `/v1/admin/characters/{id}` | `204` |
-| `POST` | `/v1/admin/quests` | title, description, objectives, reward, `min_level`, `party_quest`, `assigned_character_ids`, `active`, `created_by` |
+| `POST` | `/v1/admin/quests` | title, description, objectives, reward, `min_level`, `party_quest`, `assigned_character_ids`, `active`, `created_by`. Optional `announce` (default: post when the saga is active; `false` skips; `true` posts even a draft) and `image_base64` (cover stored on the saga and attached to the announcement). |
 | `GET` | `/v1/admin/quests?character_id=` | every quest; with `character_id`, includes `status` (`null` if not started), `eligible`, `completed_version` |
 | `GET` | `/v1/admin/quests/{id}` | quest plus `versions[]` snapshots |
-| `PATCH` | `/v1/admin/quests/{id}` | partial update. **Always bumps `version` and writes a snapshot.** `min_level: null` clears it. |
+| `PATCH` | `/v1/admin/quests/{id}` | partial update. **Always bumps `version` and writes a snapshot.** `min_level: null` clears it. Optional `announce` (default true). A text, goal, reward, minimum-level, or party change posts a one-line version embed. `active: false` posts a retirement instead. Assignment-only edits stay quiet. `announce: false` skips both. |
 | `GET` | `/v1/admin/log?battletag=&character_id=&limit=` | newest first, default 50 |
 | `POST` | `/v1/admin/log` | `type`, `title`, `body`, optional `battletag` / `player_id` / `character_id` / `quest_id` |
 

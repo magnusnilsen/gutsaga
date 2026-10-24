@@ -1,4 +1,16 @@
-// Package discord posts a completion to a Discord webhook.
+// Package discord posts GutSaga notices to an incoming Discord webhook.
+// The username is always GutSaga. User-facing text is Norwegian.
+//
+// Messages are embeds with a shared palette:
+//
+//	ColorSaga   gold    a new saga
+//	ColorDone   green   a completion
+//	ColorUpdate blue    a new saga version
+//	ColorRetire gray    a saga retired
+//	ColorLevel  amber   a milestone level
+//
+// Images are attached as webhook files and referenced as attachment://
+// so Discord renders them without a public GutSaga URL.
 package discord
 
 import (
@@ -10,19 +22,660 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
 )
 
+const username = "GutSaga"
+
+// Palette shared by every GutSaga embed.
+const (
+	ColorSaga   = 0xC6A15B
+	ColorDone   = 0x3BA55D
+	ColorUpdate = 0x3E6F9A
+	ColorRetire = 0x6B6258
+	ColorLevel  = 0xD0892A
+)
+
+// Notice kinds recorded on a delivery result.
+const (
+	KindAnnounced  = "announced"
+	KindUpdated    = "updated"
+	KindRetired    = "retired"
+	KindCompletion = "completion"
+	KindLevel      = "level"
+)
+
 // ErrNotConfigured is returned when DISCORD_WEBHOOK_URL is empty.
 var ErrNotConfigured = errors.New("discord webhook is not configured")
 
-// CompletionText is the Norwegian message friends see in Discord.
+// CompletionText is the Norwegian line friends see above a completion embed.
 func CompletionText(character, questTitle string) string {
-	return "**" + escapeMD(character) + "** fullførte *" + escapeMD(questTitle) + "*!"
+	return bold(character) + " fullførte " + italic(displayTitle(questTitle)) + "!"
 }
+
+// Milestone reports whether a level is worth a Discord note.
+// Every 10th level from 10 upward (10, 20, …) counts.
+func Milestone(level int) bool {
+	return level >= 10 && level%10 == 0
+}
+
+// ObjectiveLine is one Norwegian goal line, already written for players.
+type ObjectiveLine struct {
+	Text string
+}
+
+// Person is a character named on a saga.
+type Person struct {
+	Name  string
+	Class string
+	Level int
+}
+
+// Completion is a character finishing a saga.
+type Completion struct {
+	ProgressID  string
+	Character   string
+	Class       string
+	Level       int
+	Title       string
+	Version     int
+	Reward      string
+	When        time.Time
+	Image       []byte
+	ContentType string
+}
+
+// SagaNotice is a new saga, a new version, or a retirement.
+type SagaNotice struct {
+	Kind        string
+	Title       string
+	Description string
+	Objectives  []ObjectiveLine
+	Ordered     bool
+	MinLevel    *int
+	Reward      string
+	Party       bool
+	People      []Person
+	CreatedBy   string
+	Version     int
+	When        time.Time
+	Image       []byte
+	ContentType string
+}
+
+// LevelNotice is a milestone level-up.
+type LevelNotice struct {
+	Character string
+	Class     string
+	Level     int
+	When      time.Time
+}
+
+// Message is what the webhook accepted, or (for Queue) what was queued.
+type Message struct {
+	Content       string
+	AttachmentURL string
+	// Accepted is true when a background worker will deliver the message.
+	// Posted synchronously, it stays false and Content is the Discord content.
+	Accepted bool
+}
+
+// Client posts webhook messages and retries rate limits and transient faults.
+// Post methods block until Discord accepts the message or the attempts are spent.
+// Use Queue when the API request must not wait.
+type Client struct {
+	WebhookURL  string
+	HTTP        *http.Client
+	MaxAttempts int
+	// Sleep waits between attempts. Tests replace it. Nil uses a timer.
+	Sleep func(ctx context.Context, d time.Duration) error
+}
+
+func (c *Client) http() *http.Client {
+	if c != nil && c.HTTP != nil {
+		return c.HTTP
+	}
+	return &http.Client{Timeout: 20 * time.Second}
+}
+
+func (c *Client) maxAttempts() int {
+	if c != nil && c.MaxAttempts > 0 {
+		return c.MaxAttempts
+	}
+	return 5
+}
+
+func (c *Client) sleep(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	if c != nil && c.Sleep != nil {
+		return c.Sleep(ctx, d)
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// PostCompletion sends a completion embed. Image bytes, when present, are the embed image.
+func (c *Client) PostCompletion(ctx context.Context, n Completion) (Message, error) {
+	payload, file, err := completionPayload(n)
+	if err != nil {
+		return Message{}, err
+	}
+	return c.send(ctx, payload, file)
+}
+
+// PostSaga sends an announcement, a version note, or a retirement.
+// Cover bytes are attached only for KindAnnounced.
+func (c *Client) PostSaga(ctx context.Context, n SagaNotice) (Message, error) {
+	payload, file, err := sagaPayload(n)
+	if err != nil {
+		return Message{}, err
+	}
+	return c.send(ctx, payload, file)
+}
+
+// PostLevel sends a milestone level-up. Other levels should not be passed in.
+func (c *Client) PostLevel(ctx context.Context, n LevelNotice) (Message, error) {
+	if !Milestone(n.Level) {
+		return Message{}, fmt.Errorf("level %d is not a milestone", n.Level)
+	}
+	payload, err := levelPayload(n)
+	if err != nil {
+		return Message{}, err
+	}
+	return c.send(ctx, payload, nil)
+}
+
+func (c *Client) send(ctx context.Context, payload []byte, file *attach) (Message, error) {
+	if c == nil || strings.TrimSpace(c.WebhookURL) == "" {
+		return Message{}, ErrNotConfigured
+	}
+	endpoint, err := withWait(c.WebhookURL)
+	if err != nil {
+		return Message{}, err
+	}
+	body, contentType, err := multipartBody(payload, file)
+	if err != nil {
+		return Message{}, err
+	}
+	var last error
+	attempts := c.maxAttempts()
+	for attempt := 1; attempt <= attempts; attempt++ {
+		status, respBody, hdr, err := c.do(ctx, endpoint, contentType, body)
+		if err != nil {
+			last = err
+			if attempt == attempts {
+				break
+			}
+			if err := c.sleep(ctx, backoff(attempt)); err != nil {
+				return Message{}, err
+			}
+			continue
+		}
+		if status == http.StatusTooManyRequests {
+			last = fmt.Errorf("discord status 429: %s", snippet(respBody))
+			if attempt == attempts {
+				break
+			}
+			if err := c.sleep(ctx, retryAfter(hdr, respBody)); err != nil {
+				return Message{}, err
+			}
+			continue
+		}
+		if status >= 500 {
+			last = fmt.Errorf("discord status %d: %s", status, snippet(respBody))
+			if attempt == attempts {
+				break
+			}
+			if err := c.sleep(ctx, backoff(attempt)); err != nil {
+				return Message{}, err
+			}
+			continue
+		}
+		if status < 200 || status >= 300 {
+			return Message{}, fmt.Errorf("discord status %d: %s", status, snippet(respBody))
+		}
+		msg := Message{Content: payloadContent(payload)}
+		var parsed struct {
+			Attachments []struct {
+				URL string `json:"url"`
+			} `json:"attachments"`
+		}
+		if json.Unmarshal(respBody, &parsed) == nil && len(parsed.Attachments) > 0 {
+			msg.AttachmentURL = parsed.Attachments[0].URL
+		}
+		return msg, nil
+	}
+	if last == nil {
+		last = errors.New("discord post failed")
+	}
+	return Message{}, last
+}
+
+func (c *Client) do(ctx context.Context, endpoint, contentType string, body []byte) (int, []byte, http.Header, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.http().Do(req)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	return resp.StatusCode, respBody, resp.Header.Clone(), nil
+}
+
+func withWait(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	q.Set("wait", "true")
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
+type attach struct {
+	Name string
+	Body []byte
+}
+
+func multipartBody(payload []byte, file *attach) ([]byte, string, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	field, err := w.CreateFormField("payload_json")
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := field.Write(payload); err != nil {
+		return nil, "", err
+	}
+	if file != nil && len(file.Body) > 0 {
+		part, err := w.CreateFormFile("files[0]", file.Name)
+		if err != nil {
+			return nil, "", err
+		}
+		if _, err := part.Write(file.Body); err != nil {
+			return nil, "", err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, "", err
+	}
+	return buf.Bytes(), w.FormDataContentType(), nil
+}
+
+func backoff(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	d := 300 * time.Millisecond * time.Duration(int(1)<<(attempt-1))
+	if d > 5*time.Second || d <= 0 {
+		return 5 * time.Second
+	}
+	return d
+}
+
+func retryAfter(hdr http.Header, body []byte) time.Duration {
+	var parsed struct {
+		RetryAfter float64 `json:"retry_after"`
+	}
+	if json.Unmarshal(body, &parsed) == nil && parsed.RetryAfter > 0 {
+		return capWait(time.Duration(parsed.RetryAfter * float64(time.Second)))
+	}
+	if hdr != nil {
+		if v := strings.TrimSpace(hdr.Get("Retry-After")); v != "" {
+			if secs, err := strconv.ParseFloat(v, 64); err == nil && secs > 0 {
+				return capWait(time.Duration(secs * float64(time.Second)))
+			}
+			if when, err := http.ParseTime(v); err == nil {
+				return capWait(time.Until(when))
+			}
+		}
+		if v := strings.TrimSpace(hdr.Get("X-RateLimit-Reset-After")); v != "" {
+			if secs, err := strconv.ParseFloat(v, 64); err == nil && secs > 0 {
+				return capWait(time.Duration(secs * float64(time.Second)))
+			}
+		}
+	}
+	return 500 * time.Millisecond
+}
+
+func capWait(d time.Duration) time.Duration {
+	if d < 0 {
+		return 0
+	}
+	if d > 20*time.Second {
+		return 20 * time.Second
+	}
+	return d
+}
+
+func snippet(b []byte) string {
+	s := strings.TrimSpace(string(b))
+	s = strings.Join(strings.Fields(s), " ")
+	return clipRunes(s, 160)
+}
+
+func payloadContent(payload []byte) string {
+	var parsed struct {
+		Content string `json:"content"`
+	}
+	_ = json.Unmarshal(payload, &parsed)
+	return parsed.Content
+}
+
+type dcPayload struct {
+	Username        string    `json:"username"`
+	Content         string    `json:"content,omitempty"`
+	Embeds          []dcEmbed `json:"embeds"`
+	AllowedMentions dcAllowed `json:"allowed_mentions"`
+}
+
+type dcAllowed struct {
+	Parse []string `json:"parse"`
+}
+
+type dcEmbed struct {
+	Title       string    `json:"title,omitempty"`
+	Description string    `json:"description,omitempty"`
+	Color       int       `json:"color"`
+	Fields      []dcField `json:"fields,omitempty"`
+	Timestamp   string    `json:"timestamp,omitempty"`
+	Image       *dcImage  `json:"image,omitempty"`
+	Footer      *dcFooter `json:"footer,omitempty"`
+}
+
+type dcField struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Inline bool   `json:"inline,omitempty"`
+}
+
+type dcImage struct {
+	URL string `json:"url"`
+}
+
+type dcFooter struct {
+	Text string `json:"text"`
+}
+
+func completionPayload(n Completion) ([]byte, *attach, error) {
+	title := displayTitle(n.Title)
+	fields := []dcField{
+		{Name: "Karakter", Value: escapeMD(strings.TrimSpace(n.Character)), Inline: true},
+	}
+	if strings.TrimSpace(n.Class) != "" {
+		fields = append(fields, dcField{Name: "Klasse", Value: escapeMD(strings.TrimSpace(n.Class)), Inline: true})
+	}
+	if n.Level > 0 {
+		fields = append(fields, dcField{Name: "Nivå", Value: strconv.Itoa(n.Level), Inline: true})
+	}
+	version := n.Version
+	if version < 1 {
+		version = 1
+	}
+	fields = append(fields, dcField{Name: "Versjon", Value: strconv.Itoa(version), Inline: true})
+	if strings.TrimSpace(n.Reward) != "" {
+		fields = append(fields, dcField{Name: "Belønning", Value: clipRunes(escapeMD(strings.TrimSpace(n.Reward)), 1024), Inline: true})
+	}
+	embed := dcEmbed{
+		Title:       clipRunes(title, 256),
+		Description: completionDescription(n),
+		Color:       ColorDone,
+		Fields:      fields,
+		Timestamp:   whenOrNow(n.When).Format(time.RFC3339),
+		Footer:      &dcFooter{Text: username},
+	}
+	var file *attach
+	if len(n.Image) > 0 {
+		file = &attach{Name: "screenshot" + screenshot.Extension(n.ContentType), Body: n.Image}
+		embed.Image = &dcImage{URL: "attachment://" + file.Name}
+	}
+	raw, err := marshalPayload(CompletionText(n.Character, n.Title), embed)
+	return raw, file, err
+}
+
+func completionDescription(n Completion) string {
+	name := strings.TrimSpace(n.Character)
+	if name == "" {
+		name = "En karakter"
+	}
+	className := strings.TrimSpace(n.Class)
+	switch {
+	case className != "" && n.Level > 0:
+		return escapeMD(name) + ", " + escapeMD(className) + " på nivå " + strconv.Itoa(n.Level) + ", fullførte sagaen."
+	case className != "":
+		return escapeMD(name) + ", " + escapeMD(className) + ", fullførte sagaen."
+	case n.Level > 0:
+		return escapeMD(name) + " på nivå " + strconv.Itoa(n.Level) + " fullførte sagaen."
+	default:
+		return escapeMD(name) + " fullførte sagaen."
+	}
+}
+
+func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
+	title := displayTitle(n.Title)
+	when := whenOrNow(n.When).Format(time.RFC3339)
+	var embed dcEmbed
+	var content string
+	switch n.Kind {
+	case KindAnnounced:
+		content = "Ny saga: " + italic(title)
+		desc := shortDescription(n.Description)
+		if desc == "" {
+			desc = "En ny saga er klar."
+		} else {
+			desc = escapeMD(desc)
+		}
+		embed = dcEmbed{
+			Title:       clipRunes(title, 256),
+			Description: desc,
+			Color:       ColorSaga,
+			Fields: []dcField{
+				{Name: "Mål", Value: ObjectivesSummary(n.Objectives, n.Ordered)},
+				{Name: "Minste nivå", Value: minLevelText(n.MinLevel), Inline: true},
+				{Name: "Belønning", Value: rewardText(n.Reward), Inline: true},
+				{Name: "Laget av", Value: createdByText(n.CreatedBy), Inline: true},
+				{Name: "Hvem", Value: peopleSummary(n.Party, n.People)},
+			},
+			Timestamp: when,
+			Footer:    &dcFooter{Text: username},
+		}
+	case KindUpdated:
+		version := n.Version
+		if version < 1 {
+			version = 1
+		}
+		content = italic(title) + " er oppdatert (versjon " + strconv.Itoa(version) + ")."
+		embed = dcEmbed{
+			Title:       clipRunes(title, 256),
+			Description: "Ny versjon " + strconv.Itoa(version) + ".",
+			Color:       ColorUpdate,
+			Timestamp:   when,
+			Footer:      &dcFooter{Text: username},
+		}
+	case KindRetired:
+		content = italic(title) + " er lagt bort."
+		embed = dcEmbed{
+			Title:       clipRunes(title, 256),
+			Description: "Sagaen er ikke lenger aktiv.",
+			Color:       ColorRetire,
+			Timestamp:   when,
+			Footer:      &dcFooter{Text: username},
+		}
+	default:
+		return nil, nil, fmt.Errorf("unknown saga notice %q", n.Kind)
+	}
+	var file *attach
+	if n.Kind == KindAnnounced && len(n.Image) > 0 {
+		file = &attach{Name: "cover" + screenshot.Extension(n.ContentType), Body: n.Image}
+		embed.Image = &dcImage{URL: "attachment://" + file.Name}
+	}
+	raw, err := marshalPayload(content, embed)
+	return raw, file, err
+}
+
+func levelPayload(n LevelNotice) ([]byte, error) {
+	name := strings.TrimSpace(n.Character)
+	if name == "" {
+		name = "En karakter"
+	}
+	desc := escapeMD(name)
+	if className := strings.TrimSpace(n.Class); className != "" {
+		desc = escapeMD(name) + " · " + escapeMD(className)
+	}
+	embed := dcEmbed{
+		Title:       "Nivå " + strconv.Itoa(n.Level),
+		Description: desc,
+		Color:       ColorLevel,
+		Timestamp:   whenOrNow(n.When).Format(time.RFC3339),
+		Footer:      &dcFooter{Text: username},
+	}
+	return marshalPayload(bold(name)+" nådde nivå "+strconv.Itoa(n.Level)+".", embed)
+}
+
+func marshalPayload(content string, embed dcEmbed) ([]byte, error) {
+	return json.Marshal(dcPayload{
+		Username:        username,
+		Content:         content,
+		Embeds:          []dcEmbed{embed},
+		AllowedMentions: dcAllowed{Parse: []string{}},
+	})
+}
+
+// ObjectivesSummary is the Norwegian goal list for an announcement embed.
+func ObjectivesSummary(lines []ObjectiveLine, ordered bool) string {
+	if len(lines) == 0 {
+		return "Ingen mål"
+	}
+	const maxLines = 8
+	show := len(lines)
+	if show > maxLines {
+		show = maxLines
+	}
+	var b strings.Builder
+	for i := 0; i < show; i++ {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		text := strings.TrimSpace(lines[i].Text)
+		if text == "" {
+			text = "Mål"
+		}
+		text = escapeMD(clipRunes(text, 200))
+		if ordered {
+			fmt.Fprintf(&b, "%d. %s", i+1, text)
+		} else {
+			b.WriteString("• ")
+			b.WriteString(text)
+		}
+	}
+	if len(lines) > show {
+		fmt.Fprintf(&b, "\n… og %d mål til", len(lines)-show)
+	}
+	return clipRunes(b.String(), 1024)
+}
+
+func peopleSummary(party bool, people []Person) string {
+	var names []string
+	for _, p := range people {
+		name := strings.TrimSpace(p.Name)
+		if name == "" {
+			continue
+		}
+		label := name
+		switch {
+		case strings.TrimSpace(p.Class) != "" && p.Level > 0:
+			label = fmt.Sprintf("%s (%s, nivå %d)", name, strings.TrimSpace(p.Class), p.Level)
+		case strings.TrimSpace(p.Class) != "":
+			label = fmt.Sprintf("%s (%s)", name, strings.TrimSpace(p.Class))
+		case p.Level > 0:
+			label = fmt.Sprintf("%s (nivå %d)", name, p.Level)
+		}
+		names = append(names, escapeMD(label))
+	}
+	joined := strings.Join(names, ", ")
+	switch {
+	case party && joined != "":
+		return clipRunes("Parti — "+joined, 1024)
+	case party:
+		return "Parti — åpen for alle som er høye nok"
+	case joined != "":
+		return clipRunes(joined, 1024)
+	default:
+		return "Ingen tildelt"
+	}
+}
+
+func minLevelText(level *int) string {
+	if level == nil || *level <= 0 {
+		return "Ingen"
+	}
+	return strconv.Itoa(*level)
+}
+
+func rewardText(reward string) string {
+	reward = strings.TrimSpace(reward)
+	if reward == "" {
+		return "Ingen"
+	}
+	return clipRunes(escapeMD(reward), 1024)
+}
+
+func createdByText(by string) string {
+	by = strings.TrimSpace(by)
+	if by == "" {
+		return "Ukjent"
+	}
+	return clipRunes(escapeMD(by), 1024)
+}
+
+func shortDescription(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if i := strings.Index(s, "\n\n"); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	s = strings.Join(strings.Fields(s), " ")
+	return clipRunes(s, 300)
+}
+
+func displayTitle(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "Saga"
+	}
+	return clipRunes(s, 180)
+}
+
+func whenOrNow(t time.Time) time.Time {
+	if t.IsZero() {
+		return time.Now().UTC()
+	}
+	return t.UTC()
+}
+
+func bold(s string) string   { return "**" + escapeMD(strings.TrimSpace(s)) + "**" }
+func italic(s string) string { return "*" + escapeMD(strings.TrimSpace(s)) + "*" }
 
 func escapeMD(s string) string {
 	return strings.NewReplacer(
@@ -34,82 +687,16 @@ func escapeMD(s string) string {
 	).Replace(s)
 }
 
-type Message struct {
-	Content       string
-	AttachmentURL string
-}
-
-// Client posts multipart webhook messages. Username is always GutSaga.
-type Client struct {
-	WebhookURL string
-	HTTP       *http.Client
-}
-
-func (c *Client) http() *http.Client {
-	if c.HTTP != nil {
-		return c.HTTP
+func clipRunes(s string, max int) string {
+	r := []rune(s)
+	if max <= 0 {
+		return ""
 	}
-	return &http.Client{Timeout: 20 * time.Second}
-}
-
-// PostCompletion attaches png-or-other image bytes when non-nil.
-// contentType is used only to pick a filename. An empty webhook URL returns an error.
-func (c *Client) PostCompletion(ctx context.Context, character, questTitle, contentType string, image []byte) (Message, error) {
-	if strings.TrimSpace(c.WebhookURL) == "" {
-		return Message{}, ErrNotConfigured
+	if len(r) <= max {
+		return s
 	}
-	content := CompletionText(character, questTitle)
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	payload, err := json.Marshal(map[string]string{
-		"username": "GutSaga",
-		"content":  content,
-	})
-	if err != nil {
-		return Message{}, err
+	if max < 2 {
+		return string(r[:max])
 	}
-	field, err := w.CreateFormField("payload_json")
-	if err != nil {
-		return Message{}, err
-	}
-	if _, err := field.Write(payload); err != nil {
-		return Message{}, err
-	}
-	if len(image) > 0 {
-		name := "screenshot" + screenshot.Extension(contentType)
-		file, err := w.CreateFormFile("files[0]", name)
-		if err != nil {
-			return Message{}, err
-		}
-		if _, err := file.Write(image); err != nil {
-			return Message{}, err
-		}
-	}
-	if err := w.Close(); err != nil {
-		return Message{}, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.WebhookURL+"?wait=true", &buf)
-	if err != nil {
-		return Message{}, err
-	}
-	req.Header.Set("Content-Type", w.FormDataContentType())
-	resp, err := c.http().Do(req)
-	if err != nil {
-		return Message{}, err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return Message{}, fmt.Errorf("discord status %d", resp.StatusCode)
-	}
-	msg := Message{Content: content}
-	var parsed struct {
-		Attachments []struct {
-			URL string `json:"url"`
-		} `json:"attachments"`
-	}
-	if json.Unmarshal(body, &parsed) == nil && len(parsed.Attachments) > 0 {
-		msg.AttachmentURL = parsed.Attachments[0].URL
-	}
-	return msg, nil
+	return strings.TrimSpace(string(r[:max-1])) + "…"
 }

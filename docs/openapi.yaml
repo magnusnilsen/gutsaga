@@ -279,6 +279,7 @@ paths:
     post:
       security: [{adminToken: []}]
       summary: Create quest version 1 and a snapshot
+      description: Optional announce (omit to post an active saga, false to skip) and image_base64. The cover is stored and attached to the Discord announcement.
       responses:
         "201": {description: Created}
   /v1/admin/quests/{id}:
@@ -290,6 +291,7 @@ paths:
     patch:
       security: [{adminToken: []}]
       summary: Update, bump version, store a snapshot
+      description: Optional announce. Significant edits and active=false are posted to Discord unless announce is false.
       responses:
         "200": {description: Updated}
   /v1/admin/log:

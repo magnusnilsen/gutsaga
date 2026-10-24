@@ -50,7 +50,7 @@ func usage() {
 
 Environment:
   DATABASE_URL          Postgres connection string (required)
-  DISCORD_WEBHOOK_URL   optional; completions post here as GutSaga
+  DISCORD_WEBHOOK_URL   optional; saga notices post here as GutSaga
   ADMIN_TOKEN           bearer token for /v1/admin
   PORT                  listen port (default 8080)
   SMIA_AUTH_MODE        smia (default) or dev
@@ -88,16 +88,27 @@ func serve(args []string) int {
 		slog.Error("migrate", "err", err)
 		return 1
 	}
+	store := NewStore(pool)
 	var notifier Notifier
 	if hook := strings.TrimSpace(os.Getenv("DISCORD_WEBHOOK_URL")); hook != "" {
-		notifier = &discord.Client{WebhookURL: hook}
+		q := discord.NewQueue(&discord.Client{WebhookURL: hook})
+		q.After = func(res discord.Result) {
+			if res.Err != nil || res.Kind != discord.KindCompletion || res.Ref == "" {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := store.MarkDiscord(ctx, res.Ref, res.Message.AttachmentURL); err != nil {
+				slog.Error("mark discord", "err", err)
+			}
+		}
+		notifier = q
 	} else {
-		slog.Warn("DISCORD_WEBHOOK_URL is empty; completions will not be posted to Discord")
+		slog.Warn("DISCORD_WEBHOOK_URL is empty; Discord notices are skipped")
 	}
 	if strings.TrimSpace(os.Getenv("ADMIN_TOKEN")) == "" {
 		slog.Warn("ADMIN_TOKEN is empty; admin routes are disabled")
 	}
-	store := NewStore(pool)
 	srv := &Server{store: store, adminToken: os.Getenv("ADMIN_TOKEN"), discord: notifier, smia: newVerifier(store)}
 	if strings.EqualFold(os.Getenv("SMIA_AUTH_MODE"), "dev") && strings.TrimSpace(os.Getenv("SMIA_DEV_TOKEN")) == "" {
 		slog.Warn("SMIA_AUTH_MODE=dev but SMIA_DEV_TOKEN is empty; login will fail")

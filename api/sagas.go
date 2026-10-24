@@ -92,10 +92,15 @@ func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p := playerFrom(r)
-	out, err := s.store.UpdateQuestForPlayer(r.Context(), p.ID, r.PathValue("id"), patch)
+	id := r.PathValue("id")
+	detail, gerr := s.store.GetQuest(r.Context(), id)
+	out, err := s.store.UpdateQuestForPlayer(r.Context(), p.ID, id, patch)
 	if err != nil {
 		s.fail(w, err)
 		return
+	}
+	if gerr == nil {
+		s.announceEdited(r.Context(), detail.Quest, out, body.Announce)
 	}
 	writeJSON(w, http.StatusOK, withSagaImageURL(out))
 }
