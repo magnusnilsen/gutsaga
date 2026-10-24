@@ -36,6 +36,7 @@ type App struct {
 	Queue      *queue.Queue
 	WowDir     string
 	NoUpdate   bool
+	UpdateDir  string // tests; empty uses the config directory
 	Prompt     func() (string, error)
 	sync       contract.SyncResponse
 	player     contract.Player
@@ -50,6 +51,12 @@ type App struct {
 	Notify func(title, body string)
 	// OnAccountChange runs after login, logout, or sync so the tray can refresh.
 	OnAccountChange func()
+	// OnUpdateAvailable runs once when a newer release has been downloaded.
+	OnUpdateAvailable func(tag string)
+	pendingTag        string
+	pendingBinary     string
+	pendingAddon      string
+	notifiedTag       string
 }
 
 type follower struct {
@@ -637,30 +644,60 @@ func (a *App) send(ctx context.Context, item queue.Item) error {
 }
 
 func (a *App) maybeUpdate(ctx context.Context) {
-	repo := a.Config.Update.Repo
-	if repo == "" || containsDev(version.Version) {
+	if a.NoUpdate || !a.Config.Update.On() || containsDev(version.Version) {
 		return
 	}
-	client := &update.Client{Token: a.Config.Update.Token}
+	repo := strings.TrimSpace(a.Config.Update.Repo)
+	if repo == "" {
+		return
+	}
+	a.offerUpdate(ctx, &update.Client{Token: a.Config.Update.Token}, repo, version.Version)
+}
+
+// offerUpdate downloads a newer release into the pending directory and asks
+// the tray to offer a restart. It does not replace the running binary.
+func (a *App) offerUpdate(ctx context.Context, client *update.Client, repo, current string) {
 	rel, err := client.Latest(ctx, repo)
 	if err != nil {
 		a.Log.Warn("fant ikke oppdatering", "err", err)
 		return
 	}
-	if !update.Newer(rel.Tag, version.Version) {
+	if !update.Newer(rel.Tag, current) {
+		return
+	}
+	a.mu.Lock()
+	if a.pendingTag == rel.Tag && a.pendingBinary != "" {
+		if _, err := os.Stat(a.pendingBinary); err == nil {
+			a.mu.Unlock()
+			return
+		}
+	}
+	a.mu.Unlock()
+
+	dir := a.updateDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		a.Log.Warn("kunne ikke lage oppdateringsmappe", "err", err)
 		return
 	}
 	a.Log.Info("laster ned oppdatering", "versjon", rel.Tag)
+
+	var addonPath string
 	if asset, ok := update.FindAsset(rel, update.AddonZip); ok && a.WowDir != "" {
 		body, err := client.Download(ctx, asset)
 		if err != nil {
 			a.Log.Warn("kunne ikke laste ned tillegget", "err", err)
-		} else if err := installZip(a.WowDir, body); err != nil {
-			a.Log.Warn("kunne ikke pakke ut tillegget", "err", err)
+		} else {
+			addonPath = filepath.Join(dir, update.AddonZip)
+			if err := os.WriteFile(addonPath, body, 0o644); err != nil {
+				a.Log.Warn("kunne ikke lagre tillegget", "err", err)
+				addonPath = ""
+			}
 		}
 	}
-	asset, ok := update.FindAsset(rel, update.AssetName(osName(), archName()))
+	name := update.AssetName(osName(), archName())
+	asset, ok := update.FindAsset(rel, name)
 	if !ok {
+		a.Log.Warn("utgivelsen mangler programfil", "fil", name)
 		return
 	}
 	body, err := client.Download(ctx, asset)
@@ -668,12 +705,87 @@ func (a *App) maybeUpdate(ctx context.Context) {
 		a.Log.Warn("kunne ikke laste ned programmet", "err", err)
 		return
 	}
-	if err := update.ReplaceExecutable(body); err != nil {
-		a.Log.Warn("kunne ikke bytte ut programfilen", "err", err)
+	binPath := filepath.Join(dir, name)
+	if err := os.WriteFile(binPath, body, 0o755); err != nil {
+		a.Log.Warn("kunne ikke lagre programmet", "err", err)
 		return
+	}
+
+	a.mu.Lock()
+	first := a.notifiedTag != rel.Tag
+	a.pendingTag = rel.Tag
+	a.pendingBinary = binPath
+	a.pendingAddon = addonPath
+	a.notifiedTag = rel.Tag
+	fn := a.OnUpdateAvailable
+	a.mu.Unlock()
+	a.Log.Info("ny versjon klar", "versjon", rel.Tag)
+	if first && fn != nil {
+		fn(rel.Tag)
+	}
+}
+
+// PendingUpdate is the staged release tag, or empty.
+func (a *App) PendingUpdate() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.pendingTag
+}
+
+// AutoUpdateOn reports the saved preference.
+func (a *App) AutoUpdateOn() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.Config.Update.On()
+}
+
+// SetAutoUpdate persists whether checks run. A download already staged stays available.
+func (a *App) SetAutoUpdate(on bool) error {
+	a.mu.Lock()
+	a.Config.Update.SetEnabled(on)
+	cfg := a.Config
+	a.mu.Unlock()
+	return config.Save(cfg)
+}
+
+// ApplyUpdate installs the staged addon and binary, then restarts.
+func (a *App) ApplyUpdate() error {
+	a.mu.Lock()
+	bin := a.pendingBinary
+	addon := a.pendingAddon
+	wow := a.WowDir
+	a.mu.Unlock()
+	if bin == "" {
+		return errors.New("ingen oppdatering")
+	}
+	body, err := os.ReadFile(bin)
+	if err != nil {
+		return err
+	}
+	if addon != "" && wow != "" {
+		if z, err := os.ReadFile(addon); err == nil {
+			if err := installZip(wow, z); err != nil {
+				a.Log.Warn("kunne ikke pakke ut tillegget", "err", err)
+			}
+		}
+	}
+	if err := update.ReplaceExecutable(body); err != nil {
+		return err
 	}
 	a.Log.Info("starter GutSaga på nytt")
 	restart()
+	return nil
+}
+
+func (a *App) updateDir() string {
+	if a.UpdateDir != "" {
+		return a.UpdateDir
+	}
+	dir, err := config.Dir()
+	if err != nil {
+		return filepath.Join(os.TempDir(), "gutsaga-updates")
+	}
+	return filepath.Join(dir, "updates", "pending")
 }
 
 func (f *follower) poll() []string {

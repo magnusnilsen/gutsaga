@@ -88,7 +88,7 @@ GUTSAGA_ADDON_SRC=addon/GutSaga go run ./cmd/gutsaga --api-url http://localhost:
 
 Du trenger programmet GutSaga og World of Warcraft. Du trenger ikke kildekoden og ikke en API-nøkkel. Du logger inn med Smia.
 
-1. Last ned filen for maskinen din fra utgivelsene (se under om hvor de ligger):
+1. Last ned filen for maskinen din fra [siste utgivelse](https://github.com/magnusnilsen/gutsaga/releases/latest):
    - Mac med Apple-chip: `gutsaga-darwin-arm64`
    - Mac med Intel: `gutsaga-darwin-amd64`
    - Windows: `gutsaga-windows-amd64.exe`
@@ -141,17 +141,15 @@ Kjør `setup` fra PowerShell slik at du får spørsmålene i vinduet.
 
 ## Oppdateringer
 
-Programmet sjekker GitHub ved oppstart og omtrent hver fjerde time. Det bytter ut seg selv og tillegget når det finnes en nyere versjon. Versjonsnummeret er `0.1.<byggnummer>`.
+Hver push til `main` gir en GitHub-utgivelse. Versjonen øker automatisk (`0.1.0`, så patch, eller minor/major når commit-meldingene sier `feat:` / `feat!:`). Endringsloggen kommer fra commitene.
 
-Repoet med kildekoden er privat. Ikke bygg en GitHub-token inn i programmet.
+Programmet sjekker [utgivelsene](https://github.com/magnusnilsen/gutsaga/releases/latest) ved oppstart og omtrent hver fjerde time. Når det finnes en nyere versjon, lastes den ned i bakgrunnen. Skuffmenyen viser **Ny versjon vX.Y.Z — start på nytt**. Den bytter ikke ut seg selv før du velger det. **Automatiske oppdateringer** i samme meny skrur sjekken av og på. `--no-update` hopper over sjekken for den kjøringen.
 
-**Anbefalt:** et eget offentlig repo som bare inneholder utgivelsene, for eksempel `magnusnilsen/gutsaga-releases`. Venner laster ned uten token, og tokenen deres kan ikke lese kildekoden. Når hemmelighetene `PUBLIC_RELEASE_REPO` og `PUBLIC_RELEASE_TOKEN` er satt på det private repoet, speiler CI utgivelsen dit. I `config.json`:
+Standardrepoet er `magnusnilsen/gutsaga`. Ingen token trengs. I `config.json`:
 
 ```json
-"update": { "repo": "magnusnilsen/gutsaga-releases", "token": "" }
+"update": { "repo": "magnusnilsen/gutsaga", "enabled": true }
 ```
-
-Alternativet er en finmasket token med lesetilgang i hver venns `config.json` (`update.token`) mot det private repoet. Den tokenen kan også lese kildekoden, så det offentlige utgivelsesrepoet er enklere og tryggere.
 
 Innstillingene ligger i:
 

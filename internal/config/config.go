@@ -15,9 +15,26 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/wowpath"
 )
 
+// DefaultUpdateRepo is the public GutSaga repo. Releases live there.
+const DefaultUpdateRepo = "magnusnilsen/gutsaga"
+
 type Update struct {
-	Repo  string `json:"repo"`
-	Token string `json:"token"`
+	Repo    string `json:"repo"`
+	Token   string `json:"token,omitempty"`
+	Enabled *bool  `json:"enabled,omitempty"` // nil means on
+}
+
+// On reports whether automatic update checks are enabled. Unset means on.
+func (u Update) On() bool {
+	if u.Enabled == nil {
+		return true
+	}
+	return *u.Enabled
+}
+
+// SetEnabled stores an explicit on/off choice.
+func (u *Update) SetEnabled(on bool) {
+	u.Enabled = &on
 }
 
 type Smia struct {
@@ -124,6 +141,11 @@ func (cfg *Config) Normalize() {
 	if cfg.APIKey == "" {
 		cfg.APIKey = cfg.SessionToken
 	}
+	cfg.Update.Repo = strings.TrimSpace(cfg.Update.Repo)
+	cfg.Update.Token = strings.TrimSpace(cfg.Update.Token)
+	if cfg.Update.Repo == "" || cfg.Update.Repo == "magnusnilsen/gutsaga-releases" {
+		cfg.Update.Repo = DefaultUpdateRepo
+	}
 }
 
 func Save(cfg Config) error {
@@ -192,14 +214,30 @@ func Setup(r io.Reader, w io.Writer, current Config) (Config, error) {
 		return current, err
 	}
 	current.Client = client
-	if current.Update.Repo, err = ask("GitHub-repo for oppdateringer (eier/navn, tom = av)", current.Update.Repo); err != nil {
+	if current.Update.Repo == "" {
+		current.Update.Repo = DefaultUpdateRepo
+	}
+	if current.Update.Repo, err = ask("GitHub-repo for oppdateringer (eier/navn)", current.Update.Repo); err != nil {
 		return current, err
 	}
-	if current.Update.Repo != "" {
-		if current.Update.Token, err = ask("GitHub-token (tom hvis repoet er offentlig)", current.Update.Token); err != nil {
-			return current, err
-		}
+	if current.Update.Token, err = ask("GitHub-token (tom hvis repoet er offentlig)", current.Update.Token); err != nil {
+		return current, err
 	}
+	autoDefault := "ja"
+	if current.Update.Enabled != nil && !*current.Update.Enabled {
+		autoDefault = "nei"
+	}
+	auto, err := ask("Automatiske oppdateringer (ja/nei)", autoDefault)
+	if err != nil {
+		return current, err
+	}
+	switch strings.ToLower(auto) {
+	case "nei", "no", "av", "false", "0":
+		current.Update.SetEnabled(false)
+	default:
+		current.Update.SetEnabled(true)
+	}
+	current.Normalize()
 	current.APIBaseURL = strings.TrimRight(strings.TrimSpace(current.APIBaseURL), "/")
 	if err := Validate(current); err != nil {
 		return current, err

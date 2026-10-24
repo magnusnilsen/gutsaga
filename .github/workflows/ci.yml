@@ -47,8 +47,20 @@ jobs:
           lua5.1 addon/objectives_test.lua
           lua5.1 addon/chains_test.lua
 
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: next
+        run: echo "version=$(bash scripts/next-version.sh)" >> "$GITHUB_OUTPUT"
+
   package:
     name: Build ${{ matrix.asset }}
+    needs: version
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -80,7 +92,7 @@ jobs:
           CGO_ENABLED: ${{ matrix.cgo }}
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          VERSION: 0.1.${{ github.run_number }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           if [ "$GOOS" = "darwin" ] && [ "$GOARCH" = "amd64" ]; then
             export CC="clang -arch x86_64"
@@ -96,7 +108,7 @@ jobs:
 
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, package]
+    needs: [test, package, version]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -112,32 +124,28 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: 0.1.${{ github.run_number }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
-          notes=$(cat <<EOF
-          GutSaga ${VERSION}
-
-          - \`gutsaga-darwin-arm64\` og \`gutsaga-darwin-amd64\` (macOS)
-          - \`gutsaga-windows-amd64.exe\`
-          - \`GutSaga-addon.zip\`
-
-          Binærene er ikke signert. Se README for Gatekeeper og SmartScreen.
-          EOF
-          )
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
             gh release upload "v${VERSION}" dist/* --clobber
-          else
-            gh release create "v${VERSION}" dist/* --title "GutSaga v${VERSION}" --notes "$notes"
+            exit 0
           fi
-      - name: Mirror to public releases repo
-        if: ${{ secrets.PUBLIC_RELEASE_REPO != '' && secrets.PUBLIC_RELEASE_TOKEN != '' }}
-        env:
-          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
-          VERSION: 0.1.${{ github.run_number }}
-          REPO: ${{ secrets.PUBLIC_RELEASE_REPO }}
-        run: |
-          if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
-            gh release upload "v${VERSION}" dist/* --repo "$REPO" --clobber
-          else
-            gh release create "v${VERSION}" dist/* --repo "$REPO" --title "GutSaga v${VERSION}" --notes "GutSaga ${VERSION}"
-          fi
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="v${VERSION}" \
+            -f target_commitish="${GITHUB_SHA}" \
+            --jq '.body // ""' > notes.md
+          cat >> notes.md <<'EOF'
+
+## Last ned
+
+- `gutsaga-darwin-arm64` og `gutsaga-darwin-amd64` (macOS)
+- `gutsaga-windows-amd64.exe`
+- `GutSaga-addon.zip`
+- `SHA256SUMS`
+
+Binærene er ikke signert. Se README for Gatekeeper og SmartScreen.
+EOF
+          gh release create "v${VERSION}" dist/* \
+            --target "${GITHUB_SHA}" \
+            --title "GutSaga v${VERSION}" \
+            --notes-file notes.md

@@ -29,13 +29,17 @@ type Status struct {
 
 // Menu updates the disabled account lines and the login/logout action.
 type Menu struct {
-	mu         sync.Mutex
-	user       *systray.MenuItem
-	tag        *systray.MenuItem
-	emptyChars *systray.MenuItem
-	chars      []*systray.MenuItem
-	auth       *systray.MenuItem
-	authClick  func()
+	mu          sync.Mutex
+	user        *systray.MenuItem
+	tag         *systray.MenuItem
+	emptyChars  *systray.MenuItem
+	chars       []*systray.MenuItem
+	auth        *systray.MenuItem
+	authClick   func()
+	updateItem  *systray.MenuItem
+	updateClick func()
+	autoItem    *systray.MenuItem
+	autoToggle  func(bool)
 }
 
 func Supported() bool { return true }
@@ -60,6 +64,39 @@ func Run(ctx context.Context, tooltip string, items []Item, onReady func(*Menu))
 			m.chars = append(m.chars, it)
 		}
 		systray.AddSeparator()
+
+		m.updateItem = systray.AddMenuItem("Ny versjon — start på nytt", "Last ned er klar")
+		m.updateItem.Hide()
+		go func() {
+			for range m.updateItem.ClickedCh {
+				m.mu.Lock()
+				fn := m.updateClick
+				m.mu.Unlock()
+				if fn != nil {
+					fn()
+				}
+			}
+		}()
+
+		m.autoItem = systray.AddMenuItemCheckbox("Automatiske oppdateringer", "Sjekk GitHub og last ned i bakgrunnen", false)
+		go func() {
+			for range m.autoItem.ClickedCh {
+				var next bool
+				if m.autoItem.Checked() {
+					m.autoItem.Uncheck()
+					next = false
+				} else {
+					m.autoItem.Check()
+					next = true
+				}
+				m.mu.Lock()
+				fn := m.autoToggle
+				m.mu.Unlock()
+				if fn != nil {
+					fn(next)
+				}
+			}
+		}()
 
 		m.auth = systray.AddMenuItem("Logg inn med Smia", "Åpne nettleseren og logg inn")
 		go func() {
@@ -108,6 +145,39 @@ func addDisabled(title, tip string) *systray.MenuItem {
 	it := systray.AddMenuItem(title, tip)
 	it.Disable()
 	return it
+}
+
+// SetPendingUpdate shows or hides the restart-to-update item.
+func (m *Menu) SetPendingUpdate(tag string, onRestart func()) {
+	if m == nil || m.updateItem == nil {
+		return
+	}
+	m.mu.Lock()
+	m.updateClick = onRestart
+	m.mu.Unlock()
+	if tag == "" {
+		m.updateItem.Hide()
+		return
+	}
+	title := "Ny versjon " + tag + " — start på nytt"
+	m.updateItem.SetTitle(title)
+	m.updateItem.SetTooltip("Last ned er klar. Start GutSaga på nytt for å oppdatere")
+	m.updateItem.Show()
+}
+
+// SetAutoUpdate sets the checkbox and the toggle handler.
+func (m *Menu) SetAutoUpdate(on bool, onToggle func(bool)) {
+	if m == nil || m.autoItem == nil {
+		return
+	}
+	m.mu.Lock()
+	m.autoToggle = onToggle
+	m.mu.Unlock()
+	if on {
+		m.autoItem.Check()
+		return
+	}
+	m.autoItem.Uncheck()
 }
 
 // SetAuthAction sets the login/logout item title and click handler.

@@ -32,5 +32,7 @@ func Run(ctx context.Context, _ string, _ []Item, onReady func(*Menu)) {
 	<-ctx.Done()
 }
 
-func (m *Menu) SetStatus(Status)               {}
-func (m *Menu) SetAuthAction(_ bool, _ func()) {}
+func (m *Menu) SetStatus(Status)                    {}
+func (m *Menu) SetAuthAction(_ bool, _ func())      {}
+func (m *Menu) SetPendingUpdate(_ string, _ func()) {}
+func (m *Menu) SetAutoUpdate(_ bool, _ func(bool))  {}

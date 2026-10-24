@@ -13,6 +13,7 @@ import (
 
 	"github.com/magnusnilsen/gutsaga/internal/app"
 	"github.com/magnusnilsen/gutsaga/internal/config"
+	"github.com/magnusnilsen/gutsaga/internal/notify"
 	"github.com/magnusnilsen/gutsaga/internal/tray"
 	"github.com/magnusnilsen/gutsaga/internal/version"
 )
@@ -214,6 +215,13 @@ func run(opts options) int {
 		return 1
 	}
 	application.NoUpdate = opts.NoUpdate
+	var trayMenu *tray.Menu
+	application.OnUpdateAvailable = func(tag string) {
+		if trayMenu != nil {
+			refreshUpdate(trayMenu, application, log)
+		}
+		_ = notify.Show("GutSaga", "Ny versjon "+tag+" — start på nytt for å oppdatere")
+	}
 	if isTerminal(os.Stdin) {
 		application.Prompt = func() (string, error) {
 			fmt.Fprint(os.Stdout, "Lim inn koden fra nettleseren hvis vinduet ikke kom tilbake: ")
@@ -261,10 +269,32 @@ func run(opts options) int {
 		}},
 		{Title: "Avslutt", Tooltip: "Avslutt GutSaga", OnClick: cancel},
 	}, func(m *tray.Menu) {
+		trayMenu = m
 		refreshTray(m)
+		refreshUpdate(m, application, log)
 		application.OnAccountChange = func() { refreshTray(m) }
 	})
 	return 0
+}
+
+func refreshUpdate(m *tray.Menu, application *app.App, log *slog.Logger) {
+	m.SetAutoUpdate(application.AutoUpdateOn(), func(on bool) {
+		if err := application.SetAutoUpdate(on); err != nil {
+			log.Warn("kunne ikke lagre oppdateringsvalg", "err", err)
+		}
+	})
+	tag := application.PendingUpdate()
+	if tag == "" {
+		m.SetPendingUpdate("", nil)
+		return
+	}
+	m.SetPendingUpdate(tag, func() {
+		go func() {
+			if err := application.ApplyUpdate(); err != nil {
+				log.Warn("oppdatering feilet", "err", err)
+			}
+		}()
+	})
 }
 
 func syncOnce(opts options) int {

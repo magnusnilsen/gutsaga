@@ -45,7 +45,7 @@ So Magnus can flip friends’ banks off without them hunting UI.
 
 ## Onboarding (target)
 
-1. Invite via Smia; MCP for sagas + companion download link.
+1. Invite via Smia. Call MCP `get_download_instructions` with the player's `os` (`macos` or `windows`) and `arch` (`arm64` or `amd64`). It returns the matching download and the install facts. Say those steps in the language of the conversation. Then `list_sagas` / `create_saga`. Auto-update is on by default; the tray says “Ny versjon … start på nytt” instead of restarting by itself.
 2. Install companion → addon installs automatically.
 3. DB empty of *their* characters until first game login.
 4. Log into a toon → addon asks to join GutSaga.

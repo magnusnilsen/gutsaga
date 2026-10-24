@@ -67,8 +67,16 @@ func parse(v string) [3]int {
 }
 
 type Client struct {
-	HTTP  *http.Client
-	Token string
+	HTTP    *http.Client
+	Token   string
+	APIBase string // default https://api.github.com; tests set this
+}
+
+func (c *Client) apiBase() string {
+	if strings.TrimSpace(c.APIBase) != "" {
+		return strings.TrimRight(c.APIBase, "/")
+	}
+	return "https://api.github.com"
 }
 
 func (c *Client) http() *http.Client {
@@ -79,7 +87,7 @@ func (c *Client) http() *http.Client {
 }
 
 func (c *Client) Latest(ctx context.Context, repo string) (Release, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/"+repo+"/releases/latest", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.apiBase()+"/repos/"+repo+"/releases/latest", nil)
 	if err != nil {
 		return Release{}, err
 	}
