@@ -49,11 +49,13 @@ func (s *Server) announceCreated(ctx context.Context, q contract.Quest, flag *bo
 		}
 	}
 	s.postDiscord(ctx, func(ctx context.Context, n Notifier) (discord.Message, error) {
-		return n.PostSaga(ctx, sagaNotice(ctx, s.store, discord.KindAnnounced, q, img, ct))
+		return n.PostSaga(ctx, sagaNotice(ctx, s.store, discord.KindAnnounced, q, "", img, ct))
 	})
 }
 
-func (s *Server) announceEdited(ctx context.Context, before, after contract.Quest, flag *bool) {
+// announceEdited posts an update or retirement. actor is a short display name
+// (e.g. "Magnus"); empty falls back to the quest's created_by BattleTag name.
+func (s *Server) announceEdited(ctx context.Context, before, after contract.Quest, flag *bool, actor string) {
 	if before.ID == "" || after.ID == "" || !announceUpdate(flag) || s.discord == nil {
 		return
 	}
@@ -67,7 +69,7 @@ func (s *Server) announceEdited(ctx context.Context, before, after contract.Ques
 		return
 	}
 	s.postDiscord(ctx, func(ctx context.Context, n Notifier) (discord.Message, error) {
-		return n.PostSaga(ctx, sagaNotice(ctx, s.store, kind, after, nil, ""))
+		return n.PostSaga(ctx, sagaNotice(ctx, s.store, kind, after, actor, nil, ""))
 	})
 }
 
@@ -85,7 +87,7 @@ func (s *Server) announceLevel(ctx context.Context, before contract.Character, l
 	})
 }
 
-func sagaNotice(ctx context.Context, store *Store, kind string, q contract.Quest, image []byte, contentType string) discord.SagaNotice {
+func sagaNotice(ctx context.Context, store *Store, kind string, q contract.Quest, actor string, image []byte, contentType string) discord.SagaNotice {
 	lines := make([]discord.ObjectiveLine, 0, len(q.Objectives))
 	for _, o := range q.Objectives {
 		lines = append(lines, discord.ObjectiveLine{Text: o.Text})
@@ -103,6 +105,10 @@ func sagaNotice(ctx context.Context, store *Store, kind string, q contract.Quest
 			people = got
 		}
 	}
+	updatedBy := strings.TrimSpace(actor)
+	if updatedBy == "" {
+		updatedBy = displayActor("", "", q.CreatedBy)
+	}
 	return discord.SagaNotice{
 		Kind:        kind,
 		Title:       q.Title,
@@ -114,11 +120,40 @@ func sagaNotice(ctx context.Context, store *Store, kind string, q contract.Quest
 		Party:       q.PartyQuest,
 		People:      people,
 		CreatedBy:   q.CreatedBy,
+		UpdatedBy:   updatedBy,
 		Version:     q.Version,
 		When:        time.Now().UTC(),
 		Image:       image,
 		ContentType: contentType,
 	}
+}
+
+// displayActor picks a short name for Discord lines. Prefer a real display
+// name, then the BattleTag name, then the email local-part.
+func displayActor(displayName, email, battleTag string) string {
+	name := strings.TrimSpace(displayName)
+	if name != "" && !strings.Contains(name, "@") {
+		return name
+	}
+	if tag := strings.TrimSpace(battleTag); tag != "" {
+		if i := strings.IndexByte(tag, '#'); i > 0 {
+			return tag[:i]
+		}
+		return tag
+	}
+	if name != "" {
+		if i := strings.IndexByte(name, '@'); i > 0 {
+			return name[:i]
+		}
+		return name
+	}
+	if mail := strings.TrimSpace(email); mail != "" {
+		if i := strings.IndexByte(mail, '@'); i > 0 {
+			return mail[:i]
+		}
+		return mail
+	}
+	return ""
 }
 
 // announceCreate reports whether a new saga should be posted.

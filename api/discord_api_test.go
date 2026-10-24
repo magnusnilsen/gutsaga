@@ -138,6 +138,9 @@ func TestAdminDiscordNotices(t *testing.T) {
 	if len(fake.sagas) != 2 || fake.sagas[1].Kind != discord.KindUpdated || fake.sagas[1].Version != 3 {
 		t.Fatalf("update notices %+v", fake.sagas)
 	}
+	if fake.sagas[1].UpdatedBy != "Magnus" {
+		t.Fatalf("updater %q", fake.sagas[1].UpdatedBy)
+	}
 	fake.mu.Unlock()
 
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/quests/"+quest.ID, map[string]any{

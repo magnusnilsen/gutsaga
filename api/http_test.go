@@ -240,7 +240,7 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	if first.QuestVersion != 1 || first.QuestTitle != "Første vakt" {
 		t.Fatalf("recorded %+v", first)
 	}
-	if fake.calls != 1 || !strings.Contains(fake.last, "**Magni** fullførte *Første vakt*!") || fake.image == 0 {
+	if fake.calls != 1 || !strings.Contains(fake.last, "**Magni** fullførte en saga!") || fake.image == 0 {
 		t.Fatalf("discord calls=%d text=%q image=%d", fake.calls, fake.last, fake.image)
 	}
 

@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -19,7 +20,6 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/config"
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 	"github.com/magnusnilsen/gutsaga/internal/install"
-	"github.com/magnusnilsen/gutsaga/internal/notify"
 	"github.com/magnusnilsen/gutsaga/internal/queue"
 	"github.com/magnusnilsen/gutsaga/internal/savedvars"
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
@@ -38,14 +38,18 @@ type App struct {
 	NoUpdate   bool
 	Prompt     func() (string, error)
 	sync       contract.SyncResponse
+	player     contract.Player
 	follow     follower
 	mu         sync.Mutex
 	loginMu    sync.Mutex
 	loginTried bool
+	signedOut  bool // user chose Logg ut; do not open the browser until they log in again
 	notice     string
 	noticeID   string
 	// Notify shows the desktop banner. Tests set it. Nil uses the OS.
 	Notify func(title, body string)
+	// OnAccountChange runs after login, logout, or sync so the tray can refresh.
+	OnAccountChange func()
 }
 
 type follower struct {
@@ -68,7 +72,98 @@ func New(cfg config.Config, queuePath string, log *slog.Logger) (*App, error) {
 		Log:    log,
 		Client: &backend.Client{BaseURL: cfg.APIBaseURL, APIKey: cfg.Token()},
 		Queue:  q,
+		player: contract.Player{
+			BattleTag:   cfg.BattleTag,
+			DisplayName: cfg.PlayerName,
+			Email:       cfg.PlayerEmail,
+		},
 	}, nil
+}
+
+func (a *App) notifyAccount() {
+	if a.OnAccountChange != nil {
+		a.OnAccountChange()
+	}
+}
+
+// AccountStatus is what the tray shows as grayed-out identity lines.
+func (a *App) AccountStatus() (user, battleTag string, characters []string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return accountStatus(a.Config.Token() != "", a.player, a.Config, a.sync)
+}
+
+func accountStatus(loggedIn bool, player contract.Player, cfg config.Config, sync contract.SyncResponse) (user, battleTag string, characters []string) {
+	if !loggedIn {
+		return "Ikke innlogget", "BattleTag: —", nil
+	}
+	user = "Konto: innlogget"
+	switch {
+	case strings.TrimSpace(sync.Email) != "":
+		user = "Konto: " + strings.TrimSpace(sync.Email)
+	case strings.TrimSpace(player.Email) != "":
+		user = "Konto: " + strings.TrimSpace(player.Email)
+	case strings.TrimSpace(cfg.PlayerEmail) != "":
+		user = "Konto: " + strings.TrimSpace(cfg.PlayerEmail)
+	case strings.TrimSpace(sync.DisplayName) != "":
+		user = "Konto: " + strings.TrimSpace(sync.DisplayName)
+	case strings.TrimSpace(player.DisplayName) != "":
+		user = "Konto: " + strings.TrimSpace(player.DisplayName)
+	case strings.TrimSpace(cfg.PlayerName) != "":
+		user = "Konto: " + strings.TrimSpace(cfg.PlayerName)
+	}
+	tag := strings.TrimSpace(sync.BattleTag)
+	if tag == "" {
+		tag = strings.TrimSpace(player.BattleTag)
+	}
+	if tag == "" {
+		tag = strings.TrimSpace(cfg.BattleTag)
+	}
+	if tag == "" {
+		battleTag = "BattleTag: (ikke satt)"
+	} else {
+		battleTag = "BattleTag: " + tag
+	}
+	for _, ch := range sync.Characters {
+		characters = append(characters, formatCharacterLine(ch))
+	}
+	return user, battleTag, characters
+}
+
+func formatCharacterLine(ch contract.Character) string {
+	name := strings.TrimSpace(ch.Name)
+	if name == "" {
+		name = "?"
+	}
+	parts := []string{name}
+	if r := strings.TrimSpace(ch.Realm); r != "" {
+		parts = append(parts, r)
+	}
+	if ch.Level > 0 {
+		parts = append(parts, fmt.Sprintf("nivå %d", ch.Level))
+	}
+	if c := strings.TrimSpace(ch.Class); c != "" {
+		parts = append(parts, c)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// applySyncIdentityLocked copies email / name / battletag from sync onto the
+// in-memory player and config. Caller holds a.mu.
+func (a *App) applySyncIdentityLocked(sync contract.SyncResponse) {
+	a.sync = sync
+	if email := strings.TrimSpace(sync.Email); email != "" {
+		a.player.Email = email
+		a.Config.PlayerEmail = email
+	}
+	if name := strings.TrimSpace(sync.DisplayName); name != "" {
+		a.player.DisplayName = name
+		a.Config.PlayerName = name
+	}
+	if tag := strings.TrimSpace(sync.BattleTag); tag != "" {
+		a.Config.BattleTag = tag
+		a.player.BattleTag = tag
+	}
 }
 
 func (a *App) Run(ctx context.Context) {
@@ -198,10 +293,15 @@ func (a *App) pullSync(ctx context.Context) error {
 		notice, noticeID = addonNote, sync.GeneratedAt
 	}
 	if a.WowDir == "" {
-		a.sync = sync
+		a.mu.Lock()
+		a.applySyncIdentityLocked(sync)
 		a.notice, a.noticeID = notice, noticeID
+		cfg := a.Config
+		a.mu.Unlock()
+		_ = config.Save(cfg)
 		a.Log.Info("synkronisert, men WoW-mappen er ukjent")
 		a.announce(desktop)
+		a.notifyAccount()
 		return nil
 	}
 	entries := syncdata.Merge(sync)
@@ -223,10 +323,15 @@ func (a *App) pullSync(ctx context.Context) error {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		return err
 	}
-	a.sync = sync
+	a.mu.Lock()
+	a.applySyncIdentityLocked(sync)
 	a.notice, a.noticeID = notice, noticeID
+	cfg := a.Config
+	a.mu.Unlock()
+	_ = config.Save(cfg)
 	a.Log.Info("oppdrag oppdatert. Skriv /reload i spillet hvis du er innlogget.", "antall", len(entries))
 	a.announce(desktop)
+	a.notifyAccount()
 	return nil
 }
 
@@ -234,13 +339,10 @@ func (a *App) announce(desktop string) {
 	if desktop == "" {
 		return
 	}
+	// Log only — Discord carries the player-facing alert. Notify is for tests.
 	a.Log.Info(desktop)
 	if a.Notify != nil {
 		a.Notify("GutSaga", desktop)
-		return
-	}
-	if err := notify.Show("GutSaga", desktop); err != nil {
-		a.Log.Warn("skrivebordsvarsel feilet", "err", err)
 	}
 }
 

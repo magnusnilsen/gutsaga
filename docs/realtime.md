@@ -57,16 +57,11 @@ SELECT pg_notify(
 
 On each event except `ping`, and on every reconnect, the companion syncs and rewrites `GutSagaData.lua`. Bursts within 200ms become one sync. The ten-minute poll stays.
 
-If the visible saga list changed, it logs a line and raises a desktop notification:
+If the visible saga list changed, the companion logs a line (`Ny saga: …`, `Saga oppdatert: …`, and so on). It does **not** raise a desktop banner — Discord carries the player-facing alert.
 
-- macOS: Notification Center via `osascript` (the title is an argument, not string-built AppleScript)
-- Windows: a tray balloon via PowerShell, title and body in environment variables
-- `Ny saga: En kveld i Goldshire — skriv /reload i WoW` when one new saga appears
-- `Saga oppdatert: …`, `Saga avsluttet: …`, or `Saga fullført: …` for the other cases
+The first sync after the program starts stays quiet in that sense. Startup already asks for `/reload`.
 
-The first sync after the program starts does not notify. Startup already asks for `/reload`.
-
-WoW reads `GutSagaData.lua` only at login and `/reload`. The program cannot press keys in the client. The desktop notification is the "reload now" hint. The file also gets `notice` and `notice_id`. After `/reload` the addon prints that notice once in chat (`Ny saga: … er lastet inn.`) and remembers it in `GutSagaDB.seen_notice`.
+WoW reads `GutSagaData.lua` only at login and `/reload`. The program cannot press keys in the client. The file also gets `notice` and `notice_id`. After `/reload` the addon prints that notice once in chat (`Ny saga: … er lastet inn.`) and remembers it in `GutSagaDB.seen_notice`.
 
 Reconnect waits 1s, 2s, 4s, … capped at 60s, with ±20% jitter. A `401` clears the session and starts Smia login again. If no data frame arrives for 70 seconds the companion treats the socket as dead. The server's text `ping` is that data frame.
 

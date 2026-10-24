@@ -230,8 +230,16 @@ func run(opts options) int {
 		<-ctx.Done()
 		return 0
 	}
-	tray.Run(ctx, "GutSaga", []tray.Item{
-		{Title: "Logg inn med Smia", Tooltip: "Åpne nettleseren og logg inn", OnClick: func() {
+	refreshTray := func(m *tray.Menu) {
+		user, tag, chars := application.AccountStatus()
+		m.SetStatus(tray.Status{User: user, BattleTag: tag, Characters: chars})
+		if application.LoggedIn() {
+			m.SetAuthAction(true, func() {
+				go application.Logout()
+			})
+			return
+		}
+		m.SetAuthAction(false, func() {
 			go func() {
 				if err := application.Login(context.Background()); err != nil {
 					log.Warn("innlogging feilet", "err", err)
@@ -241,7 +249,9 @@ func run(opts options) int {
 					log.Warn("synkronisering feilet", "err", err)
 				}
 			}()
-		}},
+		})
+	}
+	tray.Run(ctx, "GutSaga", []tray.Item{
 		{Title: "Synkroniser nå", Tooltip: "Hent oppdrag fra API-et", OnClick: func() {
 			go func() {
 				if err := application.SyncNow(context.Background()); err != nil {
@@ -250,6 +260,9 @@ func run(opts options) int {
 			}()
 		}},
 		{Title: "Avslutt", Tooltip: "Avslutt GutSaga", OnClick: cancel},
+	}, func(m *tray.Menu) {
+		refreshTray(m)
+		application.OnAccountChange = func() { refreshTray(m) }
 	})
 	return 0
 }

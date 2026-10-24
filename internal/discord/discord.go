@@ -54,8 +54,14 @@ const (
 var ErrNotConfigured = errors.New("discord webhook is not configured")
 
 // CompletionText is the Norwegian line friends see above a completion embed.
+// The saga title lives on the embed; this line stays short.
 func CompletionText(character, questTitle string) string {
-	return bold(character) + " fullførte " + italic(displayTitle(questTitle)) + "!"
+	_ = questTitle
+	name := strings.TrimSpace(character)
+	if name == "" {
+		name = "En karakter"
+	}
+	return bold(name) + " fullførte en saga!"
 }
 
 // Milestone reports whether a level is worth a Discord note.
@@ -102,6 +108,8 @@ type SagaNotice struct {
 	Party       bool
 	People      []Person
 	CreatedBy   string
+	// UpdatedBy is who changed the saga (display name). Used for update/retire lines.
+	UpdatedBy   string
 	Version     int
 	When        time.Time
 	Image       []byte
@@ -477,7 +485,11 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 	var content string
 	switch n.Kind {
 	case KindAnnounced:
-		content = "Ny saga: " + italic(title)
+		if actor := announceActor(n); actor != "" {
+			content = escapeMD(actor) + " opprettet en ny saga"
+		} else {
+			content = "Ny saga"
+		}
 		desc := shortDescription(n.Description)
 		if desc == "" {
 			desc = "En ny saga er klar."
@@ -503,7 +515,11 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 		if version < 1 {
 			version = 1
 		}
-		content = italic(title) + " er oppdatert (versjon " + strconv.Itoa(version) + ")."
+		if actor := strings.TrimSpace(n.UpdatedBy); actor != "" {
+			content = escapeMD(actor) + " oppdaterte en saga"
+		} else {
+			content = "En saga er oppdatert"
+		}
 		embed = dcEmbed{
 			Title:       clipRunes(title, 256),
 			Description: "Ny versjon " + strconv.Itoa(version) + ".",
@@ -512,7 +528,11 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 			Footer:      &dcFooter{Text: username},
 		}
 	case KindRetired:
-		content = italic(title) + " er lagt bort."
+		if actor := strings.TrimSpace(n.UpdatedBy); actor != "" {
+			content = escapeMD(actor) + " la bort en saga"
+		} else {
+			content = "En saga er lagt bort"
+		}
 		embed = dcEmbed{
 			Title:       clipRunes(title, 256),
 			Description: "Sagaen er ikke lenger aktiv.",
@@ -548,7 +568,7 @@ func levelPayload(n LevelNotice) ([]byte, error) {
 		Timestamp:   whenOrNow(n.When).Format(time.RFC3339),
 		Footer:      &dcFooter{Text: username},
 	}
-	return marshalPayload(bold(name)+" nådde nivå "+strconv.Itoa(n.Level)+".", embed)
+	return marshalPayload(bold(name)+" nådde et nytt nivå.", embed)
 }
 
 func marshalPayload(content string, embed dcEmbed) ([]byte, error) {
@@ -645,6 +665,21 @@ func createdByText(by string) string {
 		return "Ukjent"
 	}
 	return clipRunes(escapeMD(by), 1024)
+}
+
+// announceActor is the short name in "X opprettet/oppdaterte …".
+func announceActor(n SagaNotice) string {
+	if a := strings.TrimSpace(n.UpdatedBy); a != "" {
+		return a
+	}
+	by := strings.TrimSpace(n.CreatedBy)
+	if by == "" {
+		return ""
+	}
+	if i := strings.IndexByte(by, '#'); i > 0 {
+		return by[:i]
+	}
+	return by
 }
 
 func shortDescription(s string) string {

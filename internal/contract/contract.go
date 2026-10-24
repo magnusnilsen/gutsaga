@@ -9,6 +9,8 @@ import "time"
 // prerequisite gate for each of this player's characters.
 type SyncResponse struct {
 	BattleTag   string            `json:"battletag"`
+	Email       string            `json:"email,omitempty"`
+	DisplayName string            `json:"display_name,omitempty"`
 	GeneratedAt string            `json:"generated_at"`
 	Characters  []Character       `json:"characters"`
 	Quests      []Quest           `json:"quests"`

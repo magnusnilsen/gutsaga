@@ -31,6 +31,8 @@ type Smia struct {
 
 type Config struct {
 	BattleTag    string `json:"battletag,omitempty"`
+	PlayerName   string `json:"player_name,omitempty"`
+	PlayerEmail  string `json:"player_email,omitempty"`
 	APIBaseURL   string `json:"api_base_url"`
 	APIKey       string `json:"api_key,omitempty"`
 	SessionToken string `json:"session_token,omitempty"`
@@ -109,6 +111,8 @@ func LoadPath(path string) (Config, error) {
 
 func (cfg *Config) Normalize() {
 	cfg.BattleTag = strings.TrimSpace(cfg.BattleTag)
+	cfg.PlayerName = strings.TrimSpace(cfg.PlayerName)
+	cfg.PlayerEmail = strings.TrimSpace(cfg.PlayerEmail)
 	cfg.APIBaseURL = strings.TrimRight(strings.TrimSpace(cfg.APIBaseURL), "/")
 	cfg.APIKey = strings.TrimSpace(cfg.APIKey)
 	cfg.SessionToken = strings.TrimSpace(cfg.SessionToken)

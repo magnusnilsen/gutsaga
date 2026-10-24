@@ -244,7 +244,7 @@ Ny saga:
 ```json
 {
   "username": "GutSaga",
-  "content": "Ny saga: *Første vakt*",
+  "content": "Magnus opprettet en ny saga",
   "embeds": [{
     "title": "Første vakt",
     "description": "Stå vakt ved porten.",
@@ -269,7 +269,7 @@ Fullføring:
 ```json
 {
   "username": "GutSaga",
-  "content": "**Magni** fullførte *Første vakt*!",
+  "content": "**Magni** fullførte en saga!",
   "embeds": [{
     "title": "Første vakt",
     "description": "Magni, Paladin på nivå 12, fullførte sagaen.",
@@ -294,7 +294,7 @@ Ny versjon:
 ```json
 {
   "username": "GutSaga",
-  "content": "*Første vakt* er oppdatert (versjon 2).",
+  "content": "Magnus oppdaterte en saga",
   "embeds": [{
     "title": "Første vakt",
     "description": "Ny versjon 2.",
@@ -311,7 +311,7 @@ Lagt bort:
 ```json
 {
   "username": "GutSaga",
-  "content": "*Første vakt* er lagt bort.",
+  "content": "Magnus la bort en saga",
   "embeds": [{
     "title": "Første vakt",
     "description": "Sagaen er ikke lenger aktiv.",
@@ -328,7 +328,7 @@ Milestolpe:
 ```json
 {
   "username": "GutSaga",
-  "content": "**Magni** nådde nivå 20.",
+  "content": "**Magni** nådde et nytt nivå.",
   "embeds": [{
     "title": "Nivå 20",
     "description": "Magni · Paladin",

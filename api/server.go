@@ -138,6 +138,13 @@ func (s *Server) sync(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	// Session auth already resolved the player; expose identity on sync so the
+	// companion tray can show email without re-running OAuth.
+	out.Email = p.Email
+	out.DisplayName = p.DisplayName
+	if out.BattleTag == "" {
+		out.BattleTag = p.BattleTag
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -463,7 +470,11 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hasFields && gerr == nil {
-		s.announceEdited(r.Context(), detail.Quest, out, body.Announce)
+		actor := ""
+		if body.UpdatedBy != nil {
+			actor = strings.TrimSpace(*body.UpdatedBy)
+		}
+		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor)
 	}
 	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
 }
@@ -663,6 +674,8 @@ type questPatchBody struct {
 	PartyQuest           *bool                 `json:"party_quest"`
 	Active               *bool                 `json:"active"`
 	CreatedBy            *string               `json:"created_by"`
+	// UpdatedBy is who edited the saga (Discord line). Admin optional; player routes set it from the session.
+	UpdatedBy            *string               `json:"updated_by"`
 	AssignedCharacterIDs *[]string             `json:"assigned_character_ids"`
 	Requires             json.RawMessage       `json:"requires"`
 	Chain                json.RawMessage       `json:"chain"`
@@ -764,6 +777,9 @@ func readQuestPatch(w http.ResponseWriter, r *http.Request) (questPatchBody, []b
 		}
 		if v, ok := r.MultipartForm.Value["created_by"]; ok {
 			body.CreatedBy = &v[0]
+		}
+		if v, ok := r.MultipartForm.Value["updated_by"]; ok {
+			body.UpdatedBy = &v[0]
 		}
 		if v, ok := r.MultipartForm.Value["party_quest"]; ok {
 			b := formBool(v[0])

@@ -87,7 +87,13 @@ func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if gerr == nil {
-		s.announceEdited(r.Context(), detail.Quest, out, body.Announce)
+		actor := displayActor(p.DisplayName, p.Email, p.BattleTag)
+		if body.UpdatedBy != nil {
+			if v := strings.TrimSpace(*body.UpdatedBy); v != "" {
+				actor = v
+			}
+		}
+		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor)
 	}
 	writeJSON(w, http.StatusOK, withSagaImageURL(out))
 }
