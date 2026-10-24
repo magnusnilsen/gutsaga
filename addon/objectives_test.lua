@@ -104,6 +104,15 @@ steps, done = M.evaluate({
 assertTrue(not steps.salute.done, "wrong emote target")
 
 steps, done = M.evaluate({
+    { id = "salute", type = "emote", text = "Hils", emote = "SALUTE", npc = "Stormwind Guard" },
+}, { emote = "SALUTE", emote_target = "Stormwind Guard" }, {})
+assertTrue(steps.salute.done, "emote matches")
+steps, done = M.evaluate({
+    { id = "salute", type = "emote", text = "Hils", emote = "SALUTE", npc = "Stormwind Guard" },
+}, {}, { salute = { done = true } })
+assertTrue(steps.salute.done and done, "emote stays done after pending clears")
+
+steps, done = M.evaluate({
     { id = "salute", type = "emote", text = "Hils", emote = "WAVE",
       when = { start = "22:00", ["end"] = "02:00" } },
 }, { emote = "WAVE", time = day.time }, {})

@@ -435,7 +435,15 @@ checkOne = function(obj, state, saved, prev, live)
         end
         row.done = open and row.count >= row.need
     elseif kind == "emote" then
-        row.done = open and emoteOK(obj, state)
+        -- Sticky once matched: pendingEmote is only live for a few seconds, and
+        -- finishQuest / UI refresh may land on a later tick.
+        if open and emoteOK(obj, state) then
+            row.done = true
+        elseif not live and prev.done then
+            row.done = true
+        else
+            row.done = false
+        end
     elseif kind == "all_of" or kind == "any_of" then
         local done, rows, have, total = checkComposite(obj, state, saved)
         nested = rows

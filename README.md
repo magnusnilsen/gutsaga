@@ -166,6 +166,8 @@ Andre som har GutSaga og står i gruppe eller guild, kan få et kort varsel. Inn
 
 ## Saga-kjeder
 
+> **Idé / senere.** Kjeder (`requires` + `chain`) er implementert i API og addon, men ikke en del av det vi robustgjør nå. La dem ligge til grunnleggende flyt (emotes, sync, Discord, karakter-opt-in) er stabil. Ikke bygg nye produktflater oppå dette ennå.
+
 En saga kan kreve at karakteren har fullført andre sagaer først, og kan ligge i en kjede som loggen viser som «Kapittel 2 av 4». Begge feltene er valgfrie. Uten `requires` er sagaen åpen. Uten `chain` står den for seg selv.
 
 `requires` er en liste med saga-id-er. **Alle** må være fullført av den samme karakteren. `chain` er bare visning: `id` er en stabil nøkkel (`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`), `name` er teksten i loggen, `order` er rekkefølgen (unikt innenfor samme `id`, fra 1). Samme `id` deler navn. Setter du et nytt navn, oppdateres navnet på de andre sagaene i kjeden. Versjonen deres økes ikke.

@@ -2627,17 +2627,23 @@ SlashCmdList.GUTSAGA = function(msg)
         end
         return
     end
-    if msg == "reset goldshire" then
+    local function resetQuest(id, label)
         initDB()
-        local id = "cf031479-7288-4508-b139-f23f1e322026"
         GutSagaDB.completions[id] = nil
         if type(GutSagaDB.objectives) == "table" then
             GutSagaDB.objectives[id] = nil
         end
         selectedID = id
-        chat("|cffc9a227GutSaga|r: «En kveld i Goldshire» er tilbakestilt.")
+        chat("|cffc9a227GutSaga|r: «" .. label .. "» er tilbakestilt.")
         onWorld()
         show()
+    end
+    if msg == "reset goldshire" then
+        resetQuest("cf031479-7288-4508-b139-f23f1e322026", "En kveld i Goldshire")
+        return
+    end
+    if msg == "reset wilhelm" or msg == "reset salute" then
+        resetQuest("88e92926-33b1-4ba0-a37b-6cb07ef6c7ba", "Hilsen til Wilhelm")
         return
     end
     show()
@@ -2700,9 +2706,15 @@ local function noteEmote(token, unit)
         local ok, n = pcall(UnitName, "target")
         target = (ok and plainString(n)) or ""
     end
-    -- Prefer the current soft-target name when the unit token was empty.
     if target == "" and world.object and world.object ~= "" then
         target = world.object
+    end
+    -- Do not wipe a good target when CHAT_MSG_TEXT_EMOTE re-enters without one.
+    if target == "" and type(world.pendingEmote) == "table" then
+        local prev = plainString(world.pendingEmote.target)
+        if prev then
+            target = prev
+        end
     end
     world.pendingEmote = {
         token = emote,
@@ -2722,14 +2734,15 @@ local function installEmoteHook()
     if emoteHooked or type(hooksecurefunc) ~= "function" then
         return
     end
-    if type(DoEmote) ~= "function" and type(_G.DoEmote) ~= "function" then
-        return
-    end
-    emoteHooked = true
-    hooksecurefunc("DoEmote", function(token, unit)
-        noteEmote(token, unit)
-        onWorld()
+    local ok = pcall(function()
+        hooksecurefunc("DoEmote", function(token, unit)
+            noteEmote(token, unit)
+            onWorld()
+        end)
     end)
+    if ok then
+        emoteHooked = true
+    end
 end
 
 local events = CreateFrame("Frame")
@@ -2859,18 +2872,20 @@ events:SetScript("OnEvent", function(_, event, ...)
         return
     end
     if event == "CHAT_MSG_TEXT_EMOTE" then
-        -- Confirm (and, on Classic, sometimes discover) the emote. Prefer the
-        -- DoEmote token; otherwise infer from the localized chat line.
+        -- Prefer the chat line (correct for this emote) over lastDoEmoteToken,
+        -- which can be stale after a wrong-emote negative test (/wave then /salute).
         local msg = ...
-        local token = lastDoEmoteToken
-        if type(world.pendingEmote) == "table" and world.pendingEmote.token then
+        local inferred = inferEmoteToken(msg)
+        local token = inferred
+        if (not token or token == "") and type(world.pendingEmote) == "table" then
             token = world.pendingEmote.token
         end
-        if not token or token == "" then
-            token = inferEmoteToken(msg)
+        if (not token or token == "") then
+            token = lastDoEmoteToken
         end
         if token and token ~= "" then
             noteEmote(token, "target")
+            lastDoEmoteToken = nil
             onWorld()
         elseif type(world.pendingEmote) == "table" then
             world.pendingEmote.untilAt = unixNow() + 5
