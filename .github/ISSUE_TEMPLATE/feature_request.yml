@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest a saga-log, companion, API, or Smia change.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security vulnerabilities go to a [private advisory](https://github.com/magnusnilsen/gutsaga/security/advisories/new), not this form.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is hard or missing today, and who hits it?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should GutSaga do instead? Addon, companion, API, or Smia — say which.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Addon
+        - Companion
+        - API
+        - Smia MCP
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other approaches you considered.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues, and this is not a security vulnerability.
+          required: true

@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in the addon, companion, API, or Smia tools broke.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. Security vulnerabilities go to a [private advisory](https://github.com/magnusnilsen/gutsaga/security/advisories/new), not a public issue. Strip session tokens, API keys, and webhook URLs from anything you paste.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Addon
+        - Companion
+        - API
+        - Smia MCP
+        - Documentation
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: WoW client
+      description: Forever, retail, Classic Era, Mists, or Anniversary (TBC), plus the build if you know it.
+      placeholder: Forever 1.60.1
+  - type: input
+    id: version
+    attributes:
+      label: GutSaga version
+      description: Output of `gutsaga version`, or the release you downloaded.
+      placeholder: 0.1.42
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Companion output or the relevant `[GutSaga]` chat lines. Remove BattleTags and tokens first.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues, and this is not a security vulnerability.
+          required: true

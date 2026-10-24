@@ -1,8 +1,99 @@
 # GutSaga
 
+GutSaga is a log of custom **sagas** for World of Warcraft Forever and Classic. The game has no room for the group's own quests, so GutSaga adds them with four pieces:
+
+| Piece | Path | Role |
+|---|---|---|
+| Addon | `addon/GutSaga` | Saga log inside the client. Watches objectives, writes chat lines, and takes the completion screenshot. It does not click the game or read the screen. |
+| Companion | `cmd/gutsaga` | Go program on the player's computer. Installs the addon, signs in with Smia, reads SavedVariables and the chat log, and rewrites the saga file when the server changes. |
+| API | `api/` | Go service. Stores sagas, characters, and progress in Postgres. Players call it with a GutSaga session. Smia calls the admin routes. |
+| Smia MCP | `smia/wow-mcp` | Tools on the Smia hub **wow**, server **mcp**, for writing and editing sagas. |
+
+Player-facing text in the addon, on Discord, and in the adventure log is Norwegian. The [technical reference](#technical-reference) below is that same Norwegian guide. Contributor docs are English.
+
+The code is [MIT](LICENSE), copyright Magnus Nilsen 2026.
+
+## Install for players
+
+Install World of Warcraft and the GutSaga companion, then sign in with Smia as a member of the hub **wow**. The source tree is for development and for running your own API.
+
+1. Download the binary for your machine from the [releases](https://github.com/magnusnilsen/gutsaga/releases) of this repository:
+   - Apple silicon: `gutsaga-darwin-arm64`
+   - Intel Mac: `gutsaga-darwin-amd64`
+   - Windows: `gutsaga-windows-amd64.exe`
+2. The build is unsigned. macOS Gatekeeper and Windows SmartScreen block the first launch. Use the steps under [macOS and Gatekeeper](#macos-and-gatekeeper) or [Windows and SmartScreen](#windows-and-smartscreen).
+3. Start the program. It copies the addon to `Interface/AddOns/GutSaga` and opens Smia login in the browser.
+4. Start the game, enable GutSaga at character select, then `/reload` or log in again.
+5. `/gutsaga` or `/gs` opens the saga log. The minimap button is a G.
+
+The companion talks to the group's API unless you pass `--api-url` or set `GUTSAGA_API_URL`. The baked-in default is `https://gutsaga-production.up.railway.app`. Running your own API is covered in [For den som driver serveren](#for-den-som-driver-serveren).
+
+On startup, and about every four hours after that, the companion looks for a newer GitHub release when `update.repo` is set. For this public repository, leave the token empty:
+
+```json
+"update": { "repo": "magnusnilsen/gutsaga", "token": "" }
+```
+
+Settings are stored in:
+
+- macOS: `~/Library/Application Support/GutSaga/config.json`
+- Windows: `%APPDATA%\GutSaga\config.json`
+
+`config.example.json` shows the shape. A token belongs in that file only when `update.repo` points at a private repository.
+
+### macOS and Gatekeeper
+
+1. Put the file somewhere stable, for example your home directory.
+2. `chmod +x gutsaga-darwin-arm64`
+3. Open **System Settings → Privacy & Security**.
+4. Under Security, choose **Open Anyway** on the GutSaga block.
+5. Or right-click the file, choose **Open**, then **Open** again.
+6. If it is still blocked: `xattr -cr /path/to/gutsaga-darwin-arm64`
+
+Run it from Terminal the first time so you can answer the setup prompts.
+
+### Windows and SmartScreen
+
+1. Download `gutsaga-windows-amd64.exe`.
+2. SmartScreen shows a protected-PC warning.
+3. Choose **More info**, then **Run anyway**.
+
+Run `setup` from PowerShell so the prompts stay in the window.
+
+## Architecture
+
+```text
+WoW addon (Lua)
+  objectives, chat line, screenshot
+        |  SavedVariables + WoWChatLog.txt
+        v
+companion (Go, cmd/gutsaga)
+  install addon, Smia login, sync, desktop notice
+        |  HTTPS session (gss_…)  and  GET /v1/ws
+        v
+API (Go, api/)  ---->  Postgres
+        ^
+        |  admin token
+Smia hub wow / server mcp
+  create_saga, update_saga, and the other tools in smia/wow-mcp
+```
+
+A saga is written in Smia. The tool calls the API, which stores it and notifies listeners through Postgres `LISTEN`/`NOTIFY`. The companion rewrites `GutSagaData.lua` and asks the player to `/reload`. The addon shows the steps. The first time every step is true together, it takes a screenshot and writes `[GutSaga] COMPLETE …` to the chat log. The companion posts that completion to the API. Discord gets a message when `DISCORD_WEBHOOK_URL` is set.
+
+The addon is embedded in the companion binary. While developing, `GUTSAGA_ADDON_SRC` copies Lua from the working tree instead. Contracts and routes: [docs/API.md](docs/API.md), [docs/sagas-api.md](docs/sagas-api.md), [docs/openapi.yaml](docs/openapi.yaml), [docs/realtime.md](docs/realtime.md).
+
+## Contributing
+
+Local setup, tests, and the pull request flow are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Contributor Covenant 2.1
+- [SECURITY.md](SECURITY.md) — report vulnerabilities through [GitHub Security Advisories](https://github.com/magnusnilsen/gutsaga/security/advisories/new). A public issue is the wrong place for a vulnerability.
+
+## Technical reference
+
 GutSaga er oppdragsloggen til gutane i World of Warcraft: Forever. Spillet har ingen plass til våre egne oppdrag, så vi har et tillegg i klienten og et lite program på maskinen som snakker med et eget API.
 
-Koden er [MIT](LICENSE). Følgeprogrammets standard-API peker på gutane sin server; for egen drift, se [Lokal testing](#lokal-testing) og [For den som driver serveren](#for-den-som-driver-serveren) (`--api-url` / `GUTSAGA_API_URL`). Offentlige pull requests er begrenset til collaborators for nå — fork og issues er greit.
+Koden er [MIT](LICENSE). Følgeprogrammets standard-API peker på gutane sin server; for egen drift, se [Lokal testing](#lokal-testing) og [For den som driver serveren](#for-den-som-driver-serveren) (`--api-url` / `GUTSAGA_API_URL`). Bidrag går via [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Forever-klienten er 1.60.1 og bruker det moderne tilleggs-API-et (Midnight), ikke 1.12. Grensesnittnummeret står i `addon/INTERFACE` og i `.toc`-filene. Forever bruker `16001` til det blir endret.
 
@@ -143,15 +234,13 @@ Kjør `setup` fra PowerShell slik at du får spørsmålene i vinduet.
 
 Programmet sjekker GitHub ved oppstart og omtrent hver fjerde time. Det bytter ut seg selv og tillegget når det finnes en nyere versjon. Versjonsnummeret er `0.1.<byggnummer>`.
 
-Repoet med kildekoden er privat. Ikke bygg en GitHub-token inn i programmet.
-
-**Anbefalt:** et eget offentlig repo som bare inneholder utgivelsene, for eksempel `magnusnilsen/gutsaga-releases`. Venner laster ned uten token, og tokenen deres kan ikke lese kildekoden. Når hemmelighetene `PUBLIC_RELEASE_REPO` og `PUBLIC_RELEASE_TOKEN` er satt på det private repoet, speiler CI utgivelsen dit. I `config.json`:
+Kildekoden i dette repoet er offentlig. Ikke sjekk inn en GitHub-token, og ikke bygg en token inn i programmet. For oppdateringer fra dette repoet, la `token` stå tom:
 
 ```json
-"update": { "repo": "magnusnilsen/gutsaga-releases", "token": "" }
+"update": { "repo": "magnusnilsen/gutsaga", "token": "" }
 ```
 
-Alternativet er en finmasket token med lesetilgang i hver venns `config.json` (`update.token`) mot det private repoet. Den tokenen kan også lese kildekoden, så det offentlige utgivelsesrepoet er enklere og tryggere.
+CI publiserer utgivelsen på dette repoet. Den kan i tillegg speile binærene til et eget repo, for eksempel `magnusnilsen/gutsaga-releases`, men bare når hemmelighetene `PUBLIC_RELEASE_REPO` og `PUBLIC_RELEASE_TOKEN` er satt. Uten dem hopper speilet over. En token i `update.token` trengs bare hvis `update.repo` peker på et privat repo.
 
 Innstillingene ligger i:
 

@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # api/ and the companion (cmd/gutsaga) are packages in the single module
+  # at the repository root. There is no go.mod inside those directories.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope

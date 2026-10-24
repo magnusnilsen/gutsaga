@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/magnusnilsen/gutsaga/security/advisories/new
+    about: Report a vulnerability in private. Do not open a public issue.
+  - name: Question
+    url: https://github.com/magnusnilsen/gutsaga/discussions
+    about: Questions and open-ended ideas. Enable Discussions in repository settings if this link does not open.
