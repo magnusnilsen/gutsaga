@@ -12,7 +12,7 @@ Environment:
 |---|---|---|
 | `DATABASE_URL` | yes | Postgres URL. Railway's Postgres plugin sets this. |
 | `ADMIN_TOKEN` | for admin routes | Bearer token for `/v1/admin/*`. Not a player key. |
-| `PUBLIC_BASE_URL` | for signed covers | Public origin of this API, no trailing slash. Example: `https://gutsaga-production.up.railway.app`. Admin quest reads turn it into absolute `image_signed_url` values. |
+| `PUBLIC_BASE_URL` | for signed covers | Public origin of this API, no trailing slash. Example: `https://gutsaga.example.com`. Admin saga reads turn it into absolute `image_signed_url` values. |
 | `IMAGE_URL_SECRET` | for signed covers | HMAC secret for those URLs. `openssl rand -hex 32`. Both this and `PUBLIC_BASE_URL` must be set or the signed URL is omitted. |
 | `IMAGE_URL_TTL` | no | Lifetime of a signed cover URL. Go duration, default `1h`. |
 | `DISCORD_WEBHOOK_URL` | no | Incoming webhook. Saga announcements, version notes, retirements, milestone levels, and completions are posted as username `GutSaga`. There is no second Discord variable. Discord attaches cover and screenshot bytes itself; it does not use the signed URL. |
@@ -379,6 +379,6 @@ The machine-readable contract is also in [`openapi.yaml`](openapi.yaml).
 
 ## Railway
 
-Connect the GitHub repo to Railway project `gutsaga`. The service root directory must be the **repository root** (the Dockerfile context is the whole module). `railway.json` builds `api/Dockerfile` and checks `/healthz`. Add the Postgres plugin and set `DATABASE_URL`, `DISCORD_WEBHOOK_URL`, and `ADMIN_TOKEN`. For chat clients that render a saga cover as a markdown image, also set `PUBLIC_BASE_URL` to the public Railway origin (`https://gutsaga-production.up.railway.app`) and `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` is optional and defaults to `1h`. Pushes to `main` deploy through Railway's GitHub integration.
+Connect the GitHub repo to a Railway project. The service root directory must be the **repository root** (the Dockerfile context is the whole module). `railway.json` builds `api/Dockerfile` and checks `/healthz`. Add the Postgres plugin and set `DATABASE_URL`, `DISCORD_WEBHOOK_URL`, and `ADMIN_TOKEN`. For chat clients that render a saga cover as a markdown image, also set `PUBLIC_BASE_URL` to the public origin of the API (no trailing slash) and `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` is optional and defaults to `1h`. Pushes to `main` deploy through Railway's GitHub integration.
 
 WebSockets need no extra Railway setting. The public proxy upgrades `GET /v1/ws` and does not apply the HTTP idle timeout to that socket. Leave `ReadTimeout` and `WriteTimeout` unset on the Go server (they are). Details, heartbeats, and deploys: [realtime.md](realtime.md).

@@ -2,6 +2,8 @@
 
 GutSaga er oppdragsloggen til gutane i World of Warcraft: Forever. Spillet har ingen plass til våre egne oppdrag, så vi har et tillegg i klienten og et lite program på maskinen som snakker med et eget API.
 
+Koden er [MIT](LICENSE). Følgeprogrammets standard-API peker på gutane sin server; for egen drift, se [Lokal testing](#lokal-testing) og [For den som driver serveren](#for-den-som-driver-serveren) (`--api-url` / `GUTSAGA_API_URL`). Pull requests er skrudd av i GitHub for nå — fork og issues er greit; PRs kan skrus på senere.
+
 Forever-klienten er 1.60.1 og bruker det moderne tilleggs-API-et (Midnight), ikke 1.12. Grensesnittnummeret står i `addon/INTERFACE` og i `.toc`-filene. Forever bruker `16001` til det blir endret.
 
 ## Lokal testing
@@ -227,11 +229,11 @@ Låsen leser `requires` på sagaen slik den er nå, ikke på øyeblikksbildet i 
 
 ## For den som driver serveren
 
-API-et ligger i `api/` og kjøres på Railway-prosjektet `gutsaga`.
+API-et ligger i `api/`. Eksempelet under bruker Railway; samme binær kjører også med `docker compose` lokalt.
 
-1. Koble GitHub-repoet til Railway. **Rotmappen til tjenesten skal være repo-roten**, ikke `api/`. `railway.json` peker på `api/Dockerfile`.
+1. Koble GitHub-repoet til et Railway-prosjekt. **Rotmappen til tjenesten skal være repo-roten**, ikke `api/`. `railway.json` peker på `api/Dockerfile`.
 2. Legg på Postgres-pluginen. Den setter `DATABASE_URL`.
-3. Sett `DISCORD_WEBHOOK_URL` (innkommende webhook) og `ADMIN_TOKEN` (`openssl rand -hex 32`). Det er ingen flere Discord-variabler. Samme webhook brukes til nye sagaer, versjoner, avslutning, milestolpe-nivå og fullføring. For forsidebilde i chat, sett også `PUBLIC_BASE_URL` (`https://gutsaga-production.up.railway.app`) og `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` er valgfri og er `1h` hvis den mangler.
+3. Sett `DISCORD_WEBHOOK_URL` (innkommende webhook) og `ADMIN_TOKEN` (`openssl rand -hex 32`). Det er ingen flere Discord-variabler. Samme webhook brukes til nye sagaer, versjoner, avslutning, milestolpe-nivå og fullføring. For forsidebilde i chat, sett også `PUBLIC_BASE_URL` til den offentlige originen til API-et (uten trailing slash) og `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` er valgfri og er `1h` hvis den mangler.
 4. Push til `main` bygger og ruller ut. Migreringene kjører ved oppstart. `/healthz` skal svare `{"ok":true}`.
 5. Spillere logger inn med Smia. API-et sjekker medlemskap i hubben wow og gir en egen økt. `mint` finnes fortsatt for en manuell nøkkel.
 
