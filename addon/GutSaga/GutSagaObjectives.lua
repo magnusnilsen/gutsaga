@@ -2,8 +2,15 @@
 -- By default goals may complete in any order (ordered=false).
 -- When ordered=true, step n is checked only after 1..n-1 are done.
 -- state = { zone, subzone, map_id, x, y, npc, object, items = { [id] = count },
---           kill_name, kill_secret }
+--           kill_name, kill_secret,
+--           emote, emote_target, emote_zone, emote_subzone, emote_minimap,
+--           emote_map_id, emote_x, emote_y,
+--           time = { game = {hour, min}, ["local"] = {hour, min, unix}, realm = {hour, min, unix} } }
 -- saved = { [objective_id] = { done = bool, count = number } }
+--
+-- all_of / any_of children are checked live (together), except kill counts which
+-- accumulate. The composite itself stays done once it has been true.
+-- Clocks: game = GetGameTime, local = time()/date("*t"), realm = GetServerTime as UTC.
 
 local M = {}
 
@@ -161,25 +168,263 @@ local function itemHave(state, id)
     return tonumber(n) or 0
 end
 
-local function checkOne(obj, state, prev)
+local function emoteToken(s)
+    s = norm(s)
+    if s:sub(1, 1) == "/" then
+        s = s:sub(2)
+    end
+    return (s:gsub("%s+", "_"):upper())
+end
+
+local function hasPlace(obj)
+    return norm(obj.zone) ~= "" or norm(obj.subzone) ~= "" or obj.map_id ~= nil or obj.x ~= nil or obj.y ~= nil
+end
+
+local function emoteOK(obj, state)
+    local want = emoteToken(obj.emote)
+    local got = emoteToken(state.emote)
+    if want == "" or got == "" or want ~= got then
+        return false
+    end
+    if norm(obj.npc) ~= "" and not (same(obj.npc, state.emote_target) or listed(obj.npc, state.emote_target)) then
+        return false
+    end
+    if not hasPlace(obj) then
+        return true
+    end
+    return locationOK(obj, {
+        zone = state.emote_zone,
+        subzone = state.emote_subzone,
+        minimap = state.emote_minimap,
+        map_id = state.emote_map_id,
+        x = state.emote_x,
+        y = state.emote_y,
+    })
+end
+
+local function isLeap(y)
+    return (y % 4 == 0 and y % 100 ~= 0) or (y % 400 == 0)
+end
+
+local function monthDays(y, m)
+    local mdays = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
+    if m == 2 and isLeap(y) then
+        return 29
+    end
+    return mdays[m] or 0
+end
+
+local function unixUTC(y, m, d, hour, minute, second)
+    if m < 1 or m > 12 or d < 1 or d > monthDays(y, m) then
+        return nil
+    end
+    local days = 0
+    for year = 1970, y - 1 do
+        days = days + (isLeap(year) and 366 or 365)
+    end
+    for month = 1, m - 1 do
+        days = days + monthDays(y, month)
+    end
+    days = days + d - 1
+    return days * 86400 + hour * 3600 + minute * 60 + second
+end
+
+local function parseRFC3339(s)
+    if type(s) ~= "string" then
+        return nil
+    end
+    local y, mo, d, H, Mi, S, rest = s:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)T(%d%d):(%d%d):(%d%d)(.*)$")
+    if not y then
+        return nil
+    end
+    rest = rest:gsub("^%.%d+", "")
+    local offset = 0
+    if rest ~= "Z" and rest ~= "" then
+        local sign, oh, om = rest:match("^([%+%-])(%d%d):(%d%d)$")
+        if not sign then
+            return nil
+        end
+        offset = (tonumber(oh) * 60 + tonumber(om)) * 60
+        if sign == "-" then
+            offset = -offset
+        end
+    end
+    local unix = unixUTC(tonumber(y), tonumber(mo), tonumber(d), tonumber(H), tonumber(Mi), tonumber(S))
+    if not unix then
+        return nil
+    end
+    return unix - offset
+end
+
+local function minutes(s)
+    if type(s) ~= "string" then
+        return nil
+    end
+    local h, m = s:match("^(%d%d):(%d%d)$")
+    h, m = tonumber(h), tonumber(m)
+    if not h or not m then
+        return nil
+    end
+    return h * 60 + m
+end
+
+local function inWindow(hour, min, startAt, endAt)
+    hour, min = tonumber(hour), tonumber(min)
+    local cur = hour and min and (hour * 60 + min) or nil
+    local a, b = minutes(startAt), minutes(endAt)
+    if not cur or not a or not b then
+        return false
+    end
+    if a <= b then
+        return cur >= a and cur <= b
+    end
+    return cur >= a or cur <= b
+end
+
+-- timeOpen is true when there is no window, or the state's clock matches.
+-- A missing clock fails closed so a saga cannot complete on the wrong clock.
+function M.timeOpen(when, state)
+    if type(when) ~= "table" then
+        return true
+    end
+    local clock = when.clock
+    if type(clock) ~= "string" or clock == "" then
+        clock = "local"
+    end
+    local clocks = type(state) == "table" and state.time or nil
+    local now = type(clocks) == "table" and clocks[clock] or nil
+    if type(now) ~= "table" then
+        return false
+    end
+    if type(when.start) == "string" and when.start ~= "" then
+        if not inWindow(now.hour, now.min, when.start, when["end"]) then
+            return false
+        end
+    end
+    local unix = tonumber(now.unix)
+    if type(when.starts_at) == "string" and when.starts_at ~= "" then
+        local t = parseRFC3339(when.starts_at)
+        if not t or not unix or unix < t then
+            return false
+        end
+    end
+    if type(when.ends_at) == "string" and when.ends_at ~= "" then
+        local t = parseRFC3339(when.ends_at)
+        if not t or not unix or unix > t then
+            return false
+        end
+    end
+    return true
+end
+
+-- groupOK is the saga-level party check. A missing rule is always ok.
+-- members below min_level do not count. instance matches the dungeon name or the zone.
+function M.groupOK(rule, group)
+    if type(rule) ~= "table" or tonumber(rule.size) == nil then
+        return true
+    end
+    local need = tonumber(rule.size) or 1
+    if need < 1 then
+        return true
+    end
+    local minLevel = tonumber(rule.min_level) or 1
+    group = type(group) == "table" and group or {}
+    local n = 0
+    local members = type(group.members) == "table" and group.members or {}
+    for i = 1, #members do
+        local m = members[i]
+        if type(m) == "table" and norm(m.name) ~= "" and (tonumber(m.level) or 0) >= minLevel then
+            n = n + 1
+        end
+    end
+    if n < need then
+        return false
+    end
+    if norm(rule.instance) ~= "" then
+        if not (listed(rule.instance, group.instance) or listed(rule.instance, group.zone)) then
+            return false
+        end
+    end
+    return true
+end
+
+local function preserveTree(obj, saved, into)
+    if type(obj) ~= "table" or type(obj.objectives) ~= "table" then
+        return
+    end
+    for i, child in ipairs(obj.objectives) do
+        if type(child) == "table" then
+            local id = child.id or tostring(i)
+            if type(saved[id]) == "table" then
+                into[id] = saved[id]
+            end
+            preserveTree(child, saved, into)
+        end
+    end
+end
+
+local checkOne
+
+local function checkComposite(obj, state, saved)
+    local rows = {}
+    local all, any = true, false
+    local have, total = 0, 0
+    local kids = type(obj.objectives) == "table" and obj.objectives or {}
+    for i, child in ipairs(kids) do
+        if type(child) == "table" then
+            total = total + 1
+            local id = child.id or tostring(i)
+            local prev = saved[id] or {}
+            local row, nested = checkOne(child, state, saved, prev, true)
+            rows[id] = row
+            if type(nested) == "table" then
+                for cid, crow in pairs(nested) do
+                    rows[cid] = crow
+                end
+            end
+            if row.done then
+                have = have + 1
+                any = true
+            else
+                all = false
+            end
+        end
+    end
+    local done = false
+    if obj.type == "any_of" then
+        done = any
+    elseif total > 0 then
+        done = all
+    end
+    return done, rows, have, total
+end
+
+checkOne = function(obj, state, saved, prev, live)
     local row = {
         done = prev.done and true or false,
         count = tonumber(prev.count) or 0,
         need = needCount(obj),
         active = false,
     }
-    if row.done then
-        return row
+    if not live and row.done then
+        local kept = {}
+        preserveTree(obj, saved, kept)
+        return row, kept
+    end
+    if live then
+        row.done = false
     end
     row.active = true
+    local open = M.timeOpen(obj.when, state)
+    local nested
     local kind = obj.type
     if kind == "location" then
-        row.done = locationOK(obj, state)
+        row.done = open and locationOK(obj, state)
     elseif kind == "interact" then
-        row.done = interactOK(obj, state)
+        row.done = open and interactOK(obj, state)
     elseif kind == "collect" then
         row.count = itemHave(state, obj.item_id)
-        row.done = row.count >= row.need
+        row.done = open and row.count >= row.need
     elseif kind == "kill" then
         if state.kill_secret then
             row.count = tonumber(prev.count) or 0
@@ -188,21 +433,34 @@ local function checkOne(obj, state, prev)
         else
             row.count = tonumber(prev.count) or 0
         end
-        row.done = row.count >= row.need
+        row.done = open and row.count >= row.need
+    elseif kind == "emote" then
+        row.done = open and emoteOK(obj, state)
+    elseif kind == "all_of" or kind == "any_of" then
+        local done, rows, have, total = checkComposite(obj, state, saved)
+        nested = rows
+        row.count = have
+        row.need = total
+        row.done = open and done
     else
         row.done = false
     end
-    return row
+    if not open and not (prev.done and not live) then
+        row.done = false
+    end
+    return row, nested
 end
 
 -- ordered: when true (or omitted for backwards-compatible tests), gate later
 -- goals on earlier ones. Pass false for any-order sagas.
-function M.evaluate(objectives, state, saved, ordered)
+-- sagaWhen: optional saga-level window. While it is closed, nothing new completes.
+function M.evaluate(objectives, state, saved, ordered, sagaWhen)
     state = state or {}
     saved = saved or {}
     if ordered == nil then
         ordered = true
     end
+    local sagaOpen = M.timeOpen(sagaWhen, state)
     local steps = {}
     local prevDone = true
     local allDone = type(objectives) == "table" and #objectives > 0
@@ -216,7 +474,7 @@ function M.evaluate(objectives, state, saved, ordered)
         else
             local id = obj.id or tostring(i)
             local prev = saved[id] or {}
-            local row
+            local row, nested
             if ordered and not prevDone and not (prev.done and true or false) then
                 row = {
                     done = false,
@@ -224,9 +482,14 @@ function M.evaluate(objectives, state, saved, ordered)
                     need = needCount(obj),
                     active = false,
                 }
+                nested = {}
+                preserveTree(obj, saved, nested)
                 allDone = false
             else
-                row = checkOne(obj, state, prev)
+                row, nested = checkOne(obj, state, saved, prev, false)
+                if not sagaOpen and not (prev.done and true or false) then
+                    row.done = false
+                end
                 if row.done then
                     prevDone = true
                 else
@@ -235,7 +498,15 @@ function M.evaluate(objectives, state, saved, ordered)
                 end
             end
             steps[id] = row
+            if type(nested) == "table" then
+                for cid, crow in pairs(nested) do
+                    steps[cid] = crow
+                end
+            end
         end
+    end
+    if not sagaOpen then
+        allDone = false
     end
     return steps, allDone
 end

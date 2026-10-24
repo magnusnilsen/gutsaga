@@ -9,25 +9,27 @@ import (
 
 // Entry is one quest as a character should see it in the addon.
 type Entry struct {
-	Character    string               `json:"character"`
-	CharacterID  string               `json:"character_id"`
-	Realm        string               `json:"realm"`
-	QuestID      string               `json:"quest_id"`
-	QuestVersion int                  `json:"quest_version"`
-	Title        string               `json:"title"`
-	Description  string               `json:"description"`
-	Objectives          []contract.Objective `json:"objectives"`
-	ObjectivesOrdered   bool                 `json:"objectives_ordered"`
-	Reward              string               `json:"reward"`
-	MinLevel            *int                 `json:"min_level"`
-	Status              string               `json:"status"`
-	CompletedAt         string               `json:"completed_at"`
-	PartyQuest          bool                 `json:"party_quest"`
-	CreatedBy           string               `json:"created_by"`
-	CompletedBy         []Completer          `json:"completed_by"`
-	Image               string               `json:"image,omitempty"` // Interface\\AddOns\\GutSaga\\media\\<id>
-	ImageAspect         float64              `json:"image_aspect,omitempty"` // width/height
-	HasImage            bool                 `json:"has_image"`
+	Character         string               `json:"character"`
+	CharacterID       string               `json:"character_id"`
+	Realm             string               `json:"realm"`
+	QuestID           string               `json:"quest_id"`
+	QuestVersion      int                  `json:"quest_version"`
+	Title             string               `json:"title"`
+	Description       string               `json:"description"`
+	Objectives        []contract.Objective `json:"objectives"`
+	ObjectivesOrdered bool                 `json:"objectives_ordered"`
+	When              *contract.TimeWindow `json:"when,omitempty"`
+	Group             *contract.GroupRule  `json:"group,omitempty"`
+	Reward            string               `json:"reward"`
+	MinLevel          *int                 `json:"min_level"`
+	Status            string               `json:"status"`
+	CompletedAt       string               `json:"completed_at"`
+	PartyQuest        bool                 `json:"party_quest"`
+	CreatedBy         string               `json:"created_by"`
+	CompletedBy       []Completer          `json:"completed_by"`
+	Image             string               `json:"image,omitempty"`        // Interface\\AddOns\\GutSaga\\media\\<id>
+	ImageAspect       float64              `json:"image_aspect,omitempty"` // width/height
+	HasImage          bool                 `json:"has_image"`
 }
 
 // Completer is a character who has finished this saga.
@@ -65,7 +67,7 @@ func Merge(sync contract.SyncResponse) []Entry {
 				Character: ch.Name, CharacterID: ch.ID, Realm: ch.Realm,
 				QuestID: q.ID, QuestVersion: q.Version, Title: q.Title,
 				Description: q.Description, Objectives: q.Objectives,
-				ObjectivesOrdered: q.ObjectivesOrdered, Reward: q.Reward,
+				ObjectivesOrdered: q.ObjectivesOrdered, When: q.When, Group: q.Group, Reward: q.Reward,
 				MinLevel: q.MinLevel, PartyQuest: q.PartyQuest,
 				CreatedBy: q.CreatedBy, CompletedBy: completers[q.ID],
 				HasImage: q.HasImage,

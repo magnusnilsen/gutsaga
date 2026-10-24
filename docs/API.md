@@ -73,21 +73,93 @@ The companion upserts the character the addon reported. BattleTag is taken from 
 
 ## Objectives
 
-`objectives` is a JSON array, checked in order by the addon. All of an objective's constraints are AND. `text` is the Norwegian line in the quest log. Author quests with this shape:
+`objectives` is a JSON array. Every objective has `id` (`[A-Za-z0-9_-]{1,40}`, unique in the whole tree), `type`, and `text` (the line in the quest log, max 300). At most 20 top-level objectives and 40 nodes including nested ones. Nesting is at most 4 levels. Smia MCP `create_quest` / `update_quest` pass this array through to `POST` / `PATCH /v1/admin/quests` unchanged.
+
+By default any incomplete objective can complete (`objectives_ordered: false`). Set `objectives_ordered: true` to require earlier objectives first. A composite `all_of` is a separate rule: its children must be true in the same check.
 
 | `type` | Fields |
 |---|---|
-| `location` | `zone`, `subzone` (client language), `map_id` (UiMapID, Elwynn Forest is 37 on retail and Classic), `x`, `y` (0–1), `radius` |
-| `interact` | `npc` and/or `object`. Matched to `UnitName`. Names follow the client language. |
-| `collect` | `item_id`, optional `item_name`, `count` (default 1) |
-| `kill` | `npc`, `count`. Experimental. A secret combat-log name does not count. |
+| `location` | `zone`, `subzone` (client language; `\|` or `;` for alternatives), `map_id` (UiMapID, Elwynn Forest is 37 on retail and Classic), `x`, `y` (0–1), `radius` (default 0.02) |
+| `interact` | `npc` and/or `object`. Matched to `UnitName`. Names follow the client language. Not GUIDs. |
+| `collect` | `item_id` (required), optional `item_name`, `count` (default 1) |
+| `kill` | `npc` (creature name, not a GUID), `count` (default 1). Experimental. A secret combat-log name does not count. |
+| `emote` | `emote` token such as `SALUTE` or `/salute`. Optional `npc` (UnitName of the target at emote time). Optional location fields, same as `location`, captured when the emote fires. |
+| `all_of` | `objectives`: at least two children. Done only while every child is true in the same check (stand here AND hold the item). Stays done after that. |
+| `any_of` | `objectives`: at least two children. Done when any child is true. |
+
+Kill counts inside a composite still add up. Location, collect, interact, and emote inside a composite are live: an earlier visit does not stay ticked unless the whole composite became done.
+
+### Time window (`when`)
+
+Optional on any objective and on the saga. Both a time-of-day window and an absolute range may be set; they are AND. A window may cross midnight (`22:00`–`02:00`). `starts_at` / `ends_at` are RFC3339.
+
+`clock` is `local` (default), `game`, or `realm`:
+
+| `clock` | What the addon reads | Use it for |
+|---|---|---|
+| `local` | `time()` and `date("*t")` — the computer's clock | Real local time of day, and absolute dates. This is the reliable default on Classic Era, Mists, TBC, and Forever. |
+| `game` | `GetGameTime()` — the in-game day/night clock (the clock UI). No calendar. | "At night in Azeroth". `starts_at` / `ends_at` are rejected. |
+| `realm` | `GetServerTime()` formatted with `date("!*t", serverTime)` as **UTC** | Realm unix time. Not the player's timezone and not the in-game clock. If `GetServerTime` fails, the window stays closed. |
+
+The addon does not fall back from one clock to another. Forever may return a secret number from `GetGameTime` during combat; the last plain reading is kept. Absolute dates are not checked on the server, because the API is not the player's clock.
+
+While a saga `when` is closed, nothing new can complete. Objectives already completed stay completed. The saga turns in the next time the window is open and every objective is done.
+
+### Group sagas (`group`)
+
+Optional on the saga, checked when the objectives are all done:
+
+```json
+"group": { "size": 4, "min_level": 17, "instance": "The Deadmines|Deadmines" }
+```
+
+- `size` (1–40) is how many party or raid members must be present, including the player. Members below `min_level` do not count. Extra members are fine.
+- `instance` matches `GetInstanceInfo()`'s name or the zone (`GetZoneText`), with the same `\|` / `;` alternatives as NPC names. Omit it for "anywhere, as long as they are grouped".
+- `party_quest` or `assigned_character_ids` still decide who can see the saga. Set `party_quest: true` for a Deadmines run the whole group should see.
+
+The addon reads `GetNumGroupMembers` (or `GetNumPartyMembers` / `GetNumRaidMembers` on older calls), `UnitName`, and `UnitLevel`. On Forever those can be secret in combat, so the last plain roster is kept from the last moment names and levels were readable (walking in, out of combat). A member whose level was never read does not count.
+
+When the finisher's objectives are done and the group qualifies, the addon:
+
+1. Writes the roster into SavedVariables (`group_members`, `instance`). The companion sends it on `POST /v1/complete`.
+2. Sends `C_ChatInfo.SendAddonMessage` (prefix `GutSaga`, channel `PARTY` or `RAID`) **even inside an instance**. Peers who have the addon, have the saga, and locally see a qualifying group mark the saga complete too. They do not re-check the finisher's objectives.
+
+The API records one progress row per known character (name + realm already registered). Repeating the call is idempotent: the first completion wins, and a later call only fills in group members who were missing. Characters the API has never seen are skipped until their own companion syncs. Discord is posted for the submitting character, same as a solo saga. Each credited character gets an adventure-log line.
+
+A group saga cannot be completed without a roster that meets `size`, `min_level`, and `instance`. The API trusts the addon's instance string; it cannot see the dungeon itself.
+
+### Examples
 
 ```json
 "objectives": [
   {"id": "inn", "type": "location", "text": "Stå i Goldshire", "map_id": 37, "x": 0.438, "y": 0.658, "radius": 0.05},
   {"id": "talk", "type": "interact", "text": "Snakk med Innkeeper Farley", "npc": "Innkeeper Farley"},
-  {"id": "water", "type": "collect", "text": "Ha kildevann", "item_id": 159, "count": 1}
+  {"id": "water", "type": "collect", "text": "Ha kildevann", "item_id": 159, "count": 1},
+  {"id": "salute", "type": "emote", "text": "Hils på vakten", "emote": "SALUTE", "npc": "Stormwind Guard",
+    "when": {"clock": "local", "start": "22:00", "end": "02:00"}},
+  {"id": "both", "type": "all_of", "text": "Stå i Goldshire med vann", "objectives": [
+    {"id": "square", "type": "location", "text": "Goldshire", "zone": "Elwynn Forest", "subzone": "Goldshire"},
+    {"id": "milk", "type": "collect", "text": "Ha melk", "item_id": 1179, "count": 1}
+  ]},
+  {"id": "either", "type": "any_of", "text": "Snakk eller bukk", "objectives": [
+    {"id": "farley", "type": "interact", "text": "Snakk med Farley", "npc": "Innkeeper Farley"},
+    {"id": "bow", "type": "emote", "text": "Bukk", "emote": "/bow"}
+  ]}
 ]
+```
+
+Saga-level night window and a 4-player Deadmines run (all level 17+):
+
+```json
+{
+  "title": "Deadmines",
+  "when": {"clock": "game", "start": "18:00", "end": "06:00"},
+  "group": {"size": 4, "min_level": 17, "instance": "The Deadmines"},
+  "party_quest": true,
+  "objectives": [
+    {"id": "door", "type": "emote", "text": "Hils på Rhahk'Zor", "emote": "/salute", "npc": "Rhahk'Zor"}
+  ]
+}
 ```
 
 `go run ./api seed` writes three Elwynn test quests (see the README section Lokal testing).
@@ -146,9 +218,16 @@ Multipart (`screenshot` file) or JSON. Send the screenshot only when one exists.
   "battletag": "Magnus#2231",
   "level": 12,
   "completed_at": "2026-10-22T14:44:00Z",
-  "screenshot_base64": "<optional>"
+  "screenshot_base64": "<optional>",
+  "instance": "The Deadmines",
+  "group_members": [
+    {"name": "Magni", "realm": "Argent Dawn", "level": 18},
+    {"name": "Mira", "realm": "Argent Dawn", "level": 17}
+  ]
 }
 ```
+
+`instance` and `group_members` are required only when that quest version has a `group` rule. Multipart uploads send `group_members` as a JSON string. The response may include `group_credited`: characters other than the caller who were marked complete. `already: true` means that character had already finished.
 
 `battletag` must match the API key, and the character must belong to that player. Otherwise `403` and `"allowed": false`.
 
@@ -200,13 +279,13 @@ These are the endpoints a later Smia MCP server should call with `ADMIN_TOKEN`.
 | `GET` | `/v1/admin/characters/{id}` | |
 | `PATCH` | `/v1/admin/characters/{id}` | any of name, realm, race, class, level, backstory |
 | `DELETE` | `/v1/admin/characters/{id}` | `204` |
-| `POST` | `/v1/admin/quests` | title, description, objectives, reward, `min_level`, `party_quest`, `assigned_character_ids`, `active`, `created_by`. JSON or multipart. Optional cover via multipart file `image` or JSON `image_base64` (max 8 MiB; attached to the Discord announcement). Optional `announce` (default: post when the saga is active; `false` skips; `true` posts even a draft). Response includes `image_signed_url` when the saga has a cover and signing is configured. |
+| `POST` | `/v1/admin/quests` | title, description, objectives, optional `when`, optional `group`, reward, `min_level`, `party_quest`, `assigned_character_ids`, `active`, `created_by`. JSON or multipart. Optional cover via multipart file `image` or JSON `image_base64` (max 8 MiB; attached to the Discord announcement). Optional `announce` (default: post when the saga is active; `false` skips; `true` posts even a draft). Response includes `image_signed_url` when the saga has a cover and signing is configured. |
 | `GET` | `/v1/admin/quests?character_id=` | every quest; with `character_id`, includes `status` (`null` if not started), `eligible`, `completed_version`. Quests that have a cover include `image_signed_url` when signing is configured. |
 | `GET` | `/v1/admin/quests/{id}` | quest plus `versions[]` snapshots. Same `image_signed_url` as the list. |
 | `GET` | `/v1/admin/quests/{id}/image` | cover bytes and `Content-Type`, same as `GET /v1/sagas/{id}/image`. `404` when the saga has no image. |
 | `PUT` | `/v1/admin/quests/{id}/image` | raw or multipart `image` cover (same rules as player `/v1/sagas/{id}/image`) |
 | `DELETE` | `/v1/admin/quests/{id}/image` | clear cover |
-| `PATCH` | `/v1/admin/quests/{id}` | partial update. Text changes **bump `version` and write a snapshot.** `min_level: null` clears it. JSON or multipart; optional file field `image` (cover-only OK, no version bump). Optional `announce` (default true). A text, goal, reward, minimum-level, or party change posts a one-line version embed. `active: false` posts a retirement instead. Assignment-only edits stay quiet. `announce: false` skips both. Response includes `image_signed_url` when signing is configured. |
+| `PATCH` | `/v1/admin/quests/{id}` | partial update. Text changes **bump `version` and write a snapshot.** `min_level: null` clears it. JSON or multipart; optional file field `image` (cover-only OK, no version bump); optional `when` / `group`. Optional `announce` (default true). A text, goal, reward, minimum-level, or party change posts a one-line version embed. `active: false` posts a retirement instead. Assignment-only edits stay quiet. `announce: false` skips both. Response includes `image_signed_url` when signing is configured. |
 | `GET` | `/v1/public/sagas/{id}/image?exp=&sig=` | no `Authorization` header. HMAC-SHA256 of `id`, a newline, and the unix `exp`, hex-encoded, keyed with `IMAGE_URL_SECRET`. `403` bad signature (checked before the database, so a guess does not reveal whether the saga exists). `403` when `exp` is in the past. `404` when the signature is valid and there is no image. The body is only the image bytes. |
 | `GET` | `/v1/admin/log?battletag=&character_id=&limit=` | newest first, default 50 |
 | `POST` | `/v1/admin/log` | `type`, `title`, `body`, optional `battletag` / `player_id` / `character_id` / `quest_id` |

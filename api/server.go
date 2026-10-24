@@ -352,7 +352,7 @@ func (s *Server) createQuest(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := s.store.CreateQuest(r.Context(), QuestInput{
 		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
-		ObjectivesOrdered: body.ObjectivesOrdered, Reward: body.Reward,
+		ObjectivesOrdered: body.ObjectivesOrdered, When: body.When, Group: body.Group, Reward: body.Reward,
 		MinLevel: body.MinLevel, PartyQuest: body.PartyQuest, Active: body.Active, CreatedBy: body.CreatedBy,
 		AssignedCharacterIDs: body.AssignedCharacterIDs,
 	})
@@ -435,6 +435,10 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		ObjectivesOrdered: body.ObjectivesOrdered, Reward: body.Reward,
 		PartyQuest: body.PartyQuest, Active: body.Active, CreatedBy: body.CreatedBy,
 		AssignedCharacterIDs: body.AssignedCharacterIDs,
+	}
+	if err := applyRulePatch(&patch, body.When, body.Group); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+		return
 	}
 	if len(body.MinLevel) > 0 {
 		patch.MinLevelSet = true
@@ -644,6 +648,8 @@ type questBody struct {
 	Description          string               `json:"description"`
 	Objectives           []contract.Objective `json:"objectives"`
 	ObjectivesOrdered    *bool                `json:"objectives_ordered"`
+	When                 *contract.TimeWindow `json:"when"`
+	Group                *contract.GroupRule  `json:"group"`
 	Reward               string               `json:"reward"`
 	MinLevel             *int                 `json:"min_level"`
 	PartyQuest           bool                 `json:"party_quest"`
@@ -661,6 +667,8 @@ type questPatchBody struct {
 	Description          *string               `json:"description"`
 	Objectives           *[]contract.Objective `json:"objectives"`
 	ObjectivesOrdered    *bool                 `json:"objectives_ordered"`
+	When                 json.RawMessage       `json:"when"`
+	Group                json.RawMessage       `json:"group"`
 	Reward               *string               `json:"reward"`
 	MinLevel             json.RawMessage       `json:"min_level"`
 	PartyQuest           *bool                 `json:"party_quest"`
@@ -830,6 +838,30 @@ func formBool(v string) bool {
 	}
 }
 
+func applyRulePatch(patch *QuestPatch, whenRaw, groupRaw json.RawMessage) error {
+	if len(whenRaw) > 0 {
+		patch.WhenSet = true
+		if string(whenRaw) != "null" {
+			var w contract.TimeWindow
+			if err := json.Unmarshal(whenRaw, &w); err != nil {
+				return err
+			}
+			patch.When = &w
+		}
+	}
+	if len(groupRaw) > 0 {
+		patch.GroupSet = true
+		if string(groupRaw) != "null" {
+			var g contract.GroupRule
+			if err := json.Unmarshal(groupRaw, &g); err != nil {
+				return err
+			}
+			patch.Group = &g
+		}
+	}
+	return nil
+}
+
 func readCompletion(w http.ResponseWriter, r *http.Request) (contract.CompletionRequest, []byte, string, error) {
 	var in contract.CompletionRequest
 	ct := r.Header.Get("Content-Type")
@@ -844,6 +876,12 @@ func readCompletion(w http.ResponseWriter, r *http.Request) (contract.Completion
 		in.BattleTag = r.FormValue("battletag")
 		in.Level, _ = strconv.Atoi(r.FormValue("level"))
 		in.CompletedAt = r.FormValue("completed_at")
+		in.Instance = r.FormValue("instance")
+		if raw := strings.TrimSpace(r.FormValue("group_members")); raw != "" {
+			if err := json.Unmarshal([]byte(raw), &in.GroupMembers); err != nil {
+				return in, nil, "", err
+			}
+		}
 		file, hdr, err := r.FormFile("screenshot")
 		if err == nil {
 			defer file.Close()

@@ -7,7 +7,13 @@
 
 local PREFIX = "GutSaga"
 local player = { name = "", realm = "", level = 1, race = "", class = "", battletag = "" }
-local world = { zone = "", subzone = "", minimap = "", mapID = nil, x = nil, y = nil, npc = "", object = "", killName = nil, killSecret = false }
+local world = {
+    zone = "", subzone = "", minimap = "", mapID = nil, x = nil, y = nil,
+    npc = "", object = "", killName = nil, killSecret = false,
+    gameHour = nil, gameMin = nil, instanceName = "", groupSnap = nil, pendingEmote = nil,
+}
+local readClocks
+local readGroup
 local frame
 local toast
 local showSagaToast = function() end
@@ -612,6 +618,200 @@ local function setSectionExpanded(key, open)
     GutSagaDB.sections[key] = open and true or false
 end
 
+readClocks = function()
+    local clocks = {}
+    if GetGameTime then
+        local ok, h, m = pcall(GetGameTime)
+        h = ok and plainNumber(h) or nil
+        m = ok and plainNumber(m) or nil
+        if h and m then
+            world.gameHour, world.gameMin = h, m
+        end
+    end
+    if world.gameHour and world.gameMin then
+        clocks.game = { hour = world.gameHour, min = world.gameMin }
+    end
+    if date and time then
+        local ok, t = pcall(date, "*t")
+        local unix = plainNumber(time())
+        if ok and type(t) == "table" then
+            local h, m = plainNumber(t.hour), plainNumber(t.min)
+            if h and m then
+                clocks["local"] = { hour = h, min = m, unix = unix }
+            end
+        end
+    end
+    if GetServerTime and date then
+        local ok, server = pcall(GetServerTime)
+        server = ok and plainNumber(server) or nil
+        if server and server > 0 then
+            local okT, t = pcall(date, "!*t", server)
+            if okT and type(t) == "table" then
+                local h, m = plainNumber(t.hour), plainNumber(t.min)
+                if h and m then
+                    clocks.realm = { hour = h, min = m, unix = server }
+                end
+            end
+        end
+    end
+    return clocks
+end
+
+local function readInstance()
+    if not GetInstanceInfo then
+        return world.instanceName or ""
+    end
+    local ok, name, instanceType = pcall(GetInstanceInfo)
+    if not ok or secret(name) or secret(instanceType) then
+        return world.instanceName or ""
+    end
+    local typ = plainString(instanceType)
+    local label = plainString(name)
+    if not typ or typ == "none" or not label then
+        world.instanceName = ""
+        return ""
+    end
+    world.instanceName = label
+    return label
+end
+
+readGroup = function()
+    local members, seen, blocked = {}, {}, false
+    local function add(unit, fallbackName, fallbackRealm, fallbackLevel)
+        local name, realm, level
+        if UnitName then
+            local ok, n, r = pcall(UnitName, unit)
+            if ok and secret(n) then
+                blocked = true
+                return
+            end
+            name = ok and plainString(n) or nil
+            realm = ok and plainString(r) or nil
+        end
+        if (not name or name == "") and fallbackName and fallbackName ~= "" then
+            name = fallbackName
+            realm = fallbackRealm
+        end
+        if not name or name == "" then
+            return
+        end
+        if UnitLevel then
+            local okL, lvl = pcall(UnitLevel, unit)
+            if okL and secret(lvl) then
+                blocked = true
+            else
+                level = okL and plainNumber(lvl) or nil
+            end
+        end
+        if (not level or level < 1) and fallbackLevel and fallbackLevel > 0 then
+            level = fallbackLevel
+        end
+        local id = norm(name)
+        if seen[id] then
+            return
+        end
+        seen[id] = true
+        if not realm or realm == "" then
+            realm = player.realm or ""
+        end
+        table.insert(members, { name = name, realm = realm, level = level or 0 })
+    end
+    add("player", player.name, player.realm, player.level)
+    local grouped = false
+    if IsInGroup then
+        local ok, v = pcall(IsInGroup)
+        grouped = ok and v == true and not secret(v)
+    end
+    if grouped then
+        local raid = false
+        if IsInRaid then
+            local ok, v = pcall(IsInRaid)
+            raid = ok and v == true and not secret(v)
+        end
+        local count, includesPlayer = 0, true
+        if GetNumGroupMembers then
+            local ok, v = pcall(GetNumGroupMembers)
+            local n = ok and plainNumber(v) or nil
+            if n and n > 0 then
+                count = n
+            end
+        end
+        if count == 0 and raid and GetNumRaidMembers then
+            local ok, v = pcall(GetNumRaidMembers)
+            local n = ok and plainNumber(v) or nil
+            if n then
+                count = n
+            end
+        end
+        if count == 0 and GetNumPartyMembers then
+            local ok, v = pcall(GetNumPartyMembers)
+            local n = ok and plainNumber(v) or nil
+            if n then
+                count, includesPlayer = n, false
+            end
+        end
+        local prefix = raid and "raid" or "party"
+        local slots = count
+        if not raid and includesPlayer then
+            slots = count - 1
+        end
+        if slots < 0 then
+            slots = 0
+        elseif slots > 40 then
+            slots = 40
+        end
+        for i = 1, slots do
+            add(prefix .. i)
+            if blocked then
+                break
+            end
+        end
+    end
+    if not blocked then
+        world.groupSnap = members
+    end
+    local snap = world.groupSnap
+    if type(snap) ~= "table" or #snap == 0 then
+        snap = { { name = player.name, realm = player.realm or "", level = player.level or 1 } }
+    end
+    return { instance = readInstance(), zone = world.zone, members = snap }
+end
+
+local function clockState()
+    return { time = readClocks() }
+end
+
+local function timeHint(when, done, clocks)
+    if type(when) ~= "table" then
+        return ""
+    end
+    local bits = {}
+    if type(when.start) == "string" and when.start ~= "" and type(when["end"]) == "string" and when["end"] ~= "" then
+        table.insert(bits, when.start .. "–" .. when["end"])
+    end
+    if type(when.starts_at) == "string" and when.starts_at ~= "" then
+        table.insert(bits, "fra " .. when.starts_at)
+    end
+    if type(when.ends_at) == "string" and when.ends_at ~= "" then
+        table.insert(bits, "til " .. when.ends_at)
+    end
+    if #bits == 0 then
+        return ""
+    end
+    local clock = when.clock or "local"
+    local name = "lokal tid"
+    if clock == "game" then
+        name = "spilltid"
+    elseif clock == "realm" then
+        name = "realm-tid (UTC)"
+    end
+    local text = " (" .. table.concat(bits, ", ") .. ", " .. name .. ")"
+    if not done and GutSagaObjectives and GutSagaObjectives.timeOpen and not GutSagaObjectives.timeOpen(when, clocks) then
+        return " — venter" .. text
+    end
+    return text
+end
+
 local function objectiveLines(entry)
     local objs = entry.objectives
     local lines = {}
@@ -626,48 +826,93 @@ local function objectiveLines(entry)
         return lines
     end
     local bucket = savedSteps(entry)
-    for i, obj in ipairs(objs) do
-        if type(obj) == "table" then
-            local id = obj.id or tostring(i)
-            local step = bucket.steps[id] or {}
-            local done = step.done and true or false
-            local label
-            if done then
-                label = (obj.text or "Mål") .. " (Fullført)"
-            else
-                label = applyItemLink(obj.text or "Mål", obj)
-                if obj.type == "location" then
-                    local where = world.minimap
-                    if where == "" then
-                        where = world.subzone
-                    end
-                    if where == "" then
-                        where = world.zone
-                    end
-                    if where ~= "" then
-                        label = label .. " (" .. where .. ")"
-                    end
+    local clocks = clockState()
+    local function addObj(obj, index, depth)
+        if type(obj) ~= "table" then
+            return
+        end
+        local id = obj.id or tostring(index)
+        local step = bucket.steps[id] or {}
+        local done = step.done and true or false
+        local pad = ""
+        if depth > 0 then
+            pad = string.rep("  ", depth) .. "- "
+        end
+        local label
+        if done then
+            label = pad .. (obj.text or "Mål") .. " (Fullført)"
+        else
+            label = pad .. applyItemLink(obj.text or "Mål", obj)
+            if obj.type == "location" then
+                local where = world.minimap
+                if where == "" then
+                    where = world.subzone
                 end
-                if obj.type == "collect" or obj.type == "kill" then
-                    local need = tonumber(obj.count) or 1
-                    local have = tonumber(step.count) or 0
-                    if obj.type == "collect" then
-                        local itemID = tonumber(obj.item_id)
-                        if itemID then
-                            local live = itemCount(itemID)
-                            if live > have then
-                                have = live
-                            end
-                        end
-                    end
-                    label = string.format("%s (%d/%d)", label, have, need)
+                if where == "" then
+                    where = world.zone
                 end
-                if obj.type == "kill" then
-                    label = label .. " (eksperimentell)"
+                if where ~= "" then
+                    label = label .. " (" .. where .. ")"
                 end
             end
-            table.insert(lines, { done = done, text = label })
+            if obj.type == "collect" or obj.type == "kill" then
+                local need = tonumber(obj.count) or 1
+                local have = tonumber(step.count) or 0
+                if obj.type == "collect" then
+                    local itemID = tonumber(obj.item_id)
+                    if itemID then
+                        local live = itemCount(itemID)
+                        if live > have then
+                            have = live
+                        end
+                    end
+                end
+                label = string.format("%s (%d/%d)", label, have, need)
+            end
+            if obj.type == "all_of" or obj.type == "any_of" then
+                local need = tonumber(step.need) or (type(obj.objectives) == "table" and #obj.objectives or 0)
+                local have = tonumber(step.count) or 0
+                label = string.format("%s (%d/%d)", label, have, need)
+            end
+            if obj.type == "emote" and type(obj.emote) == "string" and obj.emote ~= "" then
+                label = label .. " (/" .. string.lower(obj.emote) .. ")"
+            end
+            if obj.type == "kill" then
+                label = label .. " (eksperimentell)"
+            end
+            label = label .. timeHint(obj.when, done, clocks)
         end
+        table.insert(lines, { done = done, text = label })
+        if type(obj.objectives) == "table" then
+            for i, child in ipairs(obj.objectives) do
+                addObj(child, i, depth + 1)
+            end
+        end
+    end
+    for i, obj in ipairs(objs) do
+        addObj(obj, i, 0)
+    end
+    if type(entry.when) == "table" and GutSagaObjectives and GutSagaObjectives.timeOpen then
+        local open = GutSagaObjectives.timeOpen(entry.when, clocks)
+        table.insert(lines, { done = open, text = "Tid" .. timeHint(entry.when, open, clocks) })
+    end
+    if type(entry.group) == "table" and tonumber(entry.group.size) and readGroup and GutSagaObjectives and GutSagaObjectives.groupOK then
+        local group = readGroup()
+        local minLevel = tonumber(entry.group.min_level) or 1
+        local have = 0
+        for _, m in ipairs(group.members or {}) do
+            if type(m) == "table" and (tonumber(m.level) or 0) >= minLevel and type(m.name) == "string" and m.name ~= "" then
+                have = have + 1
+            end
+        end
+        local label = string.format("Sammen med gruppa (%d/%d)", have, tonumber(entry.group.size))
+        if entry.group.min_level then
+            label = label .. string.format(", nivå %d+", minLevel)
+        end
+        if type(entry.group.instance) == "string" and entry.group.instance ~= "" then
+            label = label .. " i " .. entry.group.instance
+        end
+        table.insert(lines, { done = GutSagaObjectives.groupOK(entry.group, group), text = label })
     end
     return lines
 end
@@ -895,19 +1140,43 @@ local refresh
 local finishQuest
 local lastCheckError = ""
 
+local function collectItems(obj, items)
+    if type(obj) ~= "table" then
+        return
+    end
+    if obj.type == "collect" then
+        local id = tonumber(obj.item_id)
+        if id and items[id] == nil then
+            items[id] = itemCount(id)
+        end
+    end
+    if type(obj.objectives) == "table" then
+        for _, child in ipairs(obj.objectives) do
+            collectItems(child, items)
+        end
+    end
+end
+
 local function objectiveState(entries)
     local items = {}
     for _, entry in ipairs(entries) do
         if type(entry.objectives) == "table" and not isComplete(entry) then
             for _, obj in ipairs(entry.objectives) do
-                if type(obj) == "table" and obj.type == "collect" then
-                    local id = tonumber(obj.item_id)
-                    if id and items[id] == nil then
-                        items[id] = itemCount(id)
-                    end
-                end
+                collectItems(obj, items)
             end
         end
+    end
+    local emote, emoteTarget, emoteZone, emoteSub, emoteMini, emoteMap, emoteX, emoteY
+    local pending = world.pendingEmote
+    if type(pending) == "table" and (tonumber(pending.untilAt) or 0) >= unixNow() then
+        emote = pending.token
+        emoteTarget = pending.target
+        emoteZone = pending.zone
+        emoteSub = pending.subzone
+        emoteMini = pending.minimap
+        emoteMap = pending.mapID
+        emoteX = pending.x
+        emoteY = pending.y
     end
     return {
         zone = world.zone,
@@ -921,6 +1190,15 @@ local function objectiveState(entries)
         items = items,
         kill_name = world.killName,
         kill_secret = world.killSecret,
+        emote = emote,
+        emote_target = emoteTarget,
+        emote_zone = emoteZone,
+        emote_subzone = emoteSub,
+        emote_minimap = emoteMini,
+        emote_map_id = emoteMap,
+        emote_x = emoteX,
+        emote_y = emoteY,
+        time = readClocks(),
     }
 end
 
@@ -932,14 +1210,19 @@ local function checkAll()
     local ok, err = pcall(function()
         local entries = currentEntries()
         local state = objectiveState(entries)
+        local group = readGroup()
         for _, entry in ipairs(entries) do
             if not isComplete(entry) and type(entry.objectives) == "table" and #entry.objectives > 0 then
                 local bucket = savedSteps(entry)
                 local ordered = entry.objectives_ordered and true or false
-                local steps, done = GutSagaObjectives.evaluate(entry.objectives, state, bucket.steps, ordered)
+                local steps, done = GutSagaObjectives.evaluate(entry.objectives, state, bucket.steps, ordered, entry.when)
                 bucket.steps = steps
-                if done then
-                    finishQuest(entry)
+                local groupReady = true
+                if type(entry.group) == "table" and GutSagaObjectives.groupOK then
+                    groupReady = GutSagaObjectives.groupOK(entry.group, group)
+                end
+                if done and groupReady then
+                    finishQuest(entry, group)
                 end
             end
         end
@@ -1448,7 +1731,68 @@ refresh = function()
     pcall(syncScrollBar, detailScroll)
 end
 
-finishQuest = function(entry)
+local function encodeMembers(members)
+    local parts = {}
+    if type(members) ~= "table" then
+        return ""
+    end
+    for i = 1, #members do
+        local m = members[i]
+        if type(m) == "table" and type(m.name) == "string" and m.name ~= "" then
+            local name = (m.name:gsub("[/;]", ""))
+            local realm = ((m.realm or ""):gsub("[/;]", ""))
+            table.insert(parts, string.format("%s/%s/%d", name, realm, tonumber(m.level) or 0))
+        end
+    end
+    return table.concat(parts, ";")
+end
+
+local function placeLabel(rule, group)
+    group = type(group) == "table" and group or {}
+    local inst = group.instance or ""
+    local zone = group.zone or ""
+    if type(rule) ~= "table" or type(rule.instance) ~= "string" or rule.instance == "" then
+        if inst ~= "" then
+            return inst
+        end
+        return zone
+    end
+    if inst ~= "" and GutSagaObjectives and GutSagaObjectives.groupOK then
+        local probe = { instance = inst, zone = "", members = { { name = player.name ~= "" and player.name or "x", level = 100 } } }
+        if GutSagaObjectives.groupOK({ size = 1, instance = rule.instance }, probe) then
+            return inst
+        end
+    end
+    if zone ~= "" then
+        return zone
+    end
+    return inst
+end
+
+local function sendGroupPing(questID, version)
+    if not ((C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage) then
+        return
+    end
+    local raid, grouped = false, false
+    pcall(function()
+        raid = IsInRaid() and true or false
+    end)
+    pcall(function()
+        grouped = IsInGroup() and true or false
+    end)
+    local channel
+    if raid then
+        channel = "RAID"
+    elseif grouped then
+        channel = "PARTY"
+    else
+        return
+    end
+    -- Party/raid only, including inside instances. Guild toasts stay outside.
+    sendAddon(PREFIX, "G\t" .. tostring(questID) .. "\t" .. tostring(version), channel)
+end
+
+finishQuest = function(entry, group)
     if not entry or isComplete(entry) then
         return
     end
@@ -1463,7 +1807,7 @@ finishQuest = function(entry)
         level = 1
     end
     local ts = unixNow()
-    GutSagaDB.completions[entry.quest_id] = {
+    local row = {
         quest_id = entry.quest_id,
         version = version,
         level = level,
@@ -1473,6 +1817,14 @@ finishQuest = function(entry)
         race = player.race,
         class = player.class,
     }
+    if type(entry.group) == "table" and type(group) == "table" then
+        row.group_members = encodeMembers(group.members)
+        row.instance = placeLabel(entry.group, group)
+    end
+    GutSagaDB.completions[entry.quest_id] = row
+    if type(entry.group) == "table" then
+        sendGroupPing(entry.quest_id, version)
+    end
     local title = entry.title or "Saga"
     local questID = entry.quest_id
     showSagaToast(title, questID)
@@ -2161,6 +2513,50 @@ SlashCmdList.GUTSAGA = function(msg)
     show()
 end
 
+local function noteEmote(token, unit)
+    local emote = plainString(token)
+    if not emote or emote == "" then
+        return
+    end
+    emote = string.upper(emote)
+    if string.sub(emote, 1, 1) == "/" then
+        emote = string.sub(emote, 2)
+    end
+    readLocation()
+    local unitID = plainString(unit)
+    local target = ""
+    if unitID and unitID ~= "" and unitID ~= "none" and unitID ~= "player" and UnitName then
+        local ok, n = pcall(UnitName, unitID)
+        target = (ok and plainString(n)) or ""
+    elseif (not unitID or unitID == "" or unitID == "target") and UnitName then
+        local ok, n = pcall(UnitName, "target")
+        target = (ok and plainString(n)) or ""
+    end
+    world.pendingEmote = {
+        token = emote,
+        target = target,
+        zone = world.zone,
+        subzone = world.subzone,
+        minimap = world.minimap,
+        mapID = world.mapID,
+        x = world.x,
+        y = world.y,
+        untilAt = unixNow() + 2,
+    }
+end
+
+local emoteHooked = false
+local function installEmoteHook()
+    if emoteHooked or type(hooksecurefunc) ~= "function" then
+        return
+    end
+    emoteHooked = true
+    hooksecurefunc("DoEmote", function(token, unit)
+        noteEmote(token, unit)
+        onWorld()
+    end)
+end
+
 local events = CreateFrame("Frame")
 local tick = 0
 events:RegisterEvent("ADDON_LOADED")
@@ -2168,6 +2564,7 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_LEVEL_UP")
 events:RegisterEvent("CHAT_MSG_ADDON")
+events:RegisterEvent("CHAT_MSG_TEXT_EMOTE")
 events:RegisterEvent("ZONE_CHANGED")
 events:RegisterEvent("ZONE_CHANGED_INDOORS")
 events:RegisterEvent("ZONE_CHANGED_NEW_AREA")
@@ -2196,6 +2593,7 @@ events:SetScript("OnEvent", function(_, event, ...)
         end
         initDB()
         registerPrefix(PREFIX)
+        installEmoteHook()
         return
     end
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
@@ -2283,9 +2681,59 @@ events:SetScript("OnEvent", function(_, event, ...)
         end
         return
     end
+    if event == "CHAT_MSG_TEXT_EMOTE" then
+        -- The token comes from DoEmote. This event only confirms the emote
+        -- was announced. The text itself is localized and may be secret in combat.
+        if type(world.pendingEmote) == "table" then
+            world.pendingEmote.untilAt = unixNow() + 2
+            onWorld()
+        end
+        return
+    end
     if event == "CHAT_MSG_ADDON" then
-        local prefix, _, _, sender = ...
+        local prefix, message, _, sender = ...
         if prefix ~= PREFIX or type(sender) ~= "string" then
+            return
+        end
+        local msg = plainString(message)
+        if msg and string.sub(msg, 1, 2) == "G\t" then
+            local qid
+            local tabAt = string.find(msg, "\t", 3, true)
+            if tabAt then
+                qid = string.sub(msg, 3, tabAt - 1)
+            end
+            local shortName = sender
+            if Ambiguate then
+                local ok, value = pcall(Ambiguate, sender, "short")
+                if ok then
+                    local s = plainString(value)
+                    if s then
+                        shortName = s
+                    end
+                end
+            end
+            if player.name ~= "" and same(shortName, player.name) then
+                return
+            end
+            local entry
+            for _, e in ipairs(currentEntries()) do
+                if e.quest_id == qid then
+                    entry = e
+                    break
+                end
+            end
+            local group = readGroup()
+            local known = false
+            for _, m in ipairs(group.members or {}) do
+                if type(m) == "table" and same(m.name, shortName) then
+                    known = true
+                    break
+                end
+            end
+            if entry and not isComplete(entry) and known and type(entry.group) == "table"
+                and GutSagaObjectives and GutSagaObjectives.groupOK and GutSagaObjectives.groupOK(entry.group, group) then
+                finishQuest(entry, group)
+            end
             return
         end
         local short = sender

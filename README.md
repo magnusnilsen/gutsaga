@@ -85,7 +85,16 @@ Du trenger programmet GutSaga og World of Warcraft. Du trenger ikke kildekoden o
 4. Start spillet, huk av GutSaga på karaktervalg, og skriv `/reload` eller logg inn på nytt.
 5. `/gutsaga` eller `/gs` åpner oppdragsloggen. Minikartet har en G-knapp.
 
-Oppdrag har mål i rekkefølge: sted, snakk med noen, samle en gjenstand, eller (eksperimentelt) et drap. Når alle målene er grønne, tar tillegget skjermbilde og skriver en linje i chatten. Programmet på maskinen leser chatloggen og skjermbildet og sender det til API-et. Det trykker aldri på noe i spillet og leser aldri skjermen.
+Oppdrag har mål: sted, snakk med noen, samle en gjenstand, et emote (`/salute`), eller (eksperimentelt) et drap. `all_of` krever at flere av disse er sanne samtidig. `any_of` er alternativer. Et mål eller hele sagaen kan ha et tidsvindu, og en gruppesaga krever N spillere sammen. Når alle målene er grønne (og gruppa stemmer, om sagaen krever det), tar tillegget skjermbilde. Programmet på maskinen leser SavedVariables og chatloggen og sender det til API-et. Det trykker aldri på noe i spillet og leser aldri skjermen.
+
+JSON-formen Smia sender til API-et står i [docs/API.md](docs/API.md) og [docs/sagas-api.md](docs/sagas-api.md). Kort:
+
+- `emote`: `"emote": "SALUTE"` (eller `"/salute"`). Valgfritt `npc` (UnitName) og samme stedsfelt som `location`.
+- `all_of` / `any_of`: `"objectives": [ ... ]` med minst to barn. `all_of` er sant bare når alle barna er sanne i samme sjekk.
+- `when`: `"clock": "local"` (standard, `time()` / `date("*t")` på PC-en), `"game"` (`GetGameTime`, ingen dato) eller `"realm"` (`GetServerTime` som UTC). `"start": "22:00", "end": "02:00"` og/eller `starts_at` / `ends_at`.
+- `group`: `"size": 4, "min_level": 17, "instance": "The Deadmines"`. Fullføringen lagres én gang per karakter.
+
+Classic Era, Mists og TBC har `DoEmote`, `GetGameTime`, `time`/`date` og gruppekallene. Forever kan skjule navn, nivå og `GetGameTime` i kamp (hemmelige verdier); tillegget bruker siste lesbare roster og siste lesbare spillklokke. Skapninger matches på navn, ikke GUID. Inne i en instans sendes gruppekreditten på `PARTY`/`RAID` likevel. Om klienten stopper den, krediterer API-et likevel de karakterene følgeprogrammet kjenner, når den som fullfører har programmet kjørende og vennene har logget inn minst én gang.
 
 Oppdragene ligger i `GutSagaData.lua`, som programmet skriver. Spillet leser filen ved innlogging og `/reload`. Det du fullfører, lagres per karakter i SavedVariables og skrives til disk når du logger ut eller laster inn på nytt. Chatlinjen er det som gjør at fullføringen kommer frem selv om du avslutter spillet brått.
 

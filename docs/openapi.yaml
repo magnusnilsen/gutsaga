@@ -37,6 +37,48 @@ components:
         class: {type: string}
         battletag: {type: string}
         backstory: {type: string}
+    TimeWindow:
+      type: object
+      description: |
+        clock local (default) is time()/date("*t"). clock game is GetGameTime
+        and cannot set starts_at/ends_at. clock realm is GetServerTime as UTC.
+      properties:
+        clock: {type: string, enum: [game, local, realm]}
+        start: {type: string, description: "HH:MM, inclusive, may be after end"}
+        end: {type: string, description: "HH:MM"}
+        starts_at: {type: string, format: date-time}
+        ends_at: {type: string, format: date-time}
+    GroupRule:
+      type: object
+      required: [size]
+      properties:
+        size: {type: integer, minimum: 1, maximum: 40}
+        min_level: {type: integer, minimum: 1, maximum: 1000}
+        instance: {type: string, description: "GetInstanceInfo name or zone; | or ; alternatives"}
+    Objective:
+      type: object
+      required: [id, type, text]
+      properties:
+        id: {type: string}
+        type: {type: string, enum: [location, interact, collect, kill, emote, all_of, any_of]}
+        text: {type: string}
+        zone: {type: string}
+        subzone: {type: string}
+        map_id: {type: integer}
+        x: {type: number}
+        y: {type: number}
+        radius: {type: number}
+        npc: {type: string}
+        object: {type: string}
+        item_id: {type: integer}
+        item_name: {type: string}
+        count: {type: integer}
+        emote: {type: string, description: "Token such as SALUTE"}
+        when: {$ref: "#/components/schemas/TimeWindow"}
+        objectives:
+          type: array
+          description: Nested children for all_of and any_of.
+          items: {$ref: "#/components/schemas/Objective"}
     Quest:
       type: object
       properties:
@@ -45,24 +87,10 @@ components:
         description: {type: string}
         objectives:
           type: array
-          items:
-            type: object
-            required: [id, type, text]
-            properties:
-              id: {type: string}
-              type: {type: string, enum: [location, interact, collect, kill]}
-              text: {type: string}
-              zone: {type: string}
-              subzone: {type: string}
-              map_id: {type: integer}
-              x: {type: number}
-              y: {type: number}
-              radius: {type: number}
-              npc: {type: string}
-              object: {type: string}
-              item_id: {type: integer}
-              item_name: {type: string}
-              count: {type: integer}
+          items: {$ref: "#/components/schemas/Objective"}
+        objectives_ordered: {type: boolean}
+        when: {$ref: "#/components/schemas/TimeWindow"}
+        group: {$ref: "#/components/schemas/GroupRule"}
         min_level: {type: integer, nullable: true}
         reward: {type: string}
         party_quest: {type: boolean}
@@ -170,6 +198,8 @@ paths:
                 battletag: {type: string}
                 level: {type: integer}
                 completed_at: {type: string, format: date-time}
+                instance: {type: string}
+                group_members: {type: string, description: "JSON array of {name, realm, level}"}
                 screenshot: {type: string, format: binary}
           application/json:
             schema:
@@ -183,6 +213,16 @@ paths:
                 level: {type: integer}
                 completed_at: {type: string}
                 screenshot_base64: {type: string}
+                instance: {type: string}
+                group_members:
+                  type: array
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name: {type: string}
+                      realm: {type: string}
+                      level: {type: integer}
       responses:
         "200":
           description: Completed or already completed

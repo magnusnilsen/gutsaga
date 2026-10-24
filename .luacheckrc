@@ -8,6 +8,7 @@ globals = {
     "SLASH_GUTSAGA1",
     "SLASH_GUTSAGA2",
     "SlashCmdList",
+    "itemCount",
 }
 read_globals = {
     "CreateFrame",
@@ -71,6 +72,16 @@ read_globals = {
     "GameFontHighlightSmall",
     "QuestTitleFont",
     "QuestFont",
+    "hooksecurefunc",
+    "DoEmote",
+    "GetGameTime",
+    "GetNumGroupMembers",
+    "GetNumPartyMembers",
+    "GetNumRaidMembers",
+    "GetInstanceInfo",
+    "UnitExists",
+    "RAID_CLASS_COLORS",
+    "UnitGUID",
 }
 exclude_files = {
     "addon/GutSaga/GutSagaData.lua",

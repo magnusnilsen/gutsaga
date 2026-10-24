@@ -116,6 +116,16 @@ func (c *Client) Complete(ctx context.Context, req contract.CompletionRequest, i
 		"level":         strconv.Itoa(req.Level),
 		"completed_at":  req.CompletedAt,
 	}
+	if req.Instance != "" {
+		fields["instance"] = req.Instance
+	}
+	if len(req.GroupMembers) > 0 {
+		raw, err := json.Marshal(req.GroupMembers)
+		if err != nil {
+			return contract.CompletionResponse{}, err
+		}
+		fields["group_members"] = string(raw)
+	}
 	for k, v := range fields {
 		if err := w.WriteField(k, v); err != nil {
 			return contract.CompletionResponse{}, err

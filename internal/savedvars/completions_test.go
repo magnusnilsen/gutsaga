@@ -16,6 +16,8 @@ GutSagaDB = {
 ["level"] = 2,
 ["completed_at"] = 1792698415,
 ["realm"] = "Celebras",
+["group_members"] = "Magní/Celebras/18;Mira/Celebras/17",
+["instance"] = "The Deadmines",
 },
 ["81006099-ddf8-4bc3-9ba0-b78a2614ba30"] = {
 ["quest_id"] = "81006099-ddf8-4bc3-9ba0-b78a2614ba30",
@@ -42,5 +44,8 @@ GutSagaDB = {
 	}
 	if got[0].At.Unix() != 1792698415 {
 		t.Fatalf("at %v", got[0].At)
+	}
+	if got[0].Instance != "The Deadmines" || len(got[0].GroupMembers) != 2 || got[0].GroupMembers[1].Name != "Mira" || got[0].GroupMembers[1].Level != 17 {
+		t.Fatalf("group %+v", got[0].GroupMembers)
 	}
 }

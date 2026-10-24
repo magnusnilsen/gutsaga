@@ -296,11 +296,17 @@ func (a *App) pollSavedVars() {
 		if !a.serverHasCompletion(c.QuestID, c.Character, c.Realm) {
 			a.Queue.ForgetDone(key)
 		}
-		ok := a.Queue.Enqueue(queue.Item{
+		item := queue.Item{
 			Kind: "completion", Key: key,
 			QuestID: c.QuestID, QuestVersion: c.QuestVersion, Character: c.Character, Realm: c.Realm,
 			Level: c.Level, CompletedAt: c.At.UTC().Format(time.RFC3339),
-		})
+			Instance: c.Instance, GroupMembers: c.GroupMembers,
+		}
+		ok := a.Queue.Enqueue(item)
+		if !ok && len(c.GroupMembers) > 0 && !a.Queue.SetGroup(key, c.Instance, c.GroupMembers) {
+			item.Key = "group\n" + key
+			ok = a.Queue.Enqueue(item)
+		}
 		if ok {
 			a.Log.Info("lest fra SavedVariables", "character", c.Character, "quest", c.QuestID)
 		}
@@ -410,6 +416,7 @@ func (a *App) send(ctx context.Context, item queue.Item) error {
 	_, err := a.Client.Complete(ctx, contract.CompletionRequest{
 		CharacterID: item.CharacterID, QuestID: item.QuestID, QuestVersion: item.QuestVersion,
 		BattleTag: tag, Level: item.Level, CompletedAt: item.CompletedAt,
+		Instance: item.Instance, GroupMembers: item.GroupMembers,
 	}, nil)
 	if err != nil {
 		return err

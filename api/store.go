@@ -463,6 +463,8 @@ type QuestInput struct {
 	Description          string
 	Objectives           []contract.Objective
 	ObjectivesOrdered    *bool
+	When                 *contract.TimeWindow
+	Group                *contract.GroupRule
 	Reward               string
 	MinLevel             *int
 	PartyQuest           bool
@@ -476,6 +478,10 @@ type QuestPatch struct {
 	Description          *string
 	Objectives           *[]contract.Objective
 	ObjectivesOrdered    *bool
+	When                 *contract.TimeWindow
+	WhenSet              bool
+	Group                *contract.GroupRule
+	GroupSet             bool
 	Reward               *string
 	MinLevel             *int
 	MinLevelSet          bool
@@ -535,6 +541,16 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 		return contract.Quest{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
 	}
 	in.Objectives = objectives
+	when, err := contract.NormalizeTimeWindow(in.When)
+	if err != nil {
+		return contract.Quest{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
+	}
+	in.When = when
+	group, err := contract.NormalizeGroup(in.Group)
+	if err != nil {
+		return contract.Quest{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
+	}
+	in.Group = group
 	if err := validateQuestText(in.Title, in.Description, in.Reward, in.CreatedBy); err != nil {
 		return contract.Quest{}, err
 	}
@@ -572,19 +588,27 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	if err != nil {
 		return contract.Quest{}, err
 	}
+	whenJSON, err := nullableJSON(in.When)
+	if err != nil {
+		return contract.Quest{}, err
+	}
+	groupJSON, err := nullableJSON(in.Group)
+	if err != nil {
+		return contract.Quest{}, err
+	}
 	var id string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO quests (title, description, objectives, reward, min_level, party, active, version, created_by, created_by_player_id, objectives_ordered)
-		VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,1,$8,$9,$10)
+		INSERT INTO quests (title, description, objectives, reward, min_level, party, active, version, created_by, created_by_player_id, objectives_ordered, time_window, group_rule)
+		VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,1,$8,$9,$10,$11::jsonb,$12::jsonb)
 		RETURNING id::text`,
-		strings.TrimSpace(in.Title), in.Description, objJSON, in.Reward, nullableInt(in.MinLevel), in.PartyQuest, active, creatorTag, creatorID, ordered,
+		strings.TrimSpace(in.Title), in.Description, objJSON, in.Reward, nullableInt(in.MinLevel), in.PartyQuest, active, creatorTag, creatorID, ordered, whenJSON, groupJSON,
 	).Scan(&id)
 	if err != nil {
 		return contract.Quest{}, err
 	}
 	q := contract.Quest{
 		ID: id, Title: strings.TrimSpace(in.Title), Description: in.Description, Objectives: in.Objectives,
-		ObjectivesOrdered: ordered, Reward: in.Reward, MinLevel: in.MinLevel, PartyQuest: in.PartyQuest, Active: active, Version: 1,
+		ObjectivesOrdered: ordered, When: in.When, Group: in.Group, Reward: in.Reward, MinLevel: in.MinLevel, PartyQuest: in.PartyQuest, Active: active, Version: 1,
 		CreatedBy: creatorTag, AssignedTo: refs(in.AssignedCharacterIDs),
 	}
 	if err := replaceAssignments(ctx, tx, id, in.AssignedCharacterIDs); err != nil {
@@ -627,6 +651,20 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 	}
 	if p.ObjectivesOrdered != nil {
 		q.ObjectivesOrdered = *p.ObjectivesOrdered
+	}
+	if p.WhenSet {
+		when, err := contract.NormalizeTimeWindow(p.When)
+		if err != nil {
+			return contract.Quest{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
+		}
+		q.When = when
+	}
+	if p.GroupSet {
+		group, err := contract.NormalizeGroup(p.Group)
+		if err != nil {
+			return contract.Quest{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
+		}
+		q.Group = group
 	}
 	if p.Reward != nil {
 		q.Reward = *p.Reward
@@ -674,11 +712,19 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 	if err != nil {
 		return contract.Quest{}, err
 	}
+	whenJSON, err := nullableJSON(q.When)
+	if err != nil {
+		return contract.Quest{}, err
+	}
+	groupJSON, err := nullableJSON(q.Group)
+	if err != nil {
+		return contract.Quest{}, err
+	}
 	_, err = tx.Exec(ctx, `
 		UPDATE quests
-		SET title=$2, description=$3, objectives=$4::jsonb, reward=$5, min_level=$6, party=$7, active=$8, version=$9, created_by=$10, created_by_player_id=$11, objectives_ordered=$12, updated_at=now()
+		SET title=$2, description=$3, objectives=$4::jsonb, reward=$5, min_level=$6, party=$7, active=$8, version=$9, created_by=$10, created_by_player_id=$11, objectives_ordered=$12, time_window=$13::jsonb, group_rule=$14::jsonb, updated_at=now()
 		WHERE id=$1`,
-		id, q.Title, q.Description, objJSON, q.Reward, nullableInt(q.MinLevel), q.PartyQuest, q.Active, q.Version, q.CreatedBy, creatorID, q.ObjectivesOrdered)
+		id, q.Title, q.Description, objJSON, q.Reward, nullableInt(q.MinLevel), q.PartyQuest, q.Active, q.Version, q.CreatedBy, creatorID, q.ObjectivesOrdered, whenJSON, groupJSON)
 	if err != nil {
 		return contract.Quest{}, err
 	}
@@ -703,6 +749,17 @@ func objectivesJSON(list []contract.Objective) (string, error) {
 	raw, err := json.Marshal(list)
 	if err != nil {
 		return "", err
+	}
+	return string(raw), nil
+}
+
+func nullableJSON(v any) (any, error) {
+	if v == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
 	}
 	return string(raw), nil
 }
@@ -789,19 +846,27 @@ func insertSnapshot(ctx context.Context, q querier, quest contract.Quest) error 
 	if err != nil {
 		return err
 	}
+	whenJSON, err := nullableJSON(quest.When)
+	if err != nil {
+		return err
+	}
+	groupJSON, err := nullableJSON(quest.Group)
+	if err != nil {
+		return err
+	}
 	_, err = q.Exec(ctx, `
-		INSERT INTO quest_versions (quest_id, version, title, description, objectives, reward, min_level, party, active, assigned_to, created_by, objectives_ordered)
-		VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10::jsonb,$11,$12)`,
+		INSERT INTO quest_versions (quest_id, version, title, description, objectives, reward, min_level, party, active, assigned_to, created_by, objectives_ordered, time_window, group_rule)
+		VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10::jsonb,$11,$12,$13::jsonb,$14::jsonb)`,
 		quest.ID, quest.Version, quest.Title, quest.Description, objJSON, quest.Reward,
-		nullableInt(quest.MinLevel), quest.PartyQuest, quest.Active, string(raw), quest.CreatedBy, quest.ObjectivesOrdered)
+		nullableInt(quest.MinLevel), quest.PartyQuest, quest.Active, string(raw), quest.CreatedBy, quest.ObjectivesOrdered, whenJSON, groupJSON)
 	return err
 }
 
 func scanQuest(scan func(dest ...any) error) (contract.Quest, error) {
 	var q contract.Quest
 	var ml sql.NullInt32
-	var obj string
-	err := scan(&q.ID, &q.Title, &q.Description, &obj, &q.Reward, &ml, &q.PartyQuest, &q.Active, &q.Version, &q.CreatedBy, &q.ObjectivesOrdered, &q.HasImage)
+	var obj, whenRaw, groupRaw string
+	err := scan(&q.ID, &q.Title, &q.Description, &obj, &q.Reward, &ml, &q.PartyQuest, &q.Active, &q.Version, &q.CreatedBy, &q.ObjectivesOrdered, &q.HasImage, &whenRaw, &groupRaw)
 	if err != nil {
 		return q, err
 	}
@@ -809,6 +874,14 @@ func scanQuest(scan func(dest ...any) error) (contract.Quest, error) {
 	q.Objectives, err = contract.DecodeObjectives(obj)
 	if err != nil {
 		return q, fmt.Errorf("%w: objectives", ErrInvalid)
+	}
+	q.When, err = contract.DecodeTimeWindow(whenRaw)
+	if err != nil {
+		return q, fmt.Errorf("%w: when", ErrInvalid)
+	}
+	q.Group, err = contract.DecodeGroupRule(groupRaw)
+	if err != nil {
+		return q, fmt.Errorf("%w: group", ErrInvalid)
 	}
 	q.AssignedTo = []contract.IDRef{}
 	return q, nil
@@ -818,7 +891,9 @@ const questSelect = `
 		SELECT q.id::text, q.title, q.description, q.objectives::text, q.reward, q.min_level, q.party, q.active, q.version,
 			COALESCE(NULLIF(p.battletag, ''), q.created_by),
 			q.objectives_ordered,
-			(q.image_bytes IS NOT NULL AND octet_length(q.image_bytes) > 0)
+			(q.image_bytes IS NOT NULL AND octet_length(q.image_bytes) > 0),
+			COALESCE(q.time_window::text, ''),
+			COALESCE(q.group_rule::text, '')
 		FROM quests q
 		LEFT JOIN players p ON p.id = q.created_by_player_id`
 
@@ -870,7 +945,8 @@ func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, 
 		return contract.QuestDetail{}, err
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT version, title, description, objectives::text, reward, min_level, party, active, assigned_to::text, created_by, created_at
+		SELECT version, title, description, objectives::text, reward, min_level, party, active, assigned_to::text, created_by, created_at,
+			COALESCE(time_window::text, ''), COALESCE(group_rule::text, '')
 		FROM quest_versions WHERE quest_id=$1 ORDER BY version`, id)
 	if err != nil {
 		return contract.QuestDetail{}, err
@@ -880,12 +956,20 @@ func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, 
 	for rows.Next() {
 		var v contract.QuestVersion
 		var ml sql.NullInt32
-		var assigned, obj string
+		var assigned, obj, whenRaw, groupRaw string
 		var created time.Time
-		if err := rows.Scan(&v.Version, &v.Title, &v.Description, &obj, &v.Reward, &ml, &v.PartyQuest, &v.Active, &assigned, &v.CreatedBy, &created); err != nil {
+		if err := rows.Scan(&v.Version, &v.Title, &v.Description, &obj, &v.Reward, &ml, &v.PartyQuest, &v.Active, &assigned, &v.CreatedBy, &created, &whenRaw, &groupRaw); err != nil {
 			return contract.QuestDetail{}, err
 		}
 		v.Objectives, err = contract.DecodeObjectives(obj)
+		if err != nil {
+			return contract.QuestDetail{}, err
+		}
+		v.When, err = contract.DecodeTimeWindow(whenRaw)
+		if err != nil {
+			return contract.QuestDetail{}, err
+		}
+		v.Group, err = contract.DecodeGroupRule(groupRaw)
 		if err != nil {
 			return contract.QuestDetail{}, err
 		}
@@ -1151,6 +1235,18 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 	if in.Level < 0 || in.Level > 1000 {
 		return contract.CompletionResponse{}, fmt.Errorf("%w: level", ErrInvalid)
 	}
+	if len(in.GroupMembers) > 40 {
+		return contract.CompletionResponse{}, fmt.Errorf("%w: group_members", ErrInvalid)
+	}
+	in.Instance = strings.TrimSpace(in.Instance)
+	if len([]rune(in.Instance)) > 80 {
+		return contract.CompletionResponse{}, fmt.Errorf("%w: instance", ErrInvalid)
+	}
+	for _, m := range in.GroupMembers {
+		if len([]rune(strings.TrimSpace(m.Name))) > 40 || len([]rune(m.Realm)) > 40 || m.Level < 0 || m.Level > 1000 {
+			return contract.CompletionResponse{}, fmt.Errorf("%w: group_members", ErrInvalid)
+		}
+	}
 	completedAt := time.Now().UTC()
 	if strings.TrimSpace(in.CompletedAt) != "" {
 		t, err := time.Parse(time.RFC3339, in.CompletedAt)
@@ -1165,12 +1261,12 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 	}
 	defer tx.Rollback(ctx)
 
-	var name, className, tag string
-	var charLevel int
+	var name, realm, className, tag string
+	var storedLevel int
 	err = tx.QueryRow(ctx, `
-		SELECT c.name, COALESCE(c.class, ''), c.level, COALESCE(p.battletag, '')
+		SELECT c.name, c.realm, COALESCE(c.class, ''), c.level, COALESCE(p.battletag, '')
 		FROM characters c JOIN players p ON p.id = c.player_id
-		WHERE c.id=$1 AND c.player_id=$2`, in.CharacterID, playerID).Scan(&name, &className, &charLevel, &tag)
+		WHERE c.id=$1 AND c.player_id=$2`, in.CharacterID, playerID).Scan(&name, &realm, &className, &storedLevel, &tag)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.CompletionResponse{Allowed: false}, ErrForbidden
 	}
@@ -1185,31 +1281,59 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 			return contract.CompletionResponse{}, mapPG(err)
 		}
 	}
-	var snapTitle, snapReward string
-	err = tx.QueryRow(ctx, `SELECT title, COALESCE(reward, '') FROM quest_versions WHERE quest_id=$1 AND version=$2`, in.QuestID, in.QuestVersion).Scan(&snapTitle, &snapReward)
+	var snapTitle, snapReward, groupRaw string
+	err = tx.QueryRow(ctx, `
+		SELECT title, COALESCE(reward, ''), COALESCE(group_rule::text, '')
+		FROM quest_versions WHERE quest_id=$1 AND version=$2`, in.QuestID, in.QuestVersion).Scan(&snapTitle, &snapReward, &groupRaw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.CompletionResponse{}, fmt.Errorf("%w: unknown quest version", ErrInvalid)
 	}
 	if err != nil {
 		return contract.CompletionResponse{}, err
 	}
+	rule, err := contract.DecodeGroupRule(groupRaw)
+	if err != nil {
+		return contract.CompletionResponse{}, fmt.Errorf("%w: group", ErrInvalid)
+	}
+	rosterLevel := in.Level
+	if rosterLevel < 1 {
+		rosterLevel = storedLevel
+	}
+	members := contract.EnsureMember(append([]contract.GroupMember(nil), in.GroupMembers...), name, realm, rosterLevel)
+	groupOK := rule != nil && contract.GroupSatisfied(rule, members, in.Instance) == nil
 
 	var existingID string
 	var existingVersion int
 	err = tx.QueryRow(ctx, `SELECT id::text, quest_version FROM progress WHERE character_id=$1 AND quest_id=$2`, in.CharacterID, in.QuestID).Scan(&existingID, &existingVersion)
 	if err == nil {
-		var storedTitle string
-		_ = tx.QueryRow(ctx, `SELECT title FROM quest_versions WHERE quest_id=$1 AND version=$2`, in.QuestID, existingVersion).Scan(&storedTitle)
+		var storedTitle, storedGroup string
+		_ = tx.QueryRow(ctx, `
+			SELECT title, COALESCE(group_rule::text, '')
+			FROM quest_versions WHERE quest_id=$1 AND version=$2`, in.QuestID, existingVersion).Scan(&storedTitle, &storedGroup)
+		storedRule, _ := contract.DecodeGroupRule(storedGroup)
+		var credits []contract.GroupCredit
+		if storedRule != nil && contract.GroupSatisfied(storedRule, members, in.Instance) == nil {
+			credits, err = creditGroup(ctx, tx, in.QuestID, existingVersion, storedTitle, in.CharacterID, name, completedAt, members)
+			if err != nil {
+				return contract.CompletionResponse{}, err
+			}
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return contract.CompletionResponse{}, err
 		}
 		return contract.CompletionResponse{
 			Allowed: true, AlreadyCompleted: true, Completed: true,
 			ProgressID: existingID, CharacterName: name, QuestTitle: storedTitle, QuestVersion: existingVersion,
+			GroupCredited: credits,
 		}, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return contract.CompletionResponse{}, err
+	}
+	if rule != nil && !groupOK {
+		if err := contract.GroupSatisfied(rule, members, in.Instance); err != nil {
+			return contract.CompletionResponse{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
+		}
 	}
 
 	var screenshot any
@@ -1236,35 +1360,114 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 			_, _ = tx.Exec(ctx, `DELETE FROM screenshots WHERE id=$1`, screenshot)
 		}
 		_ = tx.QueryRow(ctx, `SELECT id::text, quest_version FROM progress WHERE character_id=$1 AND quest_id=$2`, in.CharacterID, in.QuestID).Scan(&existingID, &existingVersion)
+		var credits []contract.GroupCredit
+		if groupOK {
+			credits, err = creditGroup(ctx, tx, in.QuestID, existingVersion, snapTitle, in.CharacterID, name, completedAt, members)
+			if err != nil {
+				return contract.CompletionResponse{}, err
+			}
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return contract.CompletionResponse{}, err
 		}
 		return contract.CompletionResponse{
 			Allowed: true, AlreadyCompleted: true, Completed: true,
 			ProgressID: existingID, CharacterName: name, QuestTitle: snapTitle, QuestVersion: existingVersion,
+			GroupCredited: credits,
 		}, nil
 	}
 	if err != nil {
 		return contract.CompletionResponse{}, err
 	}
 	body := fmt.Sprintf("%s fullførte «%s» (versjon %d).", name, snapTitle, in.QuestVersion)
+	if rule != nil {
+		body = fmt.Sprintf("%s fullførte «%s» (versjon %d) med gruppa.", name, snapTitle, in.QuestVersion)
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO adventure_log (player_id, character_id, quest_id, type, title, body)
 		VALUES ($1,$2,$3,'quest',$4,$5)`, playerID, in.CharacterID, in.QuestID, "Oppdrag fullført", body); err != nil {
 		return contract.CompletionResponse{}, err
+	}
+	var credits []contract.GroupCredit
+	if groupOK {
+		credits, err = creditGroup(ctx, tx, in.QuestID, in.QuestVersion, snapTitle, in.CharacterID, name, completedAt, members)
+		if err != nil {
+			return contract.CompletionResponse{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return contract.CompletionResponse{}, err
 	}
 	levelShown := in.Level
 	if levelShown <= 0 {
-		levelShown = charLevel
+		levelShown = storedLevel
 	}
 	return contract.CompletionResponse{
 		Allowed: true, Completed: true, LogWritten: true, ProgressID: progressID,
 		CharacterName: name, CharacterClass: className, CharacterLevel: levelShown, Reward: snapReward,
 		QuestTitle: snapTitle, QuestVersion: in.QuestVersion,
+		GroupCredited: credits,
 	}, nil
+}
+
+// creditGroup inserts one idempotent completion per other character in the roster.
+// Unknown names are skipped. The caller's own row is the caller's job.
+func creditGroup(ctx context.Context, tx querier, questID string, questVersion int, title, callerID, callerName string, completedAt time.Time, members []contract.GroupMember) ([]contract.GroupCredit, error) {
+	var out []contract.GroupCredit
+	seen := map[string]bool{}
+	for _, m := range members {
+		name := strings.TrimSpace(m.Name)
+		realm := strings.TrimSpace(m.Realm)
+		if name == "" || realm == "" {
+			continue
+		}
+		key := strings.ToLower(name) + "\n" + strings.ToLower(realm)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		var id, owner, foundName, foundRealm string
+		err := tx.QueryRow(ctx, `
+			SELECT id::text, player_id::text, name, realm
+			FROM characters
+			WHERE lower(name)=lower($1) AND lower(realm)=lower($2)
+			LIMIT 1`, name, realm).Scan(&id, &owner, &foundName, &foundRealm)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if id == callerID {
+			continue
+		}
+		var progressID string
+		var level any
+		if m.Level > 0 {
+			level = m.Level
+		}
+		err = tx.QueryRow(ctx, `
+			INSERT INTO progress (character_id, quest_id, quest_version, status, completed_at, level_at_completion)
+			VALUES ($1,$2,$3,'completed',$4,$5)
+			ON CONFLICT (character_id, quest_id) DO NOTHING
+			RETURNING id::text`,
+			id, questID, questVersion, completedAt, level).Scan(&progressID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			out = append(out, contract.GroupCredit{CharacterID: id, Name: foundName, Realm: foundRealm, Already: true})
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		body := fmt.Sprintf("%s fullførte «%s» (versjon %d) sammen med %s.", foundName, title, questVersion, callerName)
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO adventure_log (player_id, character_id, quest_id, type, title, body)
+			VALUES ($1,$2,$3,'quest',$4,$5)`, owner, id, questID, "Oppdrag fullført", body); err != nil {
+			return nil, err
+		}
+		out = append(out, contract.GroupCredit{CharacterID: id, Name: foundName, Realm: foundRealm})
+	}
+	return out, nil
 }
 
 func (s *Store) MarkDiscord(ctx context.Context, progressID, discordURL string) error {

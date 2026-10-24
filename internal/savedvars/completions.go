@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/magnusnilsen/gutsaga/internal/contract"
 )
 
 // Completion is one local finish stored by the addon under GutSagaDB.completions.
@@ -21,11 +23,13 @@ type Completion struct {
 	Level        int
 	At           time.Time
 	Path         string
+	Instance     string
+	GroupMembers []contract.GroupMember
 }
 
 var (
 	completionBlock = regexp.MustCompile(`(?s)\["([0-9a-fA-F-]{36})"\]\s*=\s*\{(.*?)\},`)
-	fieldString     = regexp.MustCompile(`\["(quest_id|character|realm)"\]\s*=\s*"([^"]*)"`)
+	fieldString     = regexp.MustCompile(`\["(quest_id|character|realm|group_members|instance)"\]\s*=\s*"([^"]*)"`)
 	fieldNumber     = regexp.MustCompile(`\["(version|level|completed_at)"\]\s*=\s*(-?\d+)`)
 )
 
@@ -82,6 +86,10 @@ func ParseCompletions(path string, body string) []Completion {
 				c.Character = f[2]
 			case "realm":
 				c.Realm = f[2]
+			case "instance":
+				c.Instance = f[2]
+			case "group_members":
+				c.GroupMembers = parseMemberBlob(f[2])
 			}
 		}
 		for _, f := range fieldNumber.FindAllStringSubmatch(block, -1) {
@@ -110,6 +118,25 @@ func ParseCompletions(path string, body string) []Completion {
 			c.Level = 1
 		}
 		out = append(out, c)
+	}
+	return out
+}
+
+func parseMemberBlob(s string) []contract.GroupMember {
+	if s == "" {
+		return nil
+	}
+	var out []contract.GroupMember
+	for _, part := range strings.Split(s, ";") {
+		bits := strings.Split(part, "/")
+		if len(bits) != 3 || strings.TrimSpace(bits[0]) == "" {
+			continue
+		}
+		level, err := strconv.Atoi(bits[2])
+		if err != nil || level < 0 {
+			level = 0
+		}
+		out = append(out, contract.GroupMember{Name: bits[0], Realm: bits[1], Level: level})
 	}
 	return out
 }
