@@ -1248,31 +1248,10 @@ local function timeHint(when, done, clocks)
     if type(when) ~= "table" then
         return ""
     end
-    local bits = {}
-    if type(when.start) == "string" and when.start ~= "" and type(when["end"]) == "string" and when["end"] ~= "" then
-        table.insert(bits, when.start .. "–" .. when["end"])
+    if GutSagaObjectives and type(GutSagaObjectives.timeHint) == "function" then
+        return GutSagaObjectives.timeHint(when, clocks, done) or ""
     end
-    if type(when.starts_at) == "string" and when.starts_at ~= "" then
-        table.insert(bits, "fra " .. when.starts_at)
-    end
-    if type(when.ends_at) == "string" and when.ends_at ~= "" then
-        table.insert(bits, "til " .. when.ends_at)
-    end
-    if #bits == 0 then
-        return ""
-    end
-    local clock = when.clock or "local"
-    local name = "lokal tid"
-    if clock == "game" then
-        name = "spilltid"
-    elseif clock == "realm" then
-        name = "realm-tid (UTC)"
-    end
-    local text = " (" .. table.concat(bits, ", ") .. ", " .. name .. ")"
-    if not done and GutSagaObjectives and GutSagaObjectives.timeOpen and not GutSagaObjectives.timeOpen(when, clocks) then
-        return " — venter" .. text
-    end
-    return text
+    return ""
 end
 
 local function objectiveLines(entry)
@@ -1354,9 +1333,6 @@ local function objectiveLines(entry)
                 local need = tonumber(step.need) or (type(obj.objectives) == "table" and #obj.objectives or 0)
                 local have = tonumber(step.count) or 0
                 label = string.format("%s (%d/%d)", label, have, need)
-            end
-            if obj.type == "emote" and type(obj.emote) == "string" and obj.emote ~= "" then
-                label = label .. " (/" .. string.lower(obj.emote) .. ")"
             end
             if obj.type == "sequence" and step.failed then
                 label = label .. " (feilet)"

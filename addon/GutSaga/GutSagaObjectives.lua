@@ -393,6 +393,104 @@ function M.timeOpen(when, state)
     return true
 end
 
+local function pluralEN(n, one, many)
+    if n == 1 then
+        return "1 " .. one
+    end
+    return tostring(n) .. " " .. many
+end
+
+-- Human relative span for absolute deadlines (English, matching Level labels).
+local function formatSpan(sec)
+    if sec < 0 then
+        sec = -sec
+    end
+    local days = math.floor(sec / 86400)
+    local hours = math.floor((sec % 86400) / 3600)
+    local mins = math.floor((sec % 3600) / 60)
+    if days >= 7 then
+        return pluralEN(days, "day", "days")
+    end
+    if days >= 1 then
+        local parts = { pluralEN(days, "day", "days") }
+        if hours > 0 and days < 3 then
+            parts[#parts + 1] = pluralEN(hours, "hour", "hours")
+        end
+        return table.concat(parts, " and ")
+    end
+    if hours >= 1 then
+        local parts = { pluralEN(hours, "hour", "hours") }
+        if mins > 0 then
+            parts[#parts + 1] = pluralEN(mins, "minute", "minutes")
+        end
+        return table.concat(parts, " and ")
+    end
+    if mins < 1 then
+        return "under a minute"
+    end
+    return pluralEN(mins, "minute", "minutes")
+end
+
+local function nowUnixForHint(when, state)
+    local clock = when.clock
+    if type(clock) ~= "string" or clock == "" then
+        clock = "local"
+    end
+    local clocks = type(state) == "table" and state.time or nil
+    local now = type(clocks) == "table" and clocks[clock] or nil
+    if type(now) ~= "table" then
+        now = type(clocks) == "table" and clocks["local"] or nil
+    end
+    if type(now) ~= "table" then
+        return nil
+    end
+    return tonumber(now.unix)
+end
+
+-- timeHint is the parenthetical shown after a goal line. Absolute dates become
+-- relative English ("in 3 hours and 23 minutes"). Emote tokens are not added here.
+function M.timeHint(when, state, done)
+    if type(when) ~= "table" then
+        return ""
+    end
+    local bits = {}
+    if type(when.start) == "string" and when.start ~= "" and type(when["end"]) == "string" and when["end"] ~= "" then
+        bits[#bits + 1] = when.start .. "–" .. when["end"]
+    end
+    local unix = nowUnixForHint(when, state)
+    if not done and unix then
+        local startAt = type(when.starts_at) == "string" and when.starts_at ~= "" and parseRFC3339(when.starts_at) or nil
+        local endAt = type(when.ends_at) == "string" and when.ends_at ~= "" and parseRFC3339(when.ends_at) or nil
+        if startAt and unix < startAt then
+            bits[#bits + 1] = "in " .. formatSpan(startAt - unix)
+        elseif endAt then
+            if unix > endAt then
+                bits[#bits + 1] = "expired"
+            else
+                bits[#bits + 1] = "in " .. formatSpan(endAt - unix)
+            end
+        end
+    elseif not done then
+        -- No unix on this clock (e.g. game clock) — fall back to raw ends_at only if present.
+        if type(when.ends_at) == "string" and when.ends_at ~= "" then
+            bits[#bits + 1] = "until " .. when.ends_at
+        elseif type(when.starts_at) == "string" and when.starts_at ~= "" then
+            bits[#bits + 1] = "from " .. when.starts_at
+        end
+    end
+    if #bits == 0 then
+        return ""
+    end
+    local text = " (" .. table.concat(bits, ", ") .. ")"
+    if not done and not M.timeOpen(when, state) then
+        if bits[1] == "expired" then
+            return text
+        end
+        return " — waiting" .. text
+    end
+    return text
+end
+
 -- groupOK is the saga-level party check. A missing rule is always ok.
 -- members below min_level do not count. instance matches the dungeon name or the zone.
 function M.groupOK(rule, group)
