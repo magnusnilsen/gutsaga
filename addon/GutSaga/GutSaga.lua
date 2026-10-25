@@ -3411,6 +3411,8 @@ local function inferEmoteToken(msg)
         { "dance", "DANCE" }, { "dans", "DANCE" },
         { "hearty hello", "HELLO" }, { "hello", "HELLO" }, { "hei", "HELLO" },
         { "greetings", "GREET" }, { "warmly", "GREET" },
+        { "slap", "SLAP" }, { "klask", "SLAP" },
+        { "point", "POINT" }, { "pek", "POINT" },
     }
     for i = 1, #hints do
         if string.find(s, hints[i][1], 1, true) then
