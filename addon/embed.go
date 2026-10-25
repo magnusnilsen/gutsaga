@@ -1,7 +1,7 @@
-// Package addon embeds the GutSaga addon so the companion can install it.
+// Package addon embeds the SagaBoard addon so the companion can install it.
 package addon
 
 import "embed"
 
-//go:embed GutSaga/GutSaga.lua GutSaga/GutSagaObjectives.lua GutSaga/GutSagaChains.lua GutSaga/GutSagaData.lua GutSaga/GutSaga.tga GutSaga/GutSagaList.tga GutSaga/GutSagaMinimap.tga GutSaga/box.tga GutSaga/check.tga GutSaga/unread.tga GutSaga/complete.mp3 GutSaga/GutSaga.toc GutSaga/GutSaga_Forever.toc GutSaga/GutSaga_Mainline.toc GutSaga/GutSaga_Vanilla.toc GutSaga/GutSaga_Mists.toc GutSaga/GutSaga_TBC.toc
+//go:embed SagaBoard
 var Files embed.FS

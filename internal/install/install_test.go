@@ -12,36 +12,36 @@ func TestInstallForeverRewritesInterface(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(wow, "Interface", "AddOns"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	data := filepath.Join(wow, "Interface", "AddOns", "GutSaga", "GutSagaData.lua")
+	data := filepath.Join(wow, "Interface", "AddOns", "SagaBoard", "SagaBoardData.lua")
 	if err := os.MkdirAll(filepath.Dir(data), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(data, []byte("GutSagaData = { entries = { kept = true } }\n"), 0o644); err != nil {
+	if err := os.WriteFile(data, []byte("SagaBoardData = { entries = { kept = true } }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := Install(wow, "forever"); err != nil {
 		t.Fatal(err)
 	}
-	mainline, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "GutSaga", "GutSaga_Mainline.toc"))
+	mainline, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "SagaBoard", "SagaBoard_Mainline.toc"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(mainline), "Interface: 16001") {
 		t.Fatalf("forever install should force 16001:\n%s", mainline)
 	}
-	lua, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "GutSaga", "GutSaga.lua"))
+	lua, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "SagaBoard", "SagaBoard.lua"))
 	if err != nil || !strings.Contains(string(lua), "CHARACTER") {
 		t.Fatal("addon lua missing")
 	}
-	if _, err := os.Stat(filepath.Join(wow, "Interface", "AddOns", "GutSaga", "GutSagaObjectives.lua")); err != nil {
+	if _, err := os.Stat(filepath.Join(wow, "Interface", "AddOns", "SagaBoard", "SagaBoardObjectives.lua")); err != nil {
 		t.Fatal(err)
 	}
-	chains, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "GutSaga", "GutSagaChains.lua"))
-	if err != nil || !strings.Contains(string(chains), "Låst: fullfør") {
+	chains, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "SagaBoard", "SagaBoardChains.lua"))
+	if err != nil || !strings.Contains(string(chains), "chain.locked") {
 		t.Fatal("chain helper missing from install")
 	}
-	forever, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "GutSaga", "GutSaga_Forever.toc"))
-	if err != nil || !strings.Contains(string(forever), "GutSagaChains.lua") {
+	forever, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "SagaBoard", "SagaBoard_Forever.toc"))
+	if err != nil || !strings.Contains(string(forever), "SagaBoardChains.lua") {
 		t.Fatal("forever toc should load chains")
 	}
 	kept, _ := os.ReadFile(data)
@@ -51,7 +51,7 @@ func TestInstallForeverRewritesInterface(t *testing.T) {
 	if err := Install(wow, "retail"); err != nil {
 		t.Fatal(err)
 	}
-	toc, _ := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "GutSaga", "GutSaga.toc"))
+	toc, _ := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "SagaBoard", "SagaBoard.toc"))
 	if !strings.Contains(string(toc), "Interface: 120000") {
 		t.Fatalf("retail toc:\n%s", toc)
 	}
@@ -67,7 +67,7 @@ func TestTOCFilesMatchInterfaceList(t *testing.T) {
 	forever := between(text, "FOREVER=", "\n")
 	mainline := between(text, "MAINLINE=", "\n")
 	check := func(name, want string) {
-		b, err := os.ReadFile(filepath.Join(root, "GutSaga", name))
+		b, err := os.ReadFile(filepath.Join(root, "SagaBoard", name))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -75,12 +75,12 @@ func TestTOCFilesMatchInterfaceList(t *testing.T) {
 			t.Fatalf("%s does not contain %s", name, want)
 		}
 	}
-	check("GutSaga_Forever.toc", forever)
-	check("GutSaga.toc", forever)
-	check("GutSaga_Mainline.toc", mainline)
-	check("GutSaga_Vanilla.toc", between(text, "VANILLA=", "\n"))
-	check("GutSaga_Mists.toc", between(text, "MISTS=", "\n"))
-	check("GutSaga_TBC.toc", between(text, "TBC=", "\n"))
+	check("SagaBoard_Forever.toc", forever)
+	check("SagaBoard.toc", forever)
+	check("SagaBoard_Mainline.toc", mainline)
+	check("SagaBoard_Vanilla.toc", between(text, "VANILLA=", "\n"))
+	check("SagaBoard_Mists.toc", between(text, "MISTS=", "\n"))
+	check("SagaBoard_TBC.toc", between(text, "TBC=", "\n"))
 }
 
 func TestInstallClassicKeepsFlavorTOCs(t *testing.T) {
@@ -91,10 +91,10 @@ func TestInstallClassicKeepsFlavorTOCs(t *testing.T) {
 	if err := Install(wow, "classic"); err != nil {
 		t.Fatal(err)
 	}
-	root := filepath.Join(wow, "Interface", "AddOns", "GutSaga")
-	toc, _ := os.ReadFile(filepath.Join(root, "GutSaga.toc"))
-	vanilla, _ := os.ReadFile(filepath.Join(root, "GutSaga_Vanilla.toc"))
-	mists, _ := os.ReadFile(filepath.Join(root, "GutSaga_Mists.toc"))
+	root := filepath.Join(wow, "Interface", "AddOns", "SagaBoard")
+	toc, _ := os.ReadFile(filepath.Join(root, "SagaBoard.toc"))
+	vanilla, _ := os.ReadFile(filepath.Join(root, "SagaBoard_Vanilla.toc"))
+	mists, _ := os.ReadFile(filepath.Join(root, "SagaBoard_Mists.toc"))
 	if !strings.Contains(string(toc), "Interface: 50504") {
 		t.Fatalf("classic fallback toc:\n%s", toc)
 	}
@@ -104,7 +104,7 @@ func TestInstallClassicKeepsFlavorTOCs(t *testing.T) {
 	if err := Install(wow, "classic_era"); err != nil {
 		t.Fatal(err)
 	}
-	toc, _ = os.ReadFile(filepath.Join(root, "GutSaga.toc"))
+	toc, _ = os.ReadFile(filepath.Join(root, "SagaBoard.toc"))
 	if !strings.Contains(string(toc), "Interface: 11509") {
 		t.Fatalf("era fallback toc:\n%s", toc)
 	}

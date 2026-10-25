@@ -37,7 +37,7 @@ jobs:
       - name: Build API and Windows companion
         run: |
           CGO_ENABLED=0 go build -o /tmp/gutsaga-api ./api
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/gutsaga.exe ./cmd/gutsaga
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/sagaboard.exe ./cmd/sagaboard
       - name: luacheck
         run: |
           sudo apt-get update
@@ -46,6 +46,7 @@ jobs:
           luacheck addon
           lua5.1 addon/objectives_test.lua
           lua5.1 addon/chains_test.lua
+          lua5.1 addon/invite_test.lua
 
   version:
     runs-on: ubuntu-latest
@@ -69,17 +70,17 @@ jobs:
           - os: macos-latest
             goos: darwin
             goarch: arm64
-            asset: gutsaga-darwin-arm64
+            asset: sagaboard-darwin-arm64
             cgo: "1"
           - os: macos-latest
             goos: darwin
             goarch: amd64
-            asset: gutsaga-darwin-amd64
+            asset: sagaboard-darwin-amd64
             cgo: "1"
           - os: windows-latest
             goos: windows
             goarch: amd64
-            asset: gutsaga-windows-amd64.exe
+            asset: sagaboard-windows-amd64.exe
             cgo: "0"
     steps:
       - uses: actions/checkout@v4
@@ -93,13 +94,15 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           VERSION: ${{ needs.version.outputs.version }}
+          # Official builds bake the public API URL. Empty leaves --api-url required.
+          SAGABOARD_API_URL: ${{ vars.SAGABOARD_API_URL }}
         run: |
           if [ "$GOOS" = "darwin" ] && [ "$GOARCH" = "amd64" ]; then
             export CC="clang -arch x86_64"
             export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
           fi
           mkdir -p dist
-          go build -trimpath -ldflags "-s -w -X github.com/magnusnilsen/gutsaga/internal/version.Version=${VERSION}" -o "dist/${{ matrix.asset }}" ./cmd/gutsaga
+          go build -trimpath -ldflags "-s -w -X github.com/magnusnilsen/gutsaga/internal/version.Version=${VERSION} -X github.com/magnusnilsen/gutsaga/internal/version.DefaultAPIBaseURL=${SAGABOARD_API_URL}" -o "dist/${{ matrix.asset }}" ./cmd/sagaboard
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
@@ -118,7 +121,7 @@ jobs:
           merge-multiple: true
       - name: Package addon and checksums
         run: |
-          (cd addon && zip -r ../dist/GutSaga-addon.zip GutSaga)
+          (cd addon && zip -r ../dist/SagaBoard-addon.zip SagaBoard)
           cd dist
           sha256sum * > SHA256SUMS
       - name: Publish GitHub release
@@ -138,14 +141,14 @@ jobs:
             echo ""
             echo "## Last ned"
             echo ""
-            echo "- \`gutsaga-darwin-arm64\` og \`gutsaga-darwin-amd64\` (macOS)"
-            echo "- \`gutsaga-windows-amd64.exe\`"
-            echo "- \`GutSaga-addon.zip\`"
+            echo "- \`sagaboard-darwin-arm64\` and \`sagaboard-darwin-amd64\` (macOS)"
+            echo "- \`sagaboard-windows-amd64.exe\`"
+            echo "- \`SagaBoard-addon.zip\`"
             echo "- \`SHA256SUMS\`"
             echo ""
-            echo "Binærene er ikke signert. Se README for Gatekeeper og SmartScreen."
+            echo "The binaries are not signed."
           } >> notes.md
           gh release create "v${VERSION}" dist/* \
             --target "${GITHUB_SHA}" \
-            --title "GutSaga v${VERSION}" \
+            --title "SagaBoard v${VERSION}" \
             --notes-file notes.md

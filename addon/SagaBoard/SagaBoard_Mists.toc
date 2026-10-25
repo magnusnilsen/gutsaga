@@ -1,0 +1,17 @@
+## Interface: 50504
+## Title: SagaBoard
+## Notes: A saga log for a World of Warcraft group
+## Author: SagaBoard
+## Version: 0.1.0
+## SavedVariablesPerCharacter: SagaBoardDB
+## IconTexture: Interface\AddOns\SagaBoard\SagaBoardList
+
+Locales/enUS.lua
+Locales/nbNO.lua
+Locales/locale.lua
+SagaBoardLanguage.lua
+SagaBoardData.lua
+SagaBoardObjectives.lua
+SagaBoardChains.lua
+SagaBoardInvite.lua
+SagaBoard.lua

@@ -47,8 +47,8 @@ func Run(ctx context.Context, tooltip string, items []Item, onReady func(*Menu))
 		systray.SetTooltip(tooltip)
 
 		m := &Menu{
-			user:    addDisabled("Ikke innlogget", "Smia-konto"),
-			version: addDisabled("Versjon", "Installert GutSaga-versjon"),
+			user:    addDisabled("Not logged in", "Battle.net account"),
+			version: addDisabled("Version", "Installed SagaBoard version"),
 		}
 		systray.AddSeparator()
 
@@ -85,7 +85,7 @@ func Run(ctx context.Context, tooltip string, items []Item, onReady func(*Menu))
 			}
 		}()
 
-		m.auth = systray.AddMenuItem("Logg inn med Smia", "Åpne nettleseren og logg inn")
+		m.auth = systray.AddMenuItem("Log in with Battle.net", "Open the browser and log in")
 		go func() {
 			for range m.auth.ClickedCh {
 				m.mu.Lock()
@@ -180,14 +180,14 @@ func (m *Menu) SetAuthAction(loggedIn bool, onClick func()) {
 	}
 	if loggedIn {
 		m.auth.SetTitle("Logg ut")
-		m.auth.SetTooltip("Logg ut av Smia på denne maskinen")
+		m.auth.SetTooltip("Log out of SagaBoard on this computer")
 		return
 	}
-	m.auth.SetTitle("Logg inn med Smia")
+	m.auth.SetTitle("Log in with Battle.net")
 	m.auth.SetTooltip("Åpne nettleseren og logg inn")
 }
 
-// SetStatus refreshes the grayed-out Smia account line.
+// SetStatus refreshes the grayed-out account line.
 func (m *Menu) SetStatus(s Status) {
 	if m == nil || m.user == nil {
 		return

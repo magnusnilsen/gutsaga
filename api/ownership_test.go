@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,110 +8,72 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 )
 
-func TestAdminPatchRequiresMatchingUpdatedBy(t *testing.T) {
+func TestMemberPatchIsAuthorOnly(t *testing.T) {
 	resetDB(t)
 	srv := httptest.NewServer((&Server{store: NewStore(testPool), adminToken: "admin-test"}).Handler())
 	t.Cleanup(srv.Close)
+	magnus, magnusToken := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
+	other, otherToken := devSession(t, "bnet-other", "Other#1", "Other")
+	group := devGroup(t, magnus.ID, "tutorial", "Tutorial")
+	joinGroup(t, group.ID, other.ID)
+	author := apiClient{base: srv.URL, token: magnusToken, http: srv.Client()}
+	member := apiClient{base: srv.URL, token: otherToken, http: srv.Client()}
 	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
 
 	var quest contract.Quest
-	resp, err := admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
-		"title": "Eies av Magnus", "description": "Kun forfatteren.",
-		"objectives": []map[string]any{{"id": "x", "type": "talk", "text": "Snakk", "npc": "Farley"}},
-		"created_by": "Magnus#2231", "party": true,
+	resp, err := author.do(http.MethodPost, "/v1/sagas", map[string]any{
+		"title": "Owned by Magnus", "description": "Only the author.",
+		"objectives": []map[string]any{{"id": "x", "type": "talk", "text": "Talk", "npc": "Farley"}},
+		"party":      true,
 	}, &quest)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %v", statusOf(resp), err)
+	if err != nil || resp.StatusCode != http.StatusCreated || quest.CreatedBy != "Magnus#2231" {
+		t.Fatalf("create %d %v %+v", statusOf(resp), err, quest)
 	}
 
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"title": "Hijack", "updated_by": "Other#9999",
+	resp, err = member.do(http.MethodPatch, "/v1/sagas/"+quest.ID, map[string]any{
+		"title": "Hijack", "changes": []string{"no"},
 	}, nil)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("other member %d %v", statusOf(resp), err)
 	}
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("want 403 for wrong author, got %d", resp.StatusCode)
+
+	resp, err = author.do(http.MethodPatch, "/v1/sagas/"+quest.ID, map[string]any{
+		"title": "Updated", "created_by": "Other#1", "changes": []string{"New name"},
+	}, nil)
+	if err != nil || resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("created_by %d %v", statusOf(resp), err)
 	}
 
 	var ok contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"title": "Oppdatert", "updated_by": "magnus#2231", "changes": []string{"Nytt navn"},
+	resp, err = author.do(http.MethodPatch, "/v1/sagas/"+quest.ID, map[string]any{
+		"title": "Updated", "changes": []string{"New name"},
 	}, &ok)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("author patch %d %v", statusOf(resp), err)
-	}
-	if ok.Title != "Oppdatert" || ok.Version != 2 {
-		t.Fatalf("patched %+v", ok)
+	if err != nil || resp.StatusCode != http.StatusOK || ok.Title != "Updated" || ok.Version != 2 {
+		t.Fatalf("author patch %+v %d %v", ok, statusOf(resp), err)
 	}
 
-	// Omitting updated_by keeps full admin power (ops / scripts).
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"title": "Admin override", "changes": []string{"Admin"},
-	}, &ok)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("admin without updated_by %d %v", statusOf(resp), err)
+	}, nil)
+	if err != nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("admin write %d %v", statusOf(resp), err)
 	}
 }
 
-func TestAdminPatchRequiresMatchingEditorEmail(t *testing.T) {
+func TestNonMemberCreateIsForbidden(t *testing.T) {
 	resetDB(t)
 	srv := httptest.NewServer((&Server{store: NewStore(testPool), adminToken: "admin-test"}).Handler())
 	t.Cleanup(srv.Close)
-	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
-
-	var quest contract.Quest
-	resp, err := admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
-		"title": "Eies via e-post", "description": "Smia-bruker.",
-		"objectives": []map[string]any{{"id": "x", "type": "talk", "text": "Snakk", "npc": "Farley"}},
-		"created_by": "Magnus#2231", "party": true,
-	}, &quest)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create %d %v", statusOf(resp), err)
-	}
-	_, err = testPool.Exec(context.Background(), `UPDATE players SET email='magnus@sparkel.io' WHERE battletag='Magnus#2231'`)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"title": "Hijack", "editor_email": "other@example.com",
+	owner, _ := devSession(t, "bnet-owner", "Owner#1", "Owner")
+	devGroup(t, owner.ID, "tutorial", "Tutorial")
+	_, strangerToken := devSession(t, "bnet-stranger", "Stranger#1", "Stranger")
+	stranger := apiClient{base: srv.URL, token: strangerToken, http: srv.Client()}
+	resp, err := stranger.do(http.MethodPost, "/v1/sagas", map[string]any{
+		"title": "Nope", "description": "Outsider.",
+		"objectives": []map[string]any{{"id": "x", "type": "talk", "text": "Talk", "npc": "Farley"}},
+		"party":      true, "group": "tutorial",
 	}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("want 403 for wrong email, got %d", resp.StatusCode)
-	}
-
-	var ok contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"title": "Oppdatert", "editor_email": "Magnus@Sparkel.io", "changes": []string{"Nytt navn"},
-	}, &ok)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("author email patch %d %v", statusOf(resp), err)
-	}
-	if ok.Title != "Oppdatert" {
-		t.Fatalf("patched %+v", ok)
-	}
-}
-
-func TestPublicPlaceholderPNG(t *testing.T) {
-	srv := httptest.NewServer((&Server{store: NewStore(testPool), adminToken: "admin-test"}).Handler())
-	t.Cleanup(srv.Close)
-	for _, path := range []string{"/v1/public/placeholder.png", "/v1/public/empty.png"} {
-		resp, err := srv.Client().Get(srv.URL + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "image/png" {
-			resp.Body.Close()
-			t.Fatalf("%s status=%d ct=%s", path, resp.StatusCode, resp.Header.Get("Content-Type"))
-		}
-		n, _ := io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
-		if n < 1000 {
-			t.Fatalf("%s too small (%d bytes); media cards need a real-size placeholder", path, n)
-		}
+	if err != nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-member create %d %v", statusOf(resp), err)
 	}
 }

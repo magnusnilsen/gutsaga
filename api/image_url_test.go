@@ -20,29 +20,25 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	srv := httptest.NewServer((&Server{
 		store:          NewStore(testPool),
 		adminToken:     "admin-test",
-		publicBaseURL:  "https://gutsaga.example",
+		publicBaseURL:  "https://sagaboard.example.com",
 		imageURLSecret: secret,
 		imageURLTTL:    time.Hour,
 	}).Handler())
 	t.Cleanup(srv.Close)
 	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
 
-	var created contract.CreatePlayerResponse
-	resp, err := admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
-		"battletag": "Magnus#2231", "display_name": "Magnus",
-	}, &created)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("player %d %v", statusOf(resp), err)
-	}
-	player := apiClient{base: srv.URL, token: created.APIKey, http: srv.Client()}
+	playerRec, token := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
+	devGroup(t, playerRec.ID, "tutorial", "Tutorial")
+	created := contract.CreatePlayerResponse{Player: playerRec, APIKey: token}
+	player := apiClient{base: srv.URL, token: token, http: srv.Client()}
 
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
+	resp, err := player.do(http.MethodPost, "/v1/sagas", map[string]any{
 		"title": "Forside", "description": "Et bilde.",
 		"objectives": []map[string]any{
 			{"id": "stay", "type": "location", "text": "Stå i Goldshire", "zone": "Elwynn Forest"},
 		},
-		"party": true, "created_by": "Magnus#2231",
+		"party": true,
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("quest %d %v", statusOf(resp), err)
@@ -100,7 +96,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	if detail.ImageURL != "/v1/sagas/"+quest.ID+"/image" {
 		t.Fatalf("image_url %q", detail.ImageURL)
 	}
-	if !strings.HasPrefix(detail.ImageSignedURL, "https://gutsaga.example/v1/public/sagas/"+quest.ID+"/image?") {
+	if !strings.HasPrefix(detail.ImageSignedURL, "https://sagaboard.example.com/v1/public/sagas/"+quest.ID+"/image?") {
 		t.Fatalf("signed url %q", detail.ImageSignedURL)
 	}
 	if !strings.Contains(detail.ImageSignedURL, "exp=") || !strings.Contains(detail.ImageSignedURL, "sig=") {
@@ -118,7 +114,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	for _, q := range listed.Quests {
 		if q.ID == quest.ID {
 			found = true
-			if q.ImageSignedURL != detail.ImageSignedURL && !strings.HasPrefix(q.ImageSignedURL, "https://gutsaga.example/v1/public/sagas/"+quest.ID+"/image?") {
+			if q.ImageSignedURL != detail.ImageSignedURL && !strings.HasPrefix(q.ImageSignedURL, "https://sagaboard.example.com/v1/public/sagas/"+quest.ID+"/image?") {
 				t.Fatalf("list signed url %q", q.ImageSignedURL)
 			}
 		}
@@ -127,7 +123,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 		t.Fatal("quest missing from admin list")
 	}
 
-	signedPath := strings.TrimPrefix(detail.ImageSignedURL, "https://gutsaga.example")
+	signedPath := strings.TrimPrefix(detail.ImageSignedURL, "https://sagaboard.example.com")
 	status, pubHdr, pubBody := rawGet(t, srv.Client(), srv.URL+signedPath, "")
 	if status != http.StatusOK || pubHdr.Get("Content-Type") != "image/png" || pubHdr.Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("public image %d type %q nosniff %q body %s", status, pubHdr.Get("Content-Type"), pubHdr.Get("X-Content-Type-Options"), pubBody)

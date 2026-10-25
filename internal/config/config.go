@@ -1,4 +1,4 @@
-// Package config stores GutSaga settings in the user config directory.
+// Package config stores SagaBoard settings in the user config directory.
 package config
 
 import (
@@ -15,7 +15,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/wowpath"
 )
 
-// DefaultUpdateRepo is the public GutSaga repo. Releases live there.
+// DefaultUpdateRepo is the public SagaBoard repo. Releases live there.
 const DefaultUpdateRepo = "magnusnilsen/gutsaga"
 
 type Update struct {
@@ -37,30 +37,21 @@ func (u *Update) SetEnabled(on bool) {
 	u.Enabled = &on
 }
 
-type Smia struct {
-	ClientID        string `json:"client_id,omitempty"`
-	RefreshToken    string `json:"refresh_token,omitempty"`
-	AccessToken     string `json:"access_token,omitempty"`
-	AccessExpiresAt string `json:"access_expires_at,omitempty"`
-	Resource        string `json:"resource,omitempty"`
-	TokenEndpoint   string `json:"token_endpoint,omitempty"`
-}
-
 type Config struct {
-	BattleTag    string `json:"battletag,omitempty"`
-	PlayerName   string `json:"player_name,omitempty"`
-	PlayerEmail  string `json:"player_email,omitempty"`
-	APIBaseURL   string `json:"api_base_url"`
-	APIKey       string `json:"api_key,omitempty"`
-	SessionToken string `json:"session_token,omitempty"`
-	Smia         Smia   `json:"smia,omitempty"`
-	WowPath      string `json:"wow_path"`
-	Client       string `json:"client"`
-	Update       Update `json:"update"`
+	BattleTag       string `json:"battletag,omitempty"`
+	PlayerName      string `json:"player_name,omitempty"`
+	PlayerEmail     string `json:"player_email,omitempty"`
+	APIBaseURL      string `json:"api_base_url"`
+	APIKey          string `json:"api_key,omitempty"`
+	SessionToken    string `json:"session_token,omitempty"`
+	Language        string `json:"language,omitempty"`
+	PersonalTokenID string `json:"personal_token_id,omitempty"`
+	WowPath         string `json:"wow_path"`
+	Client          string `json:"client"`
+	Update          Update `json:"update"`
 }
 
-// Token is the credential sent to the GutSaga API. A session from Smia login
-// wins over a legacy API key.
+// Token is the credential sent to the SagaBoard API. A session wins over a personal token stored in APIKey.
 func (c Config) Token() string {
 	if strings.TrimSpace(c.SessionToken) != "" {
 		return strings.TrimSpace(c.SessionToken)
@@ -69,6 +60,36 @@ func (c Config) Token() string {
 }
 
 func Dir() (string, error) {
+	switch runtime.GOOS {
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, "Library", "Application Support", "SagaBoard"), nil
+	case "windows":
+		if app := os.Getenv("APPDATA"); app != "" {
+			return filepath.Join(app, "SagaBoard"), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, "AppData", "Roaming", "SagaBoard"), nil
+	default:
+		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+			return filepath.Join(xdg, "SagaBoard"), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".local", "share", "SagaBoard"), nil
+	}
+}
+
+// legacyDir is the GutSaga config directory copied once into SagaBoard.
+func legacyDir() (string, error) {
 	switch runtime.GOOS {
 	case "darwin":
 		home, err := os.UserHomeDir()
@@ -97,6 +118,53 @@ func Dir() (string, error) {
 	}
 }
 
+func dirEmpty(path string) bool {
+	entries, err := os.ReadDir(path)
+	return err != nil || len(entries) == 0
+}
+
+// MigrateLegacy copies the old GutSaga config directory once when SagaBoard's directory is empty.
+func MigrateLegacy() error {
+	next, err := Dir()
+	if err != nil {
+		return err
+	}
+	if !dirEmpty(next) {
+		return nil
+	}
+	old, err := legacyDir()
+	if err != nil {
+		return err
+	}
+	if st, err := os.Stat(filepath.Join(old, "config.json")); err != nil || st.IsDir() {
+		return nil
+	}
+	if err := os.MkdirAll(next, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(old)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(old, e.Name()))
+		if err != nil {
+			return err
+		}
+		mode := os.FileMode(0o644)
+		if e.Name() == "config.json" {
+			mode = 0o600
+		}
+		if err := os.WriteFile(filepath.Join(next, e.Name()), body, mode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func Path() (string, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -106,6 +174,9 @@ func Path() (string, error) {
 }
 
 func Load() (Config, error) {
+	if err := MigrateLegacy(); err != nil {
+		return Config{}, err
+	}
 	path, err := Path()
 	if err != nil {
 		return Config{}, err
@@ -133,6 +204,10 @@ func (cfg *Config) Normalize() {
 	cfg.APIBaseURL = strings.TrimRight(strings.TrimSpace(cfg.APIBaseURL), "/")
 	cfg.APIKey = strings.TrimSpace(cfg.APIKey)
 	cfg.SessionToken = strings.TrimSpace(cfg.SessionToken)
+	cfg.Language = strings.ToLower(strings.TrimSpace(cfg.Language))
+	if cfg.Language != "" && cfg.Language != "en" && cfg.Language != "nb" {
+		cfg.Language = "en"
+	}
 	cfg.WowPath = strings.TrimSpace(cfg.WowPath)
 	cfg.Client = wowpath.NormalizeClient(cfg.Client)
 	if cfg.SessionToken == "" && strings.HasPrefix(cfg.APIKey, "gss_") {
@@ -227,7 +302,21 @@ func Setup(r io.Reader, w io.Writer, current Config) (Config, error) {
 	if current.Update.Enabled != nil && !*current.Update.Enabled {
 		autoDefault = "nei"
 	}
-	auto, err := ask("Automatiske oppdateringer (ja/nei)", autoDefault)
+	langDefault := current.Language
+	if langDefault == "" {
+		langDefault = "en"
+	}
+	lang, err := ask("Language (en or nb)", langDefault)
+	if err != nil {
+		return current, err
+	}
+	switch strings.ToLower(strings.TrimSpace(lang)) {
+	case "nb", "no", "norsk":
+		current.Language = "nb"
+	default:
+		current.Language = "en"
+	}
+	auto, err := ask("Automatic updates (yes/no)", autoDefault)
 	if err != nil {
 		return current, err
 	}

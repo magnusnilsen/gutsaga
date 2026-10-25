@@ -47,6 +47,9 @@ func (q *Queue) PostCompletion(_ context.Context, n Completion) (Message, error)
 	if err := q.ready(); err != nil {
 		return Message{}, err
 	}
+	if _, err := q.deliverClient(n.WebhookURL); err != nil {
+		return Message{}, err
+	}
 	n.Image = append([]byte(nil), n.Image...)
 	q.enqueue(job{kind: KindCompletion, ref: n.ProgressID, completion: n})
 	return Message{Content: CompletionText(n.Character, n.Title), Accepted: true}, nil
@@ -55,6 +58,9 @@ func (q *Queue) PostCompletion(_ context.Context, n Completion) (Message, error)
 // PostSaga queues an announcement, version note, or retirement.
 func (q *Queue) PostSaga(_ context.Context, n SagaNotice) (Message, error) {
 	if err := q.ready(); err != nil {
+		return Message{}, err
+	}
+	if _, err := q.deliverClient(n.WebhookURL); err != nil {
 		return Message{}, err
 	}
 	n.Image = append([]byte(nil), n.Image...)
@@ -67,6 +73,9 @@ func (q *Queue) PostLevel(_ context.Context, n LevelNotice) (Message, error) {
 	if err := q.ready(); err != nil {
 		return Message{}, err
 	}
+	if _, err := q.deliverClient(n.WebhookURL); err != nil {
+		return Message{}, err
+	}
 	if !Milestone(n.Level) {
 		return Message{}, nil
 	}
@@ -75,10 +84,23 @@ func (q *Queue) PostLevel(_ context.Context, n LevelNotice) (Message, error) {
 }
 
 func (q *Queue) ready() error {
-	if q == nil || q.client == nil || strings.TrimSpace(q.client.WebhookURL) == "" {
+	if q == nil || q.client == nil {
 		return ErrNotConfigured
 	}
 	return nil
+}
+
+func (q *Queue) deliverClient(webhook string) (*Client, error) {
+	webhook = strings.TrimSpace(webhook)
+	if webhook == "" && q.client != nil {
+		webhook = strings.TrimSpace(q.client.WebhookURL)
+	}
+	if webhook == "" {
+		return nil, ErrNotConfigured
+	}
+	cp := *q.client
+	cp.WebhookURL = webhook
+	return &cp, nil
 }
 
 func (q *Queue) enqueue(j job) {
@@ -107,13 +129,23 @@ func (q *Queue) run(j job) {
 		msg Message
 		err error
 	)
+	var client *Client
 	switch j.kind {
 	case KindCompletion:
-		msg, err = q.client.PostCompletion(ctx, j.completion)
+		client, err = q.deliverClient(j.completion.WebhookURL)
+		if err == nil {
+			msg, err = client.PostCompletion(ctx, j.completion)
+		}
 	case KindAnnounced, KindUpdated, KindRetired:
-		msg, err = q.client.PostSaga(ctx, j.saga)
+		client, err = q.deliverClient(j.saga.WebhookURL)
+		if err == nil {
+			msg, err = client.PostSaga(ctx, j.saga)
+		}
 	case KindLevel:
-		msg, err = q.client.PostLevel(ctx, j.level)
+		client, err = q.deliverClient(j.level.WebhookURL)
+		if err == nil {
+			msg, err = client.PostLevel(ctx, j.level)
+		}
 	default:
 		err = errUnknownKind(j.kind)
 	}

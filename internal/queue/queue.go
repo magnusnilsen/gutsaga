@@ -30,6 +30,8 @@ type Item struct {
 	Instance       string                 `json:"instance,omitempty"`
 	GroupMembers   []contract.GroupMember `json:"group_members,omitempty"`
 	ScreenshotPath string                 `json:"screenshot_path,omitempty"`
+	Action         string                 `json:"action,omitempty"`
+	InviteID       string                 `json:"invite_id,omitempty"`
 	Attempts       int                    `json:"attempts"`
 	NextAttempt    time.Time              `json:"next_attempt"`
 	LastError      string                 `json:"last_error,omitempty"`

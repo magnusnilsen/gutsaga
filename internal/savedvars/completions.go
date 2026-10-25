@@ -49,7 +49,7 @@ func ListGutSagaFiles(wowDir string) ([]string, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if strings.EqualFold(d.Name(), "GutSaga.lua") && strings.Contains(path, string(filepath.Separator)+"SavedVariables"+string(filepath.Separator)) {
+		if strings.EqualFold(d.Name(), "SagaBoard.lua") && strings.Contains(path, string(filepath.Separator)+"SavedVariables"+string(filepath.Separator)) {
 			out = append(out, path)
 		}
 		return nil
@@ -147,7 +147,43 @@ func parseMemberBlob(s string) []contract.GroupMember {
 	return out
 }
 
-// ReadCompletions loads completions from every GutSaga SavedVariables file under wowDir.
+// CopyObjectiveChecks copies in-progress objective checks from a GutSaga
+// SavedVariables file into SagaBoard once, when the new file has none.
+func CopyObjectiveChecks(wowDir string) error {
+	root := filepath.Join(wowDir, "WTF", "Account")
+	if _, err := os.Stat(root); err != nil {
+		return nil
+	}
+	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() || !strings.EqualFold(d.Name(), "GutSaga.lua") {
+			return nil
+		}
+		if !strings.Contains(path, string(filepath.Separator)+"SavedVariables"+string(filepath.Separator)) {
+			return nil
+		}
+		oldBody, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		start := strings.Index(string(oldBody), `["objectives"]`)
+		if start < 0 {
+			return nil
+		}
+		next := filepath.Join(filepath.Dir(path), "SagaBoard.lua")
+		cur, _ := os.ReadFile(next)
+		if strings.Contains(string(cur), "objectives_copied") || (strings.Contains(string(cur), `["objectives"]`) && !strings.Contains(string(cur), `["objectives"] = {}`)) {
+			return nil
+		}
+		snippet := string(oldBody)[start:]
+		marker := "\nSagaBoardDB = SagaBoardDB or {}\nSagaBoardDB.objectives_copied = true\n"
+		if err := os.WriteFile(next, append(cur, []byte(marker+snippet)...), 0o644); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+// ReadCompletions loads completions from every SagaBoard SavedVariables file under wowDir.
 func ReadCompletions(wowDir string) ([]Completion, error) {
 	files, err := ListGutSagaFiles(wowDir)
 	if err != nil {

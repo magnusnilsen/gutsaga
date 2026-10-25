@@ -100,7 +100,7 @@ func Merge(sync contract.SyncResponse) []Entry {
 				e.ChainTotal = q.Chain.Total
 			}
 			if q.HasImage {
-				e.Image = `Interface\AddOns\GutSaga\media\` + q.ID
+				e.Image = `Interface\AddOns\SagaBoard\media\` + q.ID
 			}
 			if has {
 				e.Status = p.Status

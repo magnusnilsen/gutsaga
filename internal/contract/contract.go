@@ -1,4 +1,4 @@
-// Package contract is the JSON API shared by the GutSaga API and the companion.
+// Package contract is the JSON API shared by the SagaBoard API and the companion.
 package contract
 
 import "time"
@@ -17,6 +17,8 @@ type SyncResponse struct {
 	Progress    []Progress        `json:"progress"`
 	Completions []QuestCompletion `json:"completions,omitempty"`
 	Locks       []SagaLock        `json:"locks"`
+	Groups      []GroupSummary    `json:"groups"`
+	Invites     []Invite          `json:"invites"`
 }
 
 // QuestCompletion is one character who has finished a saga. Sync includes
@@ -34,15 +36,16 @@ type QuestCompletion struct {
 }
 
 type Character struct {
-	ID        string `json:"id"`
-	PlayerID  string `json:"player_id,omitempty"`
-	Name      string `json:"name"`
-	Realm     string `json:"realm"`
-	Level     int    `json:"level"`
-	Race      string `json:"race"`
-	Class     string `json:"class"`
-	BattleTag string `json:"battletag"`
-	Backstory string `json:"backstory,omitempty"`
+	ID            string `json:"id"`
+	PlayerID      string `json:"player_id,omitempty"`
+	Name          string `json:"name"`
+	Realm         string `json:"realm"`
+	Level         int    `json:"level"`
+	Race          string `json:"race"`
+	Class         string `json:"class"`
+	BattleTag     string `json:"battletag"`
+	Backstory     string `json:"backstory,omitempty"`
+	Participating bool   `json:"participating"`
 }
 
 type IDRef struct {
@@ -126,16 +129,46 @@ type LevelResponse struct {
 }
 
 type Player struct {
-	ID          string `json:"id"`
-	BattleTag   string `json:"battletag"`
-	DisplayName string `json:"display_name"`
-	Email       string `json:"email,omitempty"`
-	SmiaSubject string `json:"smia_subject,omitempty"`
-	CreatedAt   string `json:"created_at"`
+	ID            string `json:"id"`
+	BattleTag     string `json:"battletag"`
+	DisplayName   string `json:"display_name"`
+	BnetAccountID string `json:"bnet_account_id,omitempty"`
+	CreatedAt     string `json:"created_at"`
 }
 
-// SessionResponse is what the API returns after it has verified a Smia token.
-// The session token is a GutSaga credential. It is not the Smia access token.
+// GroupSummary is a tenant the signed-in account belongs to.
+// It is not the saga party-size rule, which stays on the objective and saga field named group.
+type GroupSummary struct {
+	ID      string `json:"id"`
+	Slug    string `json:"slug"`
+	Name    string `json:"name"`
+	Locale  string `json:"locale"`
+	Role    string `json:"role,omitempty"`
+	OwnerID string `json:"owner_player_id,omitempty"`
+}
+
+// Invite is addressed to a character. kind is join (new member) or include (alt already on a member account).
+type Invite struct {
+	ID        string `json:"id"`
+	GroupID   string `json:"group_id"`
+	GroupName string `json:"group_name"`
+	Name      string `json:"name"`
+	Realm     string `json:"realm"`
+	BattleTag string `json:"battletag,omitempty"`
+	Status    string `json:"status"`
+	Kind      string `json:"kind"`
+}
+
+// PersonalToken is a long-lived gst_ credential. Token is set only when it is minted.
+type PersonalToken struct {
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	Token     string `json:"token,omitempty"`
+	CreatedAt string `json:"created_at"`
+}
+
+// SessionResponse is what the API returns after Battle.net login.
+// The session token is a SagaBoard credential (gss_). It is not a Battle.net token.
 type SessionResponse struct {
 	TokenType    string `json:"token_type"`
 	SessionToken string `json:"session_token"`
@@ -178,12 +211,10 @@ type QuestVersion struct {
 
 type QuestDetail struct {
 	Quest
-	Versions    []QuestVersion   `json:"versions"`
-	CompletedBy []QuestCompleter `json:"completed_by"`
-	// GoalsMarkdown is the objective list for Smia stack text (addon-style, under the title).
-	GoalsMarkdown string `json:"goals_markdown,omitempty"`
-	// Card is a Smia ui.render table payload for Aktivitet (who finished).
-	Card *QuestCard `json:"card,omitempty"`
+	Versions      []QuestVersion   `json:"versions"`
+	CompletedBy   []QuestCompleter `json:"completed_by"`
+	GoalsMarkdown string           `json:"goals_markdown,omitempty"`
+	Card          *QuestCard       `json:"card,omitempty"`
 }
 
 // QuestCompleter is someone who finished this saga (admin/detail views).
@@ -198,7 +229,7 @@ type QuestCompleter struct {
 	When        string `json:"when,omitempty"`
 }
 
-// QuestCard is shaped for Smia ui.render layout=table.
+// QuestCard is a table of who finished a saga.
 type QuestCard struct {
 	Columns []QuestCardColumn `json:"columns"`
 	Rows    []QuestCardRow    `json:"rows"`

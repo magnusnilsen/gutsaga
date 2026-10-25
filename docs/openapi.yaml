@@ -1,442 +1,145 @@
 openapi: 3.0.3
 info:
-  title: GutSaga API
-  version: "0.1.0"
+  title: SagaBoard API
+  version: "0.2.0"
   description: |
-    Companion and admin API. Players sign in with a Smia access token at
-    POST /v1/auth/session and then use the returned GutSaga session.
-    Legacy player keys still work. Admin routes use the ADMIN_TOKEN bearer secret.
+    Battle.net login, groups, and sagas. Sessions are gss_. Personal tokens are gst_.
+    ADMIN_TOKEN cannot author sagas. See docs/API.md.
 servers:
-  - url: http://localhost:8080
-    description: Local
-  - url: https://gutsaga.example.up.railway.app
-    description: Railway
-components:
-  securitySchemes:
-    playerKey:
-      type: http
-      scheme: bearer
-    adminToken:
-      type: http
-      scheme: bearer
-  schemas:
-    Error:
-      type: object
-      properties:
-        error: {type: string}
-        message: {type: string}
-    Character:
-      type: object
-      properties:
-        id: {type: string, format: uuid}
-        player_id: {type: string, format: uuid}
-        name: {type: string}
-        realm: {type: string}
-        level: {type: integer}
-        race: {type: string}
-        class: {type: string}
-        battletag: {type: string}
-        backstory: {type: string}
-    TimeWindow:
-      type: object
-      description: |
-        clock local (default) is time()/date("*t"). clock game is GetGameTime
-        and cannot set starts_at/ends_at. clock realm is GetServerTime as UTC.
-      properties:
-        clock: {type: string, enum: [game, local, realm]}
-        start: {type: string, description: "HH:MM, inclusive, may be after end"}
-        end: {type: string, description: "HH:MM"}
-        starts_at: {type: string, format: date-time}
-        ends_at: {type: string, format: date-time}
-    GroupRule:
-      type: object
-      required: [size]
-      properties:
-        size: {type: integer, minimum: 1, maximum: 40}
-        min_level: {type: integer, minimum: 1, maximum: 1000}
-        instance: {type: string, description: "GetInstanceInfo name or zone; | or ; alternatives"}
-    Objective:
-      type: object
-      required: [id, type, text]
-      properties:
-        id: {type: string}
-        type: {type: string, enum: [location, interact, collect, kill, emote, all_of, any_of]}
-        text: {type: string}
-        zone: {type: string}
-        subzone: {type: string}
-        map_id: {type: integer}
-        x: {type: number}
-        y: {type: number}
-        radius: {type: number}
-        npc: {type: string}
-        object: {type: string}
-        item_id: {type: integer}
-        item_name: {type: string}
-        count: {type: integer}
-        emote: {type: string, description: "Token such as SALUTE"}
-        when: {$ref: "#/components/schemas/TimeWindow"}
-        objectives:
-          type: array
-          description: Nested children for all_of and any_of.
-          items: {$ref: "#/components/schemas/Objective"}
-    Quest:
-      type: object
-      properties:
-        id: {type: string, format: uuid}
-        title: {type: string}
-        description: {type: string}
-        objectives:
-          type: array
-          items: {$ref: "#/components/schemas/Objective"}
-        objectives_ordered: {type: boolean}
-        when: {$ref: "#/components/schemas/TimeWindow"}
-        group: {$ref: "#/components/schemas/GroupRule"}
-        min_level: {type: integer, nullable: true}
-        party: {type: boolean}
-        assigned_to:
-          type: array
-          items: {type: object, properties: {id: {type: string}}}
-        created_by: {type: string}
-        active: {type: boolean}
-        version: {type: integer}
-        has_image: {type: boolean}
-        image_url: {type: string, description: Relative player path. Requires a session.}
-        image_signed_url:
-          type: string
-          description: Absolute expiring URL. Set only on admin quest list and admin quest get when PUBLIC_BASE_URL and IMAGE_URL_SECRET are configured.
-        requires:
-          type: array
-          items: {type: string, format: uuid}
-          description: Prerequisite saga ids. All must be completed by the character. An older saga_version still counts.
-        chain:
-          type: object
-          nullable: true
-          description: Display group. index and total are read-only.
-          properties:
-            id: {type: string}
-            name: {type: string}
-            order: {type: integer}
-            index: {type: integer}
-            total: {type: integer}
-    SagaLock:
-      type: object
-      required: [saga_id, character_id, locked, unlocked]
-      properties:
-        saga_id: {type: string}
-        character_id: {type: string}
-        locked: {type: boolean}
-        unlocked: {type: boolean}
-        missing:
-          type: array
-          items: {type: string}
-    Progress:
-      type: object
-      properties:
-        saga_id: {type: string}
-        character_id: {type: string}
-        saga_version: {type: integer}
-        status: {type: string, enum: [offered, active, completed]}
-        completed_at: {type: string, format: date-time}
-        screenshot_url: {type: string}
-    Sync:
-      type: object
-      required: [battletag, characters, quests, progress]
-      properties:
-        battletag: {type: string}
-        generated_at: {type: string, format: date-time}
-        characters: {type: array, items: {$ref: "#/components/schemas/Character"}}
-        quests: {type: array, items: {$ref: "#/components/schemas/Quest"}}
-        progress: {type: array, items: {$ref: "#/components/schemas/Progress"}}
-        locks:
-          type: array
-          items: {$ref: "#/components/schemas/SagaLock"}
-    Completion:
-      type: object
-      required: [allowed, already_completed, completed]
-      properties:
-        allowed: {type: boolean}
-        already_completed: {type: boolean}
-        completed: {type: boolean}
-        progress_id: {type: string}
-        log_written: {type: boolean}
-        discord_posted: {type: boolean}
-        character_name: {type: string}
-        quest_title: {type: string}
-        saga_version: {type: integer}
-    Level:
-      type: object
-      properties:
-        allowed: {type: boolean}
-        level: {type: integer}
-        changed: {type: boolean}
+  - url: https://sagaboard.example.com
 paths:
   /healthz:
     get:
-      summary: Liveness and database ping
+      summary: Database health
       responses:
         "200":
-          description: OK
-  /v1/auth/session:
-    post:
-      summary: Exchange a Smia access token for a GutSaga session. The body is ignored.
-      security: [{playerKey: []}]
-      responses:
-        "200": {description: session_token gss_ and the player}
-        "403": {description: Not a member of hub wow server mcp}
-  /v1/characters:
-    put:
-      security: [{playerKey: []}]
-      summary: Upsert the character the addon reported for the logged-in player.
-      responses:
-        "200":
-          description: Character
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Character"}
-  /v1/sync:
+          description: ok
+  /v1/auth/bnet/start:
     get:
-      security: [{playerKey: []}]
+      summary: Redirect to Battle.net authorize (PKCE, openid wow.profile)
       parameters:
         - in: query
-          name: battletag
+          name: attempt
+          required: true
+          schema: {type: string}
+      responses:
+        "302":
+          description: Redirect to https://oauth.battle.net/authorize
+  /v1/auth/bnet/callback:
+    get:
+      summary: Exchange the code and store a gss_ session on the attempt
+      responses:
+        "200":
+          description: HTML the player can close
+  /v1/auth/bnet/poll:
+    get:
+      summary: Poll the attempt
+      parameters:
+        - in: query
+          name: attempt
+          required: true
           schema: {type: string}
       responses:
         "200":
-          description: Characters, quests, and this player's progress
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Sync"}
-        "401": {description: Missing or unknown API key}
-  /v1/progress:
-    delete:
-      security: [{playerKey: []}]
-      summary: Clear progress for this player so a local /gutsaga wipe or reset is not undone by the next sync. Optional saga_id limits to one saga.
+          description: Session
+        "202":
+          description: Pending
+  /v1/auth/dev:
+    post:
+      summary: Dev token bypass. Does not call Blizzard.
+      responses:
+        "200":
+          description: Session
+        "401":
+          description: Bad token
+  /v1/groups:
+    get:
+      summary: Groups for the signed-in account
+      responses:
+        "200":
+          description: groups
+    post:
+      summary: Create a group
+      responses:
+        "201":
+          description: created
+  /v1/groups/{id}/invites:
+    post:
+      summary: Owner invites a character
       parameters:
-        - in: query
-          name: saga_id
-          schema: {type: string, format: uuid}
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        "201":
+          description: pending invite
+  /v1/invites/{id}/accept:
+    post:
+      summary: Accept. Joins the account and marks the character participating.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
       responses:
         "200":
-          description: How many progress rows were deleted
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  ok: {type: boolean}
-                  deleted: {type: integer}
-                  saga_id: {type: string}
-        "401": {description: Missing or unknown API key}
-  /v1/complete:
+          description: accepted
+  /v1/invites/{id}/decline:
     post:
-      security: [{playerKey: []}]
-      summary: Idempotent completion. Records the loaded quest version and posts to Discord once. 409 locked when prerequisites are unfinished. A prerequisite completed on an older version still counts.
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [character_id, saga_id, saga_version, battletag]
-              properties:
-                character_id: {type: string}
-                saga_id: {type: string}
-                saga_version: {type: integer}
-                battletag: {type: string}
-                level: {type: integer}
-                completed_at: {type: string, format: date-time}
-                instance: {type: string}
-                group_members: {type: string, description: "JSON array of {name, realm, level}"}
-                screenshot: {type: string, format: binary}
-          application/json:
-            schema:
-              type: object
-              required: [character_id, saga_id, saga_version, battletag]
-              properties:
-                character_id: {type: string}
-                saga_id: {type: string}
-                saga_version: {type: integer}
-                battletag: {type: string}
-                level: {type: integer}
-                completed_at: {type: string}
-                screenshot_base64: {type: string}
-                instance: {type: string}
-                group_members:
-                  type: array
-                  items:
-                    type: object
-                    required: [name]
-                    properties:
-                      name: {type: string}
-                      realm: {type: string}
-                      level: {type: integer}
+      summary: Decline. Permanent for this invite.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
       responses:
         "200":
-          description: Completed or already completed
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Completion"}
-        "400": {description: Unknown quest version or bad input}
-        "403": {description: Character is not owned by this key}
-  /v1/level:
-    post:
-      security: [{playerKey: []}]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [character_id, battletag, level]
-              properties:
-                character_id: {type: string}
-                battletag: {type: string}
-                level: {type: integer}
+          description: declined
+  /v1/sagas:
+    get:
+      summary: Sagas in the caller's groups
       responses:
         "200":
-          description: Level set
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/Level"}
-  /v1/ws:
-    get:
-      security: [{playerKey: []}]
-      summary: Player event stream (WebSocket upgrade)
-      description: |
-        `101 Switching Protocols`. Same bearer as `GET /v1/sync`.
-        Text frames are JSON hints (`type`, `saga_id`, `version`, and
-        `player_id` on `level.changed`). The companion then calls
-        `GET /v1/sync`. Heartbeat frame is `{"type":"ping"}` about every 25s.
-        See docs/realtime.md for Railway and the payload list.
-      responses:
-        "101": {description: Switching Protocols}
-        "401": {description: Missing or invalid session}
-  /v1/admin/players:
+          description: sagas
     post:
-      security: [{adminToken: []}]
-      summary: Create a player and mint an API key
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [battletag, display_name]
-              properties:
-                battletag: {type: string}
-                display_name: {type: string}
+      summary: Create a saga. group is a slug, or omitted when the player has one group.
       responses:
-        "201": {description: Player plus api_key}
+        "201":
+          description: created
+        "403":
+          description: not a member
+  /v1/sync:
     get:
-      security: [{adminToken: []}]
+      summary: Sagas, progress, and completions for the caller's groups
       responses:
-        "200": {description: Players without key hashes}
-  /v1/admin/players/{id}/rotate-key:
+        "200":
+          description: sync
+  /v1/me/tokens:
     post:
-      security: [{adminToken: []}]
-      parameters: [{in: path, name: id, required: true, schema: {type: string}}]
+      summary: Mint a gst_ token. Returned once.
       responses:
-        "200": {description: New api_key}
-  /v1/admin/characters:
-    get:
-      security: [{adminToken: []}]
-      parameters: [{in: query, name: battletag, schema: {type: string}}]
-      responses:
-        "200": {description: Characters}
-    post:
-      security: [{adminToken: []}]
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [name, realm]
-              properties:
-                player_id: {type: string}
-                battletag: {type: string}
-                name: {type: string}
-                realm: {type: string}
-                race: {type: string}
-                class: {type: string}
-                level: {type: integer}
-                backstory: {type: string}
-      responses:
-        "201": {description: Created}
-  /v1/admin/characters/{id}:
-    parameters: [{in: path, name: id, required: true, schema: {type: string}}]
-    get:
-      security: [{adminToken: []}]
-      responses:
-        "200": {description: Character}
-    patch:
-      security: [{adminToken: []}]
-      responses:
-        "200": {description: Updated}
+        "201":
+          description: token
+  /v1/admin/groups/{id}:
     delete:
-      security: [{adminToken: []}]
+      summary: Ops. Delete the group and its sagas.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
       responses:
-        "204": {description: Deleted}
-  /v1/admin/sagas:
-    get:
-      security: [{adminToken: []}]
-      parameters: [{in: query, name: character_id, schema: {type: string}}]
-      responses:
-        "200": {description: Quests. With character_id, each row includes eligible, locked, unlocked, and missing.}
-    post:
-      security: [{adminToken: []}]
-      summary: Create quest version 1 and a snapshot
-      description: Optional announce (omit to post an active saga, false to skip) and image_base64. The cover is stored and attached to the Discord announcement.
-      responses:
-        "201": {description: Created}
+        "204":
+          description: deleted
   /v1/admin/sagas/{id}:
-    parameters: [{in: path, name: id, required: true, schema: {type: string}}]
-    get:
-      security: [{adminToken: []}]
-      responses:
-        "200": {description: Quest and version snapshots. Includes image_signed_url when the saga has a cover and signing is configured.}
-    patch:
-      security: [{adminToken: []}]
-      summary: Update, bump version, store a snapshot
-      description: Optional announce. Significant edits and active=false are posted to Discord unless announce is false.
-      responses:
-        "200": {description: Updated}
-  /v1/admin/sagas/{id}/image:
-    parameters: [{in: path, name: id, required: true, schema: {type: string, format: uuid}}]
-    get:
-      security: [{adminToken: []}]
-      summary: Saga cover bytes, same body and Content-Type as GET /v1/sagas/{id}/image
-      responses:
-        "200":
-          description: Image bytes
-          content:
-            image/png:
-              schema: {type: string, format: binary}
-        "404": {description: Saga has no image}
-  /v1/public/sagas/{id}/image:
-    parameters:
-      - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
-      - {in: query, name: exp, required: true, schema: {type: integer}, description: Unix expiry seconds}
-      - {in: query, name: sig, required: true, schema: {type: string}, description: Hex HMAC-SHA256 of id, newline, and exp}
-    get:
-      security: []
-      summary: Read-only saga cover. No other saga fields are returned.
-      responses:
-        "200":
-          description: Image bytes
-          content:
-            image/png:
-              schema: {type: string, format: binary}
-        "403": {description: Bad signature or expired}
-        "404": {description: Valid signature and no image, or signing is not configured}
-  /v1/admin/log:
-    get:
-      security: [{adminToken: []}]
+    delete:
+      summary: Ops. Hard-delete one saga.
       parameters:
-        - {in: query, name: battletag, schema: {type: string}}
-        - {in: query, name: character_id, schema: {type: string}}
-        - {in: query, name: limit, schema: {type: integer}}
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
       responses:
-        "200": {description: Adventure log}
-    post:
-      security: [{adminToken: []}]
-      responses:
-        "201": {description: Created}
+        "204":
+          description: deleted

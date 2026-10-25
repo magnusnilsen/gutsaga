@@ -15,10 +15,10 @@ func TestNewer(t *testing.T) {
 	if Newer("v1.0.0", "0.1.0-dev") {
 		t.Fatal("dev builds do not auto-update")
 	}
-	if AssetName("windows", "amd64") != "gutsaga-windows-amd64.exe" {
+	if AssetName("windows", "amd64") != "sagaboard-windows-amd64.exe" {
 		t.Fatal(AssetName("windows", "amd64"))
 	}
-	if AssetName("darwin", "arm64") != "gutsaga-darwin-arm64" {
+	if AssetName("darwin", "arm64") != "sagaboard-darwin-arm64" {
 		t.Fatal(AssetName("darwin", "arm64"))
 	}
 }

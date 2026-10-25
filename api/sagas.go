@@ -18,9 +18,12 @@ func withSagaImageURL(q contract.Quest) contract.Quest {
 }
 
 func (s *Server) createSaga(w http.ResponseWriter, r *http.Request) {
-	var body questBody
-	if err := readJSON(r, &body, 1<<20); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
+	body, image, contentType, err := readQuestCreate(w, r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+		return
+	}
+	if rejectActorOverride(w, r, strings.TrimSpace(body.CreatedBy) != "") {
 		return
 	}
 	in, err := fillQuestInput(body)
@@ -28,12 +31,33 @@ func (s *Server) createSaga(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	in.CreatedBy = ""
 	p := playerFrom(r)
 	out, err := s.store.CreateQuestForPlayer(r.Context(), p.ID, in)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	if len(image) == 0 && strings.TrimSpace(body.ImageBase64) != "" {
+		image, contentType, err = decodeCover(body.ImageBase64)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+			return
+		}
+	}
+	if len(image) > 0 {
+		image, contentType, err = screenshot.NormalizeUpload(image)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+			return
+		}
+		out, err = s.store.SetQuestImage(r.Context(), p.ID, out.ID, contentType, image)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	s.announceCreated(r.Context(), out, body.Announce, image, contentType)
 	writeJSON(w, http.StatusCreated, withSagaImageURL(out))
 }
 
@@ -68,9 +92,19 @@ func (s *Server) getSaga(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
-	var body questPatchBody
-	if err := readJSON(r, &body, 1<<20); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
+	body, image, contentType, err := readQuestPatch(w, r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+		return
+	}
+	createdBy := body.CreatedBy != nil && strings.TrimSpace(*body.CreatedBy) != ""
+	if body.UpdatedBy != nil && strings.TrimSpace(*body.UpdatedBy) != "" {
+		createdBy = true
+	}
+	if body.EditorEmail != nil && strings.TrimSpace(*body.EditorEmail) != "" {
+		createdBy = true
+	}
+	if rejectActorOverride(w, r, createdBy) {
 		return
 	}
 	patch, err := fillQuestPatch(body)
@@ -80,6 +114,20 @@ func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
 	}
 	p := playerFrom(r)
 	id := r.PathValue("id")
+	if !questPatchHasFields(patch) && len(image) > 0 {
+		image, contentType, err = screenshot.NormalizeUpload(image)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+			return
+		}
+		out, err := s.store.SetQuestImage(r.Context(), p.ID, id, contentType, image)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, withSagaImageURL(out))
+		return
+	}
 	detail, gerr := s.store.GetQuest(r.Context(), id)
 	out, err := s.store.UpdateQuestForPlayer(r.Context(), p.ID, id, patch)
 	if err != nil {
@@ -87,13 +135,10 @@ func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if gerr == nil {
-		actor := displayActor(p.DisplayName, p.Email, p.BattleTag)
-		if body.UpdatedBy != nil {
-			if v := strings.TrimSpace(*body.UpdatedBy); v != "" {
-				actor = v
-			}
-		}
+		actor := displayActor(p.DisplayName, "", p.BattleTag)
 		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor, patch.Changes)
+		_ = image
+		_ = contentType
 	}
 	writeJSON(w, http.StatusOK, withSagaImageURL(out))
 }

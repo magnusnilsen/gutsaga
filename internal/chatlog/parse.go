@@ -1,4 +1,4 @@
-// Package chatlog parses GutSaga lines from WoWChatLog.txt.
+// Package chatlog parses SagaBoard lines from WoWChatLog.txt.
 package chatlog
 
 import (
@@ -13,6 +13,7 @@ const (
 	KindComplete  Kind = "completion"
 	KindLevel     Kind = "level"
 	KindCharacter Kind = "character"
+	KindInvite    Kind = "invite"
 )
 
 // Event is one machine-readable chat line.
@@ -30,32 +31,54 @@ type Event struct {
 	Class        string
 	BattleTag    string
 	At           time.Time
+	Action       string
+	InviteID     string
 }
 
 func Parse(line string) (Event, bool) {
-	// Prefer the machine payload. Channel traffic on "GutSaga" also contains
-	// "[GutSaga]" as the channel name before the player's message.
-	for _, marker := range []string{"[GutSaga] COMPLETE ", "[GutSaga] CHARACTER ", "[GutSaga] LEVELUP "} {
-		i := strings.Index(line, marker)
+	// Only the SagaBoard prefix. A channel echo can contain the prefix twice;
+	// the machine verb is the one that counts. Older prefixes are ignored.
+	const marker = "[SagaBoard]"
+	rest := line
+	for {
+		i := strings.Index(rest, marker)
 		if i < 0 {
-			continue
-		}
-		rest := strings.TrimSpace(line[i+len("[GutSaga]"):])
-		if strings.HasPrefix(rest, "CHARACTER ") {
-			return parseCharacter(rest[len("CHARACTER "):])
-		}
-		fields := strings.Fields(rest)
-		if len(fields) == 0 {
 			return Event{}, false
 		}
-		switch fields[0] {
-		case "COMPLETE":
-			return parseComplete(fields)
-		case "LEVELUP":
-			return parseLevel(fields)
+		payload := strings.TrimSpace(rest[i+len(marker):])
+		if ev, ok := parsePayload(payload); ok {
+			return ev, true
 		}
+		rest = rest[i+len(marker):]
+	}
+}
+
+func parsePayload(rest string) (Event, bool) {
+	if strings.HasPrefix(rest, "CHARACTER ") {
+		return parseCharacter(rest[len("CHARACTER "):])
+	}
+	if strings.HasPrefix(rest, "INVITE ") {
+		return parseInvite(rest[len("INVITE "):])
+	}
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return Event{}, false
+	}
+	switch fields[0] {
+	case "COMPLETE":
+		return parseComplete(fields)
+	case "LEVELUP":
+		return parseLevel(fields)
 	}
 	return Event{}, false
+}
+
+func parseInvite(payload string) (Event, bool) {
+	action, id, ok := strings.Cut(strings.TrimSpace(payload), "|")
+	if !ok || (action != "accept" && action != "decline") || strings.TrimSpace(id) == "" {
+		return Event{}, false
+	}
+	return Event{Kind: KindInvite, Action: action, InviteID: strings.TrimSpace(id)}, true
 }
 
 func parseComplete(fields []string) (Event, bool) {
