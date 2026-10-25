@@ -143,7 +143,7 @@ Kjør `setup` fra PowerShell slik at du får spørsmålene i vinduet.
 
 Hver push til `main` gir en GitHub-utgivelse. Versjonen øker automatisk (`0.1.0`, så patch, eller minor/major når commit-meldingene sier `feat:` / `feat!:`). Endringsloggen kommer fra commitene.
 
-Programmet sjekker [utgivelsene](https://github.com/magnusnilsen/gutsaga/releases/latest) ved oppstart og omtrent hver fjerde time. Når det finnes en nyere versjon, lastes den ned i bakgrunnen. Skuffmenyen viser **Ny versjon vX.Y.Z — start på nytt**. Den bytter ikke ut seg selv før du velger det. **Automatiske oppdateringer** i samme meny skrur sjekken av og på. `--no-update` hopper over sjekken for den kjøringen.
+Programmet sjekker [utgivelsene](https://github.com/magnusnilsen/gutsaga/releases/latest) ved oppstart og omtrent hver fjerde time. Når det finnes en nyere versjon, lastes den ned i bakgrunnen. Skuffmenyen viser den installerte versjonen (**Versjon X.Y.Z**) og **Ny versjon vX.Y.Z — start på nytt** når en nedlasting er klar. Den bytter ikke ut seg selv før du velger det. **Automatiske oppdateringer** i samme meny skrur sjekken av og på. `--no-update` hopper over sjekken for den kjøringen.
 
 Standardrepoet er `magnusnilsen/gutsaga`. Ingen token trengs. I `config.json`:
 

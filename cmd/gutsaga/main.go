@@ -240,6 +240,7 @@ func run(opts options) int {
 	}
 	refreshTray := func(m *tray.Menu) {
 		m.SetStatus(tray.Status{User: application.AccountStatus()})
+		m.SetVersion(version.Version)
 		if application.LoggedIn() {
 			m.SetAuthAction(true, func() {
 				go application.Logout()
@@ -258,7 +259,7 @@ func run(opts options) int {
 			}()
 		})
 	}
-	tray.Run(ctx, "GutSaga", []tray.Item{
+	tray.Run(ctx, "GutSaga "+version.Version, []tray.Item{
 		{Title: "Synkroniser nå", Tooltip: "Hent oppdrag fra API-et", OnClick: func() {
 			go func() {
 				if err := application.SyncNow(context.Background()); err != nil {
