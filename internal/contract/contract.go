@@ -58,7 +58,6 @@ type Quest struct {
 	When              *TimeWindow `json:"when,omitempty"`
 	Group             *GroupRule  `json:"group,omitempty"`
 	MinLevel          *int        `json:"min_level"`
-	Reward            string      `json:"reward"`
 	PartyQuest        bool        `json:"party"`
 	AssignedTo        []IDRef     `json:"assigned_to"`
 	CreatedBy         string      `json:"created_by"`
@@ -97,20 +96,21 @@ type CompletionRequest struct {
 }
 
 type CompletionResponse struct {
-	Allowed          bool          `json:"allowed"`
-	AlreadyCompleted bool          `json:"already_completed"`
-	Completed        bool          `json:"completed"`
-	ProgressID       string        `json:"progress_id,omitempty"`
-	LogWritten       bool          `json:"log_written"`
-	DiscordPosted    bool          `json:"discord_posted"`
-	CharacterName    string        `json:"character_name,omitempty"`
-	CharacterRace    string        `json:"character_race,omitempty"`
-	CharacterClass   string        `json:"character_class,omitempty"`
-	CharacterLevel   int           `json:"character_level,omitempty"`
-	Reward           string        `json:"reward,omitempty"`
-	QuestTitle       string        `json:"saga_title,omitempty"`
-	QuestVersion     int           `json:"saga_version,omitempty"`
-	GroupCredited    []GroupCredit `json:"group_credited,omitempty"`
+	Allowed           bool          `json:"allowed"`
+	AlreadyCompleted  bool          `json:"already_completed"`
+	Completed         bool          `json:"completed"`
+	ProgressID        string        `json:"progress_id,omitempty"`
+	LogWritten        bool          `json:"log_written"`
+	DiscordPosted     bool          `json:"discord_posted"`
+	CharacterName     string        `json:"character_name,omitempty"`
+	CharacterRace     string        `json:"character_race,omitempty"`
+	CharacterClass    string        `json:"character_class,omitempty"`
+	CharacterLevel    int           `json:"character_level,omitempty"`
+	QuestTitle        string        `json:"saga_title,omitempty"`
+	QuestVersion      int           `json:"saga_version,omitempty"`
+	Objectives        []Objective   `json:"objectives,omitempty"`
+	ObjectivesOrdered bool          `json:"objectives_ordered,omitempty"`
+	GroupCredited     []GroupCredit `json:"group_credited,omitempty"`
 }
 
 type LevelRequest struct {
@@ -165,7 +165,7 @@ type QuestVersion struct {
 	Objectives  []Objective `json:"objectives"`
 	When        *TimeWindow `json:"when,omitempty"`
 	Group       *GroupRule  `json:"group,omitempty"`
-	Reward      string      `json:"reward"`
+	Changes     []string    `json:"changes"`
 	MinLevel    *int        `json:"min_level"`
 	PartyQuest  bool        `json:"party"`
 	Active      bool        `json:"active"`
@@ -213,9 +213,9 @@ type QuestCardColumn struct {
 }
 
 type QuestCardRow struct {
-	ID     string         `json:"id"`
-	Group  string         `json:"group,omitempty"`
-	Cells  map[string]any `json:"cells"`
+	ID    string         `json:"id"`
+	Group string         `json:"group,omitempty"`
+	Cells map[string]any `json:"cells"`
 }
 
 // QuestListItem is an admin quest row. Status is null when character_id was

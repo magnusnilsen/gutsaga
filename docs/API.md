@@ -203,7 +203,7 @@ Returns three arrays. The companion merges them; the server does not hide quests
     {
       "id": "…", "title": "Første vakt", "description": "…",
       "objectives": [{"id": "stay", "type": "location", "text": "Stå vakt", "zone": "Elwynn Forest"}],
-      "min_level": 10, "reward": "Ære", "party": false,
+      "min_level": 10, "party": false,
       "assigned_to": [{"id": "<character id>"}], "created_by": "Magnus",
       "active": true, "version": 3,
       "requires": [],
@@ -298,15 +298,15 @@ On a new completion the API:
 
 1. Stores the image in Postgres (TGA is converted to PNG).
 2. Inserts progress and an adventure-log line: `Magni fullførte «Første vakt» (versjon 3).`
-3. Queues a Discord embed, username `GutSaga`. The content line is short (`**Magni** fullførte en saga!`); the embed carries the saga title, class, level, version, reward, timestamp, and screenshot (`attachment://screenshot.png`, so Discord does not need a public GutSaga URL).
+3. Queues a Discord embed, username `GutSaga`. The content line is short (`**Magni** fullførte en saga!`); the embed carries the saga title, the completed goals with checkmarks, optional race/class/level when those were sent fresh from the game, and an optional screenshot (`attachment://screenshot.png`).
 
 The HTTP call does not wait for Discord. `discord_posted` is true when the notice was accepted onto the queue (or delivered, if a synchronous notifier is plugged in). The progress row's `discord_url` is written when Discord returns the attachment URL. A webhook error, including HTTP 429, is retried in the background (`retry_after` on 429, backoff on network errors and 5xx) and then logged. It does not change the HTTP status and does not roll back the completion. When the queue cannot accept the notice, `discord_posted` is false.
 
-The completion body also echoes `character_class`, `character_level`, and `reward` from the version that was completed.
+The completion body also echoes `character_class` and `character_level` when they were sent with the completion.
 
 ### `POST /v1/level`
 
-Milestone levels (10, 20, 30, …) are queued as a short embed: content `**Magni** nådde et nytt nivå.`, embed title `Nivå 20`. Other levels only update the character and the adventure log.
+Milestone levels (10, 20, 30, …) are queued as a short embed: content `**Magni** nådde et nytt nivå.`, embed title `Level 20`. Other levels only update the character and the adventure log.
 
 ```json
 {"character_id": "<uuid>", "battletag": "Magnus#2231", "level": 13}
@@ -338,13 +338,13 @@ These are the endpoints a later Smia MCP server should call with `ADMIN_TOKEN`.
 | `GET` | `/v1/admin/characters/{id}` | |
 | `PATCH` | `/v1/admin/characters/{id}` | any of name, realm, race, class, level, backstory |
 | `DELETE` | `/v1/admin/characters/{id}` | `204` |
-| `POST` | `/v1/admin/sagas` | title, description, objectives, optional `when`, optional `group`, optional `requires` (saga ids), optional `chain` (`id`, `name`, `order`), reward, `min_level`, `party`, `assigned_character_ids`, `active`, `created_by`. JSON or multipart. Optional cover via multipart file `image` or JSON `image_base64` (max 8 MiB; attached to the Discord announcement). Optional `announce` (default: post when the saga is active; `false` skips; `true` posts even a draft). Response includes `image_signed_url` when the saga has a cover and signing is configured. |
+| `POST` | `/v1/admin/sagas` | title, description, objectives, optional `when`, optional `group`, optional `requires` (saga ids), optional `chain` (`id`, `name`, `order`), `min_level`, `party`, `assigned_character_ids`, `active`, `created_by`. JSON or multipart. Optional cover via multipart file `image` or JSON `image_base64` (max 8 MiB; attached to the Discord announcement). Optional `announce` (default: post when the saga is active; `false` skips; `true` posts even a draft). Response includes `image_signed_url` when the saga has a cover and signing is configured. |
 | `GET` | `/v1/admin/sagas?character_id=` | every quest; with `character_id`, includes `status` (`null` if not started), `eligible`, `completed_version`, `locked`, `unlocked`, `missing`. Quests that have a cover include `image_signed_url` when signing is configured. |
 | `GET` | `/v1/admin/sagas/{id}` | saga plus `versions[]` snapshots (each snapshot includes `requires` and `chain`), `completed_by[]` (character, realm, class, level, when), `goals_markdown` (numbered objectives for Smia stack text), and `card` (Smia Aktivitet table: character, detail, when). Same `image_signed_url` as the list. |
 | `GET` | `/v1/admin/sagas/{id}/image` | cover bytes and `Content-Type`, same as `GET /v1/sagas/{id}/image`. `404` when the saga has no image. |
 | `PUT` | `/v1/admin/sagas/{id}/image` | raw or multipart `image` cover (same rules as player `/v1/sagas/{id}/image`) |
 | `DELETE` | `/v1/admin/sagas/{id}/image` | clear cover |
-| `PATCH` | `/v1/admin/sagas/{id}` | partial update. Text changes **bump `version` and write a snapshot.** `min_level: null` clears it. JSON or multipart; optional file field `image` (cover-only OK, no version bump); optional `when` / `group`. `requires: []` clears prerequisites. `chain: null` removes the saga from its chain. Optional `editor_email` (Smia caller): when set, only that player's sagas may be edited (`403` otherwise; Smia `update_saga` sends this from `context.run`). Optional `updated_by` (BattleTag) is the same check by tag. Optional `announce` (default true). A text, goal, reward, minimum-level, or party change posts a one-line version embed. `active: false` posts a retirement instead. Assignment-only edits stay quiet. `announce: false` skips both. Response includes `image_signed_url` when signing is configured. |
+| `PATCH` | `/v1/admin/sagas/{id}` | partial update. Any field change **requires `changes`** (non-empty list of short lines), **bumps `version`**, and writes a snapshot that stores those lines. `min_level: null` clears it. JSON or multipart; optional file field `image` (cover-only OK, no version bump and no `changes`); optional `when` / `group`. `requires: []` clears prerequisites. `chain: null` removes the saga from its chain. Optional `editor_email` (Smia caller): when set, only that player's sagas may be edited (`403` otherwise; Smia `update_saga` sends this from `context.run`). Optional `updated_by` (BattleTag) is the same check by tag. Optional `announce` (default true). A version bump posts a Discord note whose body is the new version plus the `changes` bullets. `active: false` posts a retirement instead. `announce: false` skips both. Response includes `image_signed_url` when signing is configured. |
 | `GET` | `/v1/public/placeholder.png` | 640×360 dark PNG (no auth). Used by Smia `get_saga` when a saga has no cover so the media card keeps a readable width (`/v1/public/empty.png` is an alias). |
 | `GET` | `/v1/public/sagas/{id}/image?exp=&sig=` | no `Authorization` header. HMAC-SHA256 of `id`, a newline, and the unix `exp`, hex-encoded, keyed with `IMAGE_URL_SECRET`. `403` bad signature (checked before the database, so a guess does not reveal whether the saga exists). `403` when `exp` is in the past. `404` when the signature is valid and there is no image. The body is only the image bytes. |
 | `GET` | `/v1/admin/log?battletag=&character_id=&limit=` | newest first, default 50 |

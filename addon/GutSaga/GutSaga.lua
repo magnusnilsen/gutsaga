@@ -221,15 +221,17 @@ local function unitLabel(fn)
     if not fn then
         return ""
     end
+    -- Prefer the localized display name. UnitClass's second return is the
+    -- English file token (HUNTER), which looks wrong in Discord and the UI.
     local ok, localized, english = pcall(fn, "player")
     if not ok then
         return ""
     end
-    local eng = plainString(english)
-    if eng then
-        return eng
+    local loc = plainString(localized)
+    if loc then
+        return loc
     end
-    return plainString(localized) or ""
+    return plainString(english) or ""
 end
 
 local function cachePlayer()
@@ -815,6 +817,238 @@ local function entryLocked(entry, entries)
         return false
     end
     return GutSagaChains.isLocked(entry, entries, completionSet()) and true or false
+end
+
+local function entryIsGroup(entry)
+    -- Turn-in roster (group_rule), not party visibility.
+    return type(entry) == "table" and type(entry.group) == "table"
+end
+
+local function listTitle(entry)
+    local title = entry.title or "Saga"
+    if entryIsGroup(entry) then
+        title = title .. " (Gruppe)"
+    end
+    return title
+end
+
+local statusFilter = { open = true, locked = true, done = true }
+local creatorHidden = {}
+local filtersLoaded = false
+
+local function loadFilters()
+    if filtersLoaded then
+        return
+    end
+    filtersLoaded = true
+    initDB()
+    local saved = GutSagaDB.filters
+    if type(saved) ~= "table" then
+        return
+    end
+    if type(saved.status) == "table" then
+        if saved.status.open ~= nil then
+            statusFilter.open = saved.status.open and true or false
+        end
+        if saved.status.locked ~= nil then
+            statusFilter.locked = saved.status.locked and true or false
+        end
+        if saved.status.done ~= nil then
+            statusFilter.done = saved.status.done and true or false
+        end
+    end
+    if type(saved.hiddenCreators) == "table" then
+        for name, hidden in pairs(saved.hiddenCreators) do
+            if type(name) == "string" and hidden then
+                creatorHidden[name] = true
+            end
+        end
+    end
+end
+
+local function saveFilters()
+    initDB()
+    local hidden = {}
+    for name, on in pairs(creatorHidden) do
+        if on then
+            hidden[name] = true
+        end
+    end
+    GutSagaDB.filters = {
+        status = {
+            open = statusFilter.open ~= false,
+            locked = statusFilter.locked ~= false,
+            done = statusFilter.done ~= false,
+        },
+        hiddenCreators = hidden,
+    }
+end
+
+local function statusBucket(entry, entries)
+    if isComplete(entry) then
+        return "done"
+    end
+    if entryLocked(entry, entries) then
+        return "locked"
+    end
+    return "open"
+end
+
+local searchQuery = ""
+local searchScores = {}
+
+local function lowerText(s)
+    s = tostring(s or "")
+    -- UTF-8 Norwegian letters before byte-wise lower.
+    s = s:gsub("Æ", "æ"):gsub("Ø", "ø"):gsub("Å", "å")
+    return string.lower(s)
+end
+
+-- Returns rank (2 = title, 1 = description) or nil when no match.
+local function searchRank(entry, needle)
+    if needle == "" then
+        return 0
+    end
+    local title = lowerText(entry.title)
+    local desc = lowerText(entry.description)
+    local titleAt = string.find(title, needle, 1, true)
+    if titleAt then
+        return 2, titleAt
+    end
+    local descAt = string.find(desc, needle, 1, true)
+    if descAt then
+        return 1, descAt
+    end
+    return nil
+end
+
+local function passesFilters(entry, entries)
+    local bucket = statusBucket(entry, entries)
+    if statusFilter[bucket] == false then
+        return false
+    end
+    if creatorHidden[creatorName(entry)] then
+        return false
+    end
+    local needle = searchQuery
+    if needle ~= "" then
+        local rank = searchRank(entry, needle)
+        if not rank then
+            return false
+        end
+        searchScores[entry.saga_id or ""] = rank
+    end
+    return true
+end
+
+local function sortBySearch(list)
+    if searchQuery == "" or #list < 2 then
+        return
+    end
+    table.sort(list, function(a, b)
+        local ra = searchScores[a.saga_id or ""] or 0
+        local rb = searchScores[b.saga_id or ""] or 0
+        if ra ~= rb then
+            return ra > rb
+        end
+        local ta = lowerText(a.title)
+        local tb = lowerText(b.title)
+        if ta ~= tb then
+            return ta < tb
+        end
+        return tostring(a.saga_id or "") < tostring(b.saga_id or "")
+    end)
+end
+
+local statusDrop
+local creatorDrop
+local searchBox
+local scrollSelectIntoView = false
+
+local function updateSearchHint()
+    if not searchBox or not searchBox.hint then
+        return
+    end
+    local empty = (searchBox:GetText() or "") == ""
+    local focused = searchBox.HasFocus and searchBox:HasFocus()
+    if empty and not focused then
+        searchBox.hint:Show()
+    else
+        searchBox.hint:Hide()
+    end
+end
+
+local function blurSearch()
+    if searchBox then
+        searchBox:ClearFocus()
+        updateSearchHint()
+    end
+end
+
+local function filterCheck(text, checked, onClick)
+    local info = UIDropDownMenu_CreateInfo()
+    info.text = text
+    info.isNotRadio = true
+    info.keepShownOnClick = true
+    info.checked = checked
+    info.func = function(_, _, _, value)
+        onClick(value and true or false)
+    end
+    UIDropDownMenu_AddButton(info)
+end
+
+local function setupListFilters()
+    if not statusDrop or not UIDropDownMenu_Initialize then
+        return
+    end
+    UIDropDownMenu_Initialize(statusDrop, function()
+        filterCheck("Ikke startet", statusFilter.open ~= false, function(on)
+            statusFilter.open = on
+            saveFilters()
+            refresh()
+        end)
+        -- Chain prerequisite not finished yet ("Låst: fullfør … først").
+        filterCheck("Krever forrige", statusFilter.locked ~= false, function(on)
+            statusFilter.locked = on
+            saveFilters()
+            refresh()
+        end)
+        filterCheck("Fullført", statusFilter.done ~= false, function(on)
+            statusFilter.done = on
+            saveFilters()
+            refresh()
+        end)
+    end)
+    UIDropDownMenu_SetText(statusDrop, "Status")
+    UIDropDownMenu_Initialize(creatorDrop, function()
+        local seen, names = {}, {}
+        local entries = currentEntries()
+        for i = 1, #entries do
+            local name = creatorName(entries[i])
+            if not seen[name] then
+                seen[name] = true
+                names[#names + 1] = name
+            end
+        end
+        table.sort(names)
+        if #names == 0 then
+            filterCheck("Ingen", false, function() end)
+            return
+        end
+        for i = 1, #names do
+            local name = names[i]
+            filterCheck(name, not creatorHidden[name], function(on)
+                if on then
+                    creatorHidden[name] = nil
+                else
+                    creatorHidden[name] = true
+                end
+                saveFilters()
+                refresh()
+            end)
+        end
+    end)
+    UIDropDownMenu_SetText(creatorDrop, "Laget av")
 end
 
 local function listSubtitle(entry, entries)
@@ -1722,6 +1956,7 @@ local function ensureRow(i)
     bindWheel(title, listScroll, 36)
     bindWheel(sub, listScroll, 36)
     row:SetScript("OnClick", function(self)
+        blurSearch()
         selectedID = self.questID
         markRead(self.questID)
         refresh()
@@ -1757,16 +1992,28 @@ refresh = function()
     if not built then
         return
     end
+    loadFilters()
+    if searchBox and searchBox.GetText then
+        searchQuery = lowerText(string.gsub(searchBox:GetText() or "", "^%s+", ""))
+        searchQuery = string.gsub(searchQuery, "%s+$", "")
+    else
+        searchQuery = ""
+    end
+    searchScores = {}
     local entries = currentEntries()
 
     local openList, doneList = {}, {}
     for i = 1, #entries do
-        if isComplete(entries[i]) then
-            table.insert(doneList, entries[i])
-        else
-            table.insert(openList, entries[i])
+        if passesFilters(entries[i], entries) then
+            if isComplete(entries[i]) then
+                table.insert(doneList, entries[i])
+            else
+                table.insert(openList, entries[i])
+            end
         end
     end
+    sortBySearch(openList)
+    sortBySearch(doneList)
 
     local selectedEntry = selectedID and findEntry(selectedID) or nil
     if not selectedEntry then
@@ -1784,6 +2031,7 @@ refresh = function()
     local doneExpanded = sectionExpanded("done", true)
     local listY = 0
     local rowIndex = 0
+    local selectedRowY = nil
 
     listY = placeSectionHeader(sectionOpen, listY, "Ikke startet (" .. #openList .. ")", openExpanded, function()
         setSectionExpanded("open", not openExpanded)
@@ -1798,7 +2046,7 @@ refresh = function()
             row:SetPoint("TOPLEFT", listChild, "TOPLEFT", 4, -listY)
             row:Show()
             row.questID = item.saga_id
-            row.title:SetText(item.title or "Saga")
+            row.title:SetText(listTitle(item))
             row.sub:SetText(listSubtitle(item, entries))
             layoutListRow(row, isUnread(item.saga_id, item))
             if entryLocked(item, entries) then
@@ -1811,6 +2059,7 @@ refresh = function()
             end
             if item.saga_id == selectedID then
                 row.bg:SetAlpha(0.7)
+                selectedRowY = listY
             else
                 row.bg:SetAlpha(0)
             end
@@ -1832,13 +2081,14 @@ refresh = function()
             row:SetPoint("TOPLEFT", listChild, "TOPLEFT", 4, -listY)
             row:Show()
             row.questID = item.saga_id
-            row.title:SetText(item.title or "Saga")
+            row.title:SetText(listTitle(item))
             row.sub:SetText(creatorName(item))
             layoutListRow(row, false)
             row.title:SetTextColor(0.55, 0.75, 0.45)
             row.sub:SetTextColor(0.55, 0.52, 0.45)
             if item.saga_id == selectedID then
                 row.bg:SetAlpha(0.55)
+                selectedRowY = listY
             else
                 row.bg:SetAlpha(0)
             end
@@ -1854,7 +2104,34 @@ refresh = function()
     if listScroll.UpdateScrollChildRect then
         listScroll:UpdateScrollChildRect()
     end
-    listScroll.range = math.max(0, listH - 418)
+    local viewH = 384
+    if listScroll.GetHeight then
+        local h = listScroll:GetHeight()
+        if type(h) == "number" and h > 40 then
+            viewH = h
+        end
+    end
+    listScroll.range = math.max(0, listH - viewH)
+    if scrollSelectIntoView and selectedRowY ~= nil then
+        scrollSelectIntoView = false
+        local cur = listScroll.offset or 0
+        local rowBottom = selectedRowY + 40
+        local target = cur
+        if selectedRowY < cur then
+            target = selectedRowY
+        elseif rowBottom > cur + viewH then
+            target = rowBottom - viewH
+        end
+        if target < 0 then
+            target = 0
+        elseif target > listScroll.range then
+            target = listScroll.range
+        end
+        listScroll.offset = target
+        listScroll:SetVerticalScroll(target)
+    else
+        scrollSelectIntoView = false
+    end
 
     if selectedID ~= lastDetailID then
         lastDetailID = selectedID
@@ -2642,6 +2919,9 @@ local function build()
     drag:EnableMouseWheel(true)
     drag:SetScript("OnMouseWheel", wheelOnFrame)
     drag:RegisterForDrag("LeftButton")
+    drag:SetScript("OnMouseDown", function()
+        blurSearch()
+    end)
     drag:SetScript("OnDragStart", function()
         frame:StartMoving()
     end)
@@ -2659,9 +2939,9 @@ local function build()
     end
 
     listPanel = CreateFrame("Frame", nil, frame, backdropTemplate)
-    listPanel:SetPoint("TOPLEFT", 22, -48)
+    listPanel:SetPoint("TOPLEFT", 22, -72)
     listPanel:SetPoint("BOTTOMLEFT", 22, 18)
-    listPanel:SetSize(236, 434)
+    listPanel:SetSize(236, 410)
     useBackdrop(listPanel, {
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -2674,16 +2954,30 @@ local function build()
         listPanel:SetBackdropColor(0.07, 0.05, 0.03, 0.92)
     end
 
+    if UIDropDownMenu_Initialize then
+        statusDrop = CreateFrame("Frame", "GutSagaStatusFilter", frame, "UIDropDownMenuTemplate")
+        statusDrop:SetPoint("BOTTOMLEFT", listPanel, "TOPLEFT", -14, -4)
+        UIDropDownMenu_SetWidth(statusDrop, 96)
+        UIDropDownMenu_JustifyText(statusDrop, "LEFT")
+        creatorDrop = CreateFrame("Frame", "GutSagaCreatorFilter", frame, "UIDropDownMenuTemplate")
+        creatorDrop:SetPoint("LEFT", statusDrop, "RIGHT", -20, 0)
+        UIDropDownMenu_SetWidth(creatorDrop, 110)
+        UIDropDownMenu_JustifyText(creatorDrop, "LEFT")
+        setupListFilters()
+    end
+
     listScroll = CreateFrame("ScrollFrame", "GutSagaListScroll", listPanel)
     listScroll:SetPoint("TOPLEFT", 6, -8)
+    listScroll:SetSize(202, 394)
     listScroll:SetPoint("BOTTOMRIGHT", -28, 8)
-    listScroll:SetSize(202, 418)
     listChild = CreateFrame("Frame", "GutSagaListChild", listScroll)
     listChild:SetSize(196, 418)
     listScroll:SetScrollChild(listChild)
     listPanel:EnableMouse(true)
     listScroll:EnableMouse(true)
     listChild:EnableMouse(true)
+    listPanel:SetScript("OnMouseDown", blurSearch)
+    listScroll:SetScript("OnMouseDown", blurSearch)
     bindWheel(listPanel, listScroll, 36)
     bindWheel(listScroll, listScroll, 36)
     bindWheel(listChild, listScroll, 36)
@@ -2696,7 +2990,7 @@ local function build()
     detailPanel = CreateFrame("Frame", nil, frame, backdropTemplate)
     detailPanel:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 14, 0)
     detailPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -18, 18)
-    detailPanel:SetSize(410, 434)
+    detailPanel:SetSize(410, 410)
     useBackdrop(detailPanel, {
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -2708,6 +3002,46 @@ local function build()
     if detailPanel.SetBackdropColor then
         detailPanel:SetBackdropColor(0.86, 0.78, 0.58, 0.97)
     end
+
+    searchBox = CreateFrame("EditBox", "GutSagaSearchBox", frame, "InputBoxTemplate")
+    searchBox:SetAutoFocus(false)
+    searchBox:SetHeight(20)
+    searchBox:SetWidth(136)
+    searchBox:SetPoint("BOTTOMRIGHT", detailPanel, "TOPRIGHT", -6, 6)
+    searchBox:SetFontObject(GameFontHighlightSmall)
+    searchBox:SetTextInsets(8, 8, 0, 0)
+    searchBox:SetMaxLetters(80)
+    searchBox:SetScript("OnEscapePressed", function(self)
+        if (self:GetText() or "") ~= "" then
+            self:SetText("")
+            refresh()
+        end
+        self:ClearFocus()
+        updateSearchHint()
+    end)
+    searchBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+        updateSearchHint()
+        refresh()
+    end)
+    searchBox:SetScript("OnTextChanged", function(_, userInput)
+        updateSearchHint()
+        if userInput then
+            refresh()
+        end
+    end)
+    searchBox:SetScript("OnEditFocusGained", function()
+        updateSearchHint()
+    end)
+    searchBox:SetScript("OnEditFocusLost", function()
+        updateSearchHint()
+    end)
+    local searchHint = searchBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    searchHint:SetPoint("LEFT", searchBox, "LEFT", 10, 0)
+    searchHint:SetText("Søk")
+    searchBox.hint = searchHint
+    updateSearchHint()
+
     local parchment = detailPanel:CreateTexture(nil, "BACKGROUND", nil, 1)
     parchment:SetPoint("TOPLEFT", 5, -5)
     parchment:SetPoint("BOTTOMRIGHT", -5, 5)
@@ -2725,6 +3059,8 @@ local function build()
     detailPanel:EnableMouse(true)
     detailScroll:EnableMouse(true)
     detailChild:EnableMouse(true)
+    detailPanel:SetScript("OnMouseDown", blurSearch)
+    detailScroll:SetScript("OnMouseDown", blurSearch)
     bindWheel(detailPanel, detailScroll, 28)
     bindWheel(detailScroll, detailScroll, 28)
     bindWheel(detailChild, detailScroll, 28)
@@ -2846,8 +3182,14 @@ local function build()
         if type(questID) == "string" and questID ~= "" then
             selectedID = questID
             markRead(questID)
+            local entry = findEntry(questID)
+            if isComplete(entry) then
+                setSectionExpanded("done", true)
+            else
+                setSectionExpanded("open", true)
+            end
+            scrollSelectIntoView = true
             show()
-            refresh()
         end
     end)
     toast:SetScript("OnEnter", function(self)

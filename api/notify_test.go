@@ -22,7 +22,7 @@ func TestAnnounceFlags(t *testing.T) {
 
 func TestSignificantQuestChangeIgnoresAssignment(t *testing.T) {
 	base := contract.Quest{
-		Title: "Vakt", Description: "Stå der.", Reward: "Ære",
+		Title: "Vakt", Description: "Stå der.",
 		Objectives: []contract.Objective{{ID: "a", Type: "interact", Text: "Møt opp", NPC: "Vakt"}},
 	}
 	same := base

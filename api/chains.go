@@ -26,7 +26,7 @@ func fillQuestInput(body questBody) (QuestInput, error) {
 	in := QuestInput{
 		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
 		ObjectivesOrdered: body.ObjectivesOrdered, When: body.When, Group: body.Group,
-		Reward: body.Reward, MinLevel: body.MinLevel,
+		MinLevel:   body.MinLevel,
 		PartyQuest: body.PartyQuest, Active: body.Active, CreatedBy: body.CreatedBy,
 		AssignedCharacterIDs: body.AssignedCharacterIDs, Requires: []string{},
 	}
@@ -50,7 +50,7 @@ func fillQuestInput(body questBody) (QuestInput, error) {
 func fillQuestPatch(body questPatchBody) (QuestPatch, error) {
 	patch := QuestPatch{
 		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
-		ObjectivesOrdered: body.ObjectivesOrdered, Reward: body.Reward,
+		ObjectivesOrdered: body.ObjectivesOrdered, Changes: body.Changes,
 		PartyQuest: body.PartyQuest, Active: body.Active, CreatedBy: body.CreatedBy,
 		AssignedCharacterIDs: body.AssignedCharacterIDs,
 	}

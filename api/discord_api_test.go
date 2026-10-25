@@ -51,9 +51,8 @@ func TestAdminDiscordNotices(t *testing.T) {
 			{"id": "stay", "type": "location", "text": "Hold ut", "zone": "Elwynn Forest"},
 		},
 		"objectives_ordered":     true,
-		"reward":                 "Ære",
 		"min_level":              10,
-		"party":            true,
+		"party":                  true,
 		"created_by":             "Magnus#2231",
 		"assigned_character_ids": []string{magni.ID},
 		"image_base64":           base64.StdEncoding.EncodeToString(png),
@@ -114,47 +113,48 @@ func TestAdminDiscordNotices(t *testing.T) {
 
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
 		"assigned_character_ids": []string{magni.ID},
+		"changes":                []string{"Tildelt Magni"},
 	}, &contract.Quest{})
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("assign %d %v", statusOf(resp), err)
 	}
 	fake.mu.Lock()
-	if len(fake.sagas) != 1 {
-		t.Fatalf("assignment-only patch posted %d", len(fake.sagas))
+	if len(fake.sagas) != 2 || fake.sagas[1].Kind != discord.KindUpdated || fake.sagas[1].Changes[0] != "Tildelt Magni" {
+		t.Fatalf("assignment notice %+v", fake.sagas)
 	}
 	fake.mu.Unlock()
 
 	var updated contract.Quest
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"title": "Første vakt, igjen",
+		"title": "Første vakt, igjen", "changes": []string{"Nytt navn"},
 	}, &updated)
 	if err != nil || resp.StatusCode != http.StatusOK || updated.Version != 3 {
 		t.Fatalf("rename %+v %d %v", updated, statusOf(resp), err)
 	}
 	fake.mu.Lock()
-	if len(fake.sagas) != 2 || fake.sagas[1].Kind != discord.KindUpdated || fake.sagas[1].Version != 3 {
+	if len(fake.sagas) != 3 || fake.sagas[2].Kind != discord.KindUpdated || fake.sagas[2].Version != 3 {
 		t.Fatalf("update notices %+v", fake.sagas)
 	}
-	if fake.sagas[1].UpdatedBy != "Magnus" {
-		t.Fatalf("updater %q", fake.sagas[1].UpdatedBy)
+	if fake.sagas[2].UpdatedBy != "Magnus" || fake.sagas[2].Changes[0] != "Nytt navn" {
+		t.Fatalf("updater %+v", fake.sagas[2])
 	}
 	fake.mu.Unlock()
 
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"reward": "Mer ære", "announce": false,
+		"title": "Stille", "announce": false, "changes": []string{"Skjult"},
 	}, &contract.Quest{})
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("silent edit %d %v", statusOf(resp), err)
 	}
 	active := false
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"active": active,
+		"active": active, "changes": []string{"Ferdig"},
 	}, &contract.Quest{})
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("retire %d %v", statusOf(resp), err)
 	}
 	fake.mu.Lock()
-	if len(fake.sagas) != 3 || fake.sagas[2].Kind != discord.KindRetired {
+	if len(fake.sagas) != 4 || fake.sagas[3].Kind != discord.KindRetired {
 		t.Fatalf("retire notices %+v", fake.sagas)
 	}
 	fake.mu.Unlock()
@@ -204,7 +204,7 @@ func TestDiscordFailureDoesNotFailTheAPI(t *testing.T) {
 	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Vakt", "description": "Stå.",
 		"objectives": []map[string]any{{"id": "a", "type": "interact", "text": "Møt", "npc": "Vakt"}},
-		"reward":     "Ære", "created_by": "Magnus#2231", "assigned_character_ids": []string{magni.ID},
+		"created_by": "Magnus#2231", "assigned_character_ids": []string{magni.ID},
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated || quest.ID == "" {
 		t.Fatalf("create still succeeds: %d %+v %v", statusOf(resp), quest, err)
@@ -217,7 +217,7 @@ func TestDiscordFailureDoesNotFailTheAPI(t *testing.T) {
 	if err != nil || resp.StatusCode != http.StatusOK || !done.Completed || done.DiscordPosted {
 		t.Fatalf("complete %+v status %d err %v", done, statusOf(resp), err)
 	}
-	if done.CharacterClass != "Paladin" || done.CharacterLevel != 12 || done.Reward != "Ære" {
+	if done.CharacterClass != "Paladin" || done.CharacterLevel != 12 {
 		t.Fatalf("echo %+v", done)
 	}
 }
@@ -274,7 +274,7 @@ func TestDiscordQueueDoesNotBlockTheRequest(t *testing.T) {
 	resp, err := admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Køtest", "description": "Kort tekst.",
 		"objectives": []map[string]any{{"id": "a", "type": "interact", "text": "Møt opp", "npc": "Vakt"}},
-		"reward":     "Ære", "min_level": 10, "created_by": "Magnus#2231",
+		"min_level":  10, "created_by": "Magnus#2231",
 		"assigned_character_ids": []string{magni.ID},
 		"image_base64":           base64.StdEncoding.EncodeToString(tinyPNG(t)),
 	}, &quest)

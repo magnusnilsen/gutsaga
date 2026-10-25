@@ -116,7 +116,6 @@ Create a saga owned by you. Body:
   ],
   "objectives_ordered": false,
   "when": { "clock": "local", "start": "22:00", "end": "02:00" },
-  "reward": "",
   "min_level": 1,
   "party": false,
   "active": true,
@@ -145,7 +144,7 @@ Your saga plus version history.
 
 ### `PATCH /v1/sagas/{id}`
 
-Update fields (same shape as create, all optional). Only the owner may patch. Cannot change `created_by`.
+Update fields (same shape as create, all optional). Only the owner may patch. Cannot change `created_by`. Every update requires `changes`: a non-empty list of short lines. That bumps the saga version and is posted to Discord. A cover-only image upload does not.
 
 ### Cover image
 

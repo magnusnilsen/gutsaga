@@ -191,7 +191,6 @@ Admin (`POST`/`PATCH /v1/admin/sagas`) og spiller-API-et (`/v1/sagas`) tar samme
   "objectives": [
     {"id": "road", "type": "location", "text": "Stå på veien", "map_id": 37, "x": 0.456, "y": 0.477}
   ],
-  "reward": "",
   "min_level": 1,
   "party": true,
   "active": true,
@@ -264,7 +263,6 @@ Ny saga:
     "fields": [
       {"name": "Mål", "value": "1. Møt opp\n2. Hold ut"},
       {"name": "Minste nivå", "value": "10", "inline": true},
-      {"name": "Belønning", "value": "Ære", "inline": true},
       {"name": "Laget av", "value": "Magnus#2231", "inline": true},
       {"name": "Hvem", "value": "Parti — Magni (Paladin, nivå 12)"}
     ],
@@ -284,18 +282,9 @@ Fullføring:
   "content": "**Magni** fullførte en saga!",
   "embeds": [{
     "title": "Første vakt",
-    "description": "Magni, Paladin på nivå 12, fullførte sagaen.",
+    "description": "✓ Møt opp\n✓ Hold ut\n\nDwarf · Paladin · Level 12",
     "color": 3908957,
-    "fields": [
-      {"name": "Karakter", "value": "Magni", "inline": true},
-      {"name": "Klasse", "value": "Paladin", "inline": true},
-      {"name": "Nivå", "value": "12", "inline": true},
-      {"name": "Versjon", "value": "3", "inline": true},
-      {"name": "Belønning", "value": "Ære", "inline": true}
-    ],
-    "timestamp": "2026-10-24T18:30:00Z",
-    "image": {"url": "attachment://screenshot.png"},
-    "footer": {"text": "GutSaga"}
+    "image": {"url": "attachment://screenshot.png"}
   }],
   "allowed_mentions": {"parse": []}
 }
@@ -342,7 +331,7 @@ Milestolpe:
   "username": "GutSaga",
   "content": "**Magni** nådde et nytt nivå.",
   "embeds": [{
-    "title": "Nivå 20",
+    "title": "Level 20",
     "description": "Magni · Paladin",
     "color": 13666602,
     "timestamp": "2026-10-24T08:00:00Z",

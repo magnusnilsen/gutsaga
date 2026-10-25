@@ -55,7 +55,7 @@ func (s *Server) announceCreated(ctx context.Context, q contract.Quest, flag *bo
 
 // announceEdited posts an update or retirement. actor is a short display name
 // (e.g. "Magnus"); empty falls back to the quest's created_by BattleTag name.
-func (s *Server) announceEdited(ctx context.Context, before, after contract.Quest, flag *bool, actor string) {
+func (s *Server) announceEdited(ctx context.Context, before, after contract.Quest, flag *bool, actor string, changes []string) {
 	if before.ID == "" || after.ID == "" || !announceUpdate(flag) || s.discord == nil {
 		return
 	}
@@ -63,13 +63,15 @@ func (s *Server) announceEdited(ctx context.Context, before, after contract.Ques
 	switch {
 	case before.Active && !after.Active:
 		kind = discord.KindRetired
-	case after.Active && after.Version > before.Version && significantQuestChange(before, after):
+	case after.Active && after.Version > before.Version:
 		kind = discord.KindUpdated
 	default:
 		return
 	}
+	notice := sagaNotice(ctx, s.store, kind, after, actor, nil, "")
+	notice.Changes = changes
 	s.postDiscord(ctx, func(ctx context.Context, n Notifier) (discord.Message, error) {
-		return n.PostSaga(ctx, sagaNotice(ctx, s.store, kind, after, actor, nil, ""))
+		return n.PostSaga(ctx, notice)
 	})
 }
 
@@ -152,8 +154,7 @@ func announceUpdate(flag *bool) bool {
 	return flag == nil || *flag
 }
 
-// significantQuestChange is a text, goal, reward, level, or party change.
-// Assignment-only edits stay quiet even though they bump the version.
+// significantQuestChange is a text, goal, level, or party change.
 func significantQuestChange(before, after contract.Quest) bool {
 	return questContentKey(before) != questContentKey(after)
 }
@@ -164,12 +165,11 @@ func questContentKey(q contract.Quest) string {
 		Description string               `json:"description"`
 		Objectives  []contract.Objective `json:"objectives"`
 		Ordered     bool                 `json:"ordered"`
-		Reward      string               `json:"reward"`
 		MinLevel    *int                 `json:"min_level"`
 		Party       bool                 `json:"party"`
 	}{
 		Title: q.Title, Description: q.Description, Objectives: q.Objectives,
-		Ordered: q.ObjectivesOrdered, Reward: q.Reward, MinLevel: q.MinLevel, Party: q.PartyQuest,
+		Ordered: q.ObjectivesOrdered, MinLevel: q.MinLevel, Party: q.PartyQuest,
 	})
 	return string(raw)
 }

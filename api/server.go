@@ -182,16 +182,21 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 				when = t.UTC()
 			}
 		}
+		objLines := make([]discord.ObjectiveLine, 0, len(res.Objectives))
+		for _, o := range res.Objectives {
+			objLines = append(objLines, discord.ObjectiveLine{Text: o.Text})
+		}
 		msg, ok := s.postDiscord(r.Context(), func(ctx context.Context, n Notifier) (discord.Message, error) {
 			return n.PostCompletion(ctx, discord.Completion{
-				ProgressID:  res.ProgressID,
-				Character:   res.CharacterName,
+				ProgressID: res.ProgressID,
+				Character:  res.CharacterName,
 				// Only values stamped on this completion (from the game) — never the
 				// characters row, which may be stale on Classic Era.
 				Race:        strings.TrimSpace(in.Race),
 				Class:       strings.TrimSpace(in.Class),
 				Level:       in.Level,
 				Title:       res.QuestTitle,
+				Objectives:  objLines,
 				When:        when,
 				Image:       image,
 				ContentType: contentType,
@@ -529,7 +534,7 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		if actor == "" && body.EditorEmail != nil {
 			actor = strings.TrimSpace(*body.EditorEmail)
 		}
-		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor)
+		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor, patch.Changes)
 	}
 	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
 }
@@ -705,7 +710,6 @@ type questBody struct {
 	ObjectivesOrdered    *bool                `json:"objectives_ordered"`
 	When                 *contract.TimeWindow `json:"when"`
 	Group                *contract.GroupRule  `json:"group"`
-	Reward               string               `json:"reward"`
 	MinLevel             *int                 `json:"min_level"`
 	PartyQuest           bool                 `json:"party"`
 	Active               *bool                `json:"active"`
@@ -726,7 +730,7 @@ type questPatchBody struct {
 	ObjectivesOrdered *bool                 `json:"objectives_ordered"`
 	When              json.RawMessage       `json:"when"`
 	Group             json.RawMessage       `json:"group"`
-	Reward            *string               `json:"reward"`
+	Changes           []string              `json:"changes"`
 	MinLevel          json.RawMessage       `json:"min_level"`
 	PartyQuest        *bool                 `json:"party"`
 	Active            *bool                 `json:"active"`
@@ -755,8 +759,8 @@ func (s *Server) applyAdminQuestImage(ctx context.Context, q contract.Quest, ima
 
 func questPatchHasFields(p QuestPatch) bool {
 	return p.Title != nil || p.Description != nil || p.Objectives != nil || p.ObjectivesOrdered != nil ||
-		p.Reward != nil || p.MinLevelSet || p.PartyQuest != nil || p.Active != nil || p.CreatedBy != nil ||
-		p.AssignedCharacterIDs != nil || p.RequiresSet || p.ChainSet
+		p.MinLevelSet || p.PartyQuest != nil || p.Active != nil || p.CreatedBy != nil ||
+		p.AssignedCharacterIDs != nil || p.RequiresSet || p.ChainSet || len(p.Changes) > 0
 }
 
 // readQuestCreate accepts JSON or multipart. Multipart may include optional file field "image".
@@ -770,7 +774,6 @@ func readQuestCreate(w http.ResponseWriter, r *http.Request) (questBody, []byte,
 		}
 		body.Title = r.FormValue("title")
 		body.Description = r.FormValue("description")
-		body.Reward = r.FormValue("reward")
 		body.CreatedBy = r.FormValue("created_by")
 		body.PartyQuest = formBool(r.FormValue("party"))
 		if v := r.FormValue("min_level"); v != "" {
@@ -831,8 +834,10 @@ func readQuestPatch(w http.ResponseWriter, r *http.Request) (questPatchBody, []b
 		if v, ok := r.MultipartForm.Value["description"]; ok {
 			body.Description = &v[0]
 		}
-		if v, ok := r.MultipartForm.Value["reward"]; ok {
-			body.Reward = &v[0]
+		if v, ok := r.MultipartForm.Value["changes"]; ok && strings.TrimSpace(v[0]) != "" {
+			if err := json.Unmarshal([]byte(v[0]), &body.Changes); err != nil {
+				return body, nil, "", errors.New("changes")
+			}
 		}
 		if v, ok := r.MultipartForm.Value["created_by"]; ok {
 			body.CreatedBy = &v[0]

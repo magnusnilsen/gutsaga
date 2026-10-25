@@ -26,7 +26,6 @@ func seedQuests() []QuestInput {
 			Title: "En kveld i Goldshire",
 			Description: "Gå til Lion's Pride Inn i hjertet av Goldshire.\n\n" +
 				"Snakk med verten Farley om dagens rykter, og sørg for at du har kildevann i sekken før du setter deg ned ved peisen.",
-			Reward:     "Et notat i eventyrloggen",
 			PartyQuest: true,
 			CreatedBy:  "GutSaga#0000",
 			Objectives: []contract.Objective{
@@ -39,7 +38,6 @@ func seedQuests() []QuestInput {
 			Title: "Veien fra Northshire",
 			Description: "Nord for Goldshire ligger veien ut av Northshire Abbey.\n\n" +
 				"Stå der Falkhaan Isenstrider pleier å stå, der skogen åpner seg mot Elwynn.",
-			Reward:     "Oversikt over veien",
 			PartyQuest: true,
 			CreatedBy:  "GutSaga#0000",
 			Objectives: []contract.Objective{
@@ -50,7 +48,6 @@ func seedQuests() []QuestInput {
 			Title: "Melk til vaktlaget",
 			Description: "Vaktene i Goldshire trenger noe kaldt å drikke.\n\n" +
 				"Ice Cold Milk selges av Innkeeper Farley — kjøp én og møt opp på plassen foran innstedet.",
-			Reward:     "Kald melk",
 			PartyQuest: true,
 			CreatedBy:  "GutSaga#0000",
 			Objectives: []contract.Objective{
@@ -84,10 +81,10 @@ func seed(ctx context.Context, store *Store) (created, updated int, err error) {
 		if _, err = store.UpdateQuest(ctx, id, QuestPatch{
 			Description: &q.Description,
 			Objectives:  &objectives,
-			Reward:      &q.Reward,
 			PartyQuest:  &q.PartyQuest,
 			Active:      &active,
 			CreatedBy:   &q.CreatedBy,
+			Changes:     []string{"Oppdatert fra seed"},
 		}); err != nil {
 			return created, updated, fmt.Errorf("%s: %w", q.Title, err)
 		}

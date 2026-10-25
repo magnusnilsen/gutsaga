@@ -45,8 +45,8 @@ func TestSagaChains(t *testing.T) {
 	var first contract.Quest
 	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Kapittel 1", "description": "Start",
-		"objectives":  []map[string]any{chainObjective("talk", "Snakk med Farley")},
-		"party": true, "created_by": "Magnus#2231",
+		"objectives": []map[string]any{chainObjective("talk", "Snakk med Farley")},
+		"party":      true, "created_by": "Magnus#2231",
 		"chain": map[string]any{"id": "goldshire", "name": "Goldshire", "order": 1},
 	}, &first)
 	if err != nil || resp.StatusCode != http.StatusCreated {
@@ -59,10 +59,10 @@ func TestSagaChains(t *testing.T) {
 	var unknown contract.ErrorBody
 	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Ukjent", "description": "x",
-		"objectives":  []map[string]any{chainObjective("talk", "Snakk")},
-		"party": true,
-		"created_by":  "Magnus#2231",
-		"requires":    []string{"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
+		"objectives": []map[string]any{chainObjective("talk", "Snakk")},
+		"party":      true,
+		"created_by": "Magnus#2231",
+		"requires":   []string{"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
 	}, &unknown)
 	if err != nil || resp.StatusCode != http.StatusBadRequest || !strings.Contains(unknown.Message, "unknown prerequisite") {
 		t.Fatalf("unknown prereq %d %+v %v", statusOf(resp), unknown, err)
@@ -71,8 +71,8 @@ func TestSagaChains(t *testing.T) {
 	var second contract.Quest
 	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Kapittel 2", "description": "Videre",
-		"objectives":  []map[string]any{chainObjective("road", "Stå på veien")},
-		"party": true, "created_by": "Magnus#2231",
+		"objectives": []map[string]any{chainObjective("road", "Stå på veien")},
+		"party":      true, "created_by": "Magnus#2231",
 		"requires": []string{first.ID},
 		"chain":    map[string]any{"id": "goldshire", "name": "Goldshire", "order": 2},
 	}, &second)
@@ -85,8 +85,8 @@ func TestSagaChains(t *testing.T) {
 
 	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Kapittel 2 igjen", "description": "x",
-		"objectives":  []map[string]any{chainObjective("talk", "Snakk")},
-		"party": true, "created_by": "Magnus#2231",
+		"objectives": []map[string]any{chainObjective("talk", "Snakk")},
+		"party":      true, "created_by": "Magnus#2231",
 		"chain": map[string]any{"id": "goldshire", "name": "Goldshire", "order": 2},
 	}, &unknown)
 	if err != nil || resp.StatusCode != http.StatusBadRequest || !strings.Contains(unknown.Message, "chain order") {
@@ -94,7 +94,7 @@ func TestSagaChains(t *testing.T) {
 	}
 
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+first.ID, map[string]any{
-		"requires": []string{second.ID},
+		"requires": []string{second.ID}, "changes": []string{"Krever neste"},
 	}, &unknown)
 	if err != nil || resp.StatusCode != http.StatusBadRequest || !strings.Contains(unknown.Message, "cycle") {
 		t.Fatalf("cycle %d %+v %v", statusOf(resp), unknown, err)
@@ -106,7 +106,7 @@ func TestSagaChains(t *testing.T) {
 	}
 
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+second.ID, map[string]any{
-		"requires": []map[string]any{{"id": second.ID}},
+		"requires": []map[string]any{{"id": second.ID}}, "changes": []string{"Seg selv"},
 	}, &unknown)
 	if err != nil || resp.StatusCode != http.StatusBadRequest || !strings.Contains(unknown.Message, "itself") {
 		t.Fatalf("self %d %+v %v", statusOf(resp), unknown, err)
@@ -149,7 +149,7 @@ func TestSagaChains(t *testing.T) {
 
 	var edited contract.Quest
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+first.ID, map[string]any{
-		"title": "Kapittel 1, redigert",
+		"title": "Kapittel 1, redigert", "changes": []string{"Nytt navn"},
 	}, &edited)
 	if err != nil || edited.Version != 2 {
 		t.Fatalf("edit %+v %v", edited, err)
@@ -189,6 +189,7 @@ func TestSagaChains(t *testing.T) {
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+second.ID, map[string]any{
 		"requires": []string{},
 		"chain":    nil,
+		"changes":  []string{"Fjernet kjede"},
 	}, &cleared)
 	if err != nil || resp.StatusCode != 200 || cleared.Chain != nil || len(cleared.Requires) != 0 {
 		t.Fatalf("clear %+v %d %v", cleared, statusOf(resp), err)

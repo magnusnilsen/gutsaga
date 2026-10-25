@@ -77,6 +77,7 @@ type ObjectiveLine struct {
 
 // Completion is a character finishing a saga.
 // Race, Class, and Level are only shown when all three are set (fresh from the game).
+// Objectives are listed with checkmarks when present (the version that was completed).
 type Completion struct {
 	ProgressID  string
 	Character   string
@@ -84,6 +85,7 @@ type Completion struct {
 	Class       string
 	Level       int
 	Title       string
+	Objectives  []ObjectiveLine
 	When        time.Time
 	Image       []byte
 	ContentType string
@@ -99,6 +101,7 @@ type SagaNotice struct {
 	// UpdatedBy is who changed the saga (display name). Used for update/retire lines.
 	UpdatedBy   string
 	CreatedBy   string
+	Changes     []string
 	Version     int
 	When        time.Time
 	Image       []byte
@@ -428,15 +431,54 @@ func completionPayload(n Completion) ([]byte, *attach, error) {
 	return raw, file, err
 }
 
-// completionDetail is race/class/level only when all three are fresh from the game.
-// Otherwise the embed stays title (+ screenshot) only — no character table.
+// completionDetail is completed goals (checkmarks) plus race/class/level when fresh.
 func completionDetail(n Completion) string {
+	var b strings.Builder
+	goals := CompletedObjectivesSummary(n.Objectives)
+	if goals != "" {
+		b.WriteString(goals)
+	}
 	race := strings.TrimSpace(n.Race)
-	className := strings.TrimSpace(n.Class)
-	if race == "" || className == "" || n.Level < 1 {
+	className := DisplayClass(n.Class)
+	if race != "" && className != "" && n.Level >= 1 {
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(escapeMD(race))
+		b.WriteString(" · ")
+		b.WriteString(escapeMD(className))
+		b.WriteString(" · Level ")
+		b.WriteString(strconv.Itoa(n.Level))
+	}
+	return clipRunes(b.String(), 4096)
+}
+
+// CompletedObjectivesSummary lists finished goals with checkmarks.
+func CompletedObjectivesSummary(lines []ObjectiveLine) string {
+	if len(lines) == 0 {
 		return ""
 	}
-	return escapeMD(race) + " · " + escapeMD(className) + " · nivå " + strconv.Itoa(n.Level)
+	const maxLines = 8
+	show := len(lines)
+	if show > maxLines {
+		show = maxLines
+	}
+	var b strings.Builder
+	for i := 0; i < show; i++ {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		text := strings.TrimSpace(lines[i].Text)
+		if text == "" {
+			text = "Mål"
+		}
+		b.WriteString("✓ ")
+		b.WriteString(escapeMD(clipRunes(text, 200)))
+	}
+	if len(lines) > show {
+		fmt.Fprintf(&b, "\n… og %d mål til", len(lines)-show)
+	}
+	return clipRunes(b.String(), 3500)
 }
 
 func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
@@ -467,7 +509,7 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 		}
 		embed = dcEmbed{
 			Title:       clipRunes(title, 256),
-			Description: "Ny versjon " + strconv.Itoa(version) + ".",
+			Description: updateDescription(version, n.Changes),
 			Color:       ColorUpdate,
 		}
 	case KindRetired:
@@ -493,6 +535,20 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 	return raw, file, err
 }
 
+func updateDescription(version int, changes []string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Ny versjon %d.", version)
+	for _, line := range changes {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		b.WriteString("\n• ")
+		b.WriteString(escapeMD(clipRunes(line, 200)))
+	}
+	return clipRunes(b.String(), 4096)
+}
+
 // announcedDescription matches the Smia get_saga stack: goals, Beskrivelse, body.
 func announcedDescription(n SagaNotice) string {
 	goals := ObjectivesSummary(n.Objectives, n.Ordered)
@@ -516,11 +572,11 @@ func levelPayload(n LevelNotice) ([]byte, error) {
 		name = "En karakter"
 	}
 	desc := escapeMD(name)
-	if className := strings.TrimSpace(n.Class); className != "" {
+	if className := DisplayClass(n.Class); className != "" {
 		desc = escapeMD(name) + " · " + escapeMD(className)
 	}
 	embed := dcEmbed{
-		Title:       "Nivå " + strconv.Itoa(n.Level),
+		Title:       "Level " + strconv.Itoa(n.Level),
 		Description: desc,
 		Color:       ColorLevel,
 	}

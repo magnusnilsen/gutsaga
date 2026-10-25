@@ -93,7 +93,7 @@ func snapshot(sync contract.SyncResponse) map[string]questSnap {
 			}
 			a = &acc{chars: map[string]struct{}{}}
 			a.snap.title = title
-			a.snap.body = e.Description + "\x1e" + e.Reward + "\x1e" + objectivesSig(e.Objectives)
+			a.snap.body = e.Description + "\x1e" + objectivesSig(e.Objectives)
 			raw[e.QuestID] = a
 		}
 		if e.QuestVersion > a.snap.version {
