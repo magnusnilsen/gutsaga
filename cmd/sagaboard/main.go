@@ -86,13 +86,13 @@ func parseArgs(args []string) (options, string, error) {
 		}
 	}
 	if opts.APIURL == "" {
-		opts.APIURL = os.Getenv("GUTSAGA_API_URL")
+		opts.APIURL = os.Getenv("SAGABOARD_API_URL")
 	}
 	if opts.Client == "" {
-		opts.Client = os.Getenv("GUTSAGA_CLIENT")
+		opts.Client = os.Getenv("SAGABOARD_CLIENT")
 	}
 	if opts.WowPath == "" {
-		opts.WowPath = os.Getenv("GUTSAGA_WOW_PATH")
+		opts.WowPath = os.Getenv("SAGABOARD_WOW_PATH")
 	}
 	cmd := "run"
 	if len(positionals) > 0 {
@@ -124,7 +124,7 @@ func usage() {
   sagaboard setup                 optional folder, language, and update repo
   sagaboard --headless            run without a tray icon
 
-Environment: GUTSAGA_API_URL, GUTSAGA_CLIENT (forever|retail|classic_era|classic), GUTSAGA_WOW_PATH, GUTSAGA_DEV_TOKEN.
+Environment: SAGABOARD_API_URL, SAGABOARD_CLIENT (forever|retail|classic_era|classic), SAGABOARD_WOW_PATH, SAGABOARD_DEV_TOKEN.
 Settings live in config.json. The program reads the chat log. It never sends keystrokes to the game.
 `)
 }
@@ -152,7 +152,7 @@ func loadOrSetup(log *slog.Logger, opts options) (config.Config, int) {
 	}
 	cfg = applyOptions(cfg, opts)
 	if strings.TrimSpace(cfg.APIBaseURL) == "" {
-		fmt.Fprintln(os.Stderr, "--api-url or GUTSAGA_API_URL is required")
+		fmt.Fprintln(os.Stderr, "--api-url or SAGABOARD_API_URL is required")
 		return cfg, 1
 	}
 	if err := config.Validate(cfg); err != nil {

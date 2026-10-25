@@ -48,7 +48,7 @@ func (e *HTTPError) Permanent() bool {
 	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusTooManyRequests && e.Status != http.StatusRequestTimeout
 }
 
-// DevLogin exchanges GUTSAGA_DEV_TOKEN for a gss_ session. It does not call Battle.net.
+// DevLogin exchanges SAGABOARD_DEV_TOKEN for a gss_ session. It does not call Battle.net.
 func (c *Client) DevLogin(ctx context.Context, devToken string) (contract.SessionResponse, error) {
 	var out contract.SessionResponse
 	err := c.doToken(ctx, devToken, http.MethodPost, "/v1/auth/dev", []byte(`{}`), "application/json", &out)

@@ -12,7 +12,7 @@ import (
 )
 
 // Install copies the addon into Interface/AddOns/SagaBoard.
-// When GUTSAGA_ADDON_SRC is set to a SagaBoard folder (or its parent that
+// When SAGABOARD_ADDON_SRC is set to a SagaBoard folder (or its parent that
 // contains SagaBoard/), that tree is used instead of the embedded copy — so
 // local go run picks up lua edits without rebuilding the binary.
 // Each flavor TOC keeps its own interface number. SagaBoard.toc is the fallback
@@ -31,7 +31,7 @@ func Install(wowDir, mode string) error {
 }
 
 func addonSrc() string {
-	src := strings.TrimSpace(os.Getenv("GUTSAGA_ADDON_SRC"))
+	src := strings.TrimSpace(os.Getenv("SAGABOARD_ADDON_SRC"))
 	if src == "" {
 		return ""
 	}

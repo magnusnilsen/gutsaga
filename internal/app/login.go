@@ -46,7 +46,7 @@ func (a *App) LoggedIn() bool {
 	return a.Config.Token() != ""
 }
 
-// Login uses GUTSAGA_DEV_TOKEN when it is set. Otherwise it opens the browser
+// Login uses SAGABOARD_DEV_TOKEN when it is set. Otherwise it opens the browser
 // on the API Battle.net start URL and polls until the API stores a session.
 func (a *App) Login(ctx context.Context) error {
 	a.loginMu.Lock()
@@ -54,7 +54,7 @@ func (a *App) Login(ctx context.Context) error {
 	a.mu.Lock()
 	a.signedOut = false
 	a.mu.Unlock()
-	if dev := strings.TrimSpace(os.Getenv("GUTSAGA_DEV_TOKEN")); dev != "" {
+	if dev := strings.TrimSpace(os.Getenv("SAGABOARD_DEV_TOKEN")); dev != "" {
 		out, err := a.Client.DevLogin(ctx, dev)
 		if err != nil {
 			return err

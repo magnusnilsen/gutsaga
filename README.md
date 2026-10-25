@@ -6,7 +6,7 @@ API paths stay `/v1/sagas`. A saga is still a saga. The JSON field `group` on a 
 
 ## Try it locally
 
-You need Docker, Go, and a WoW client. Postgres and the API come from Compose. Login in development uses `GUTSAGA_DEV_TOKEN` so you do not need a Battle.net app for the first run.
+You need Docker, Go, and a WoW client. Postgres and the API come from Compose. Login in development uses `SAGABOARD_DEV_TOKEN` so you do not need a Battle.net app for the first run.
 
 ```bash
 make dev
@@ -15,15 +15,15 @@ make dev
 That starts Postgres and the API, waits for `/healthz`, and seeds the Elwynn tutorial sagas. In another terminal:
 
 ```bash
-GUTSAGA_DEV_TOKEN=dev-token GUTSAGA_ADDON_SRC=addon/SagaBoard \
+SAGABOARD_DEV_TOKEN=dev-token SAGABOARD_ADDON_SRC=addon/SagaBoard \
   go run ./cmd/sagaboard --api-url http://localhost:8080 --client classic_era
 ```
 
-The API container must have the same `GUTSAGA_DEV_TOKEN`. `make dev` sets `dev-token` for local use only.
+The API container must have the same `SAGABOARD_DEV_TOKEN`. `make dev` sets `dev-token` for local use only.
 
 The companion installs `Interface/AddOns/SagaBoard`. In game, `/reload`, then `/sagaboard` or `/sb`.
 
-If the database already has sagas and no group, set `GUTSAGA_BOOTSTRAP_GROUP=slug:Name` before the API starts. See [docs/self-hosting.md](docs/self-hosting.md).
+If the database already has sagas and no group, set `SAGABOARD_BOOTSTRAP_GROUP=slug:Name` before the API starts. See [docs/self-hosting.md](docs/self-hosting.md).
 
 ## What you set before a real login
 

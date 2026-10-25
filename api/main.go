@@ -56,28 +56,28 @@ Environment:
   IMAGE_URL_SECRET             HMAC secret for signed cover URLs (openssl rand -hex 32)
   IMAGE_URL_TTL                signed URL lifetime (Go duration, default 1h)
   PORT                         listen port (default 8080)
-  GUTSAGA_DEV_TOKEN            dev/CI login bypass. Not a stand-in for Battle.net.
-  GUTSAGA_BOOTSTRAP_GROUP      slug:Name, required only when sagas have no group yet
-  GUTSAGA_OWNER_BATTLETAG      owner of the bootstrap group (else the oldest BattleTag)
+  SAGABOARD_DEV_TOKEN            dev/CI login bypass. Not a stand-in for Battle.net.
+  SAGABOARD_BOOTSTRAP_GROUP      slug:Name, required only when sagas have no group yet
+  SAGABOARD_OWNER_BATTLETAG      owner of the bootstrap group (else the oldest BattleTag)
   DISCORD_WEBHOOK_URL          copied once onto the bootstrap group when its webhook is empty
-  GUTSAGA_ALLOW_DEV_SECRETS    set to 1 for local docker-compose only
+  SAGABOARD_ALLOW_DEV_SECRETS    set to 1 for local docker-compose only
 `)
 }
 
 // docker-compose.yml ships weak local defaults. Refuse them unless the
-// operator explicitly opts in — Railway never sets GUTSAGA_ALLOW_DEV_SECRETS.
+// operator explicitly opts in — Railway never sets SAGABOARD_ALLOW_DEV_SECRETS.
 var knownDevSecrets = map[string]string{
 	"ADMIN_TOKEN":      "dev-admin-token",
 	"IMAGE_URL_SECRET": "dev-image-url-secret",
 }
 
 func rejectDevSecrets() error {
-	if os.Getenv("GUTSAGA_ALLOW_DEV_SECRETS") == "1" {
+	if os.Getenv("SAGABOARD_ALLOW_DEV_SECRETS") == "1" {
 		return nil
 	}
 	for key, weak := range knownDevSecrets {
 		if strings.TrimSpace(os.Getenv(key)) == weak {
-			return fmt.Errorf("%s is the docker-compose default %q; set a real secret (openssl rand -hex 32) or GUTSAGA_ALLOW_DEV_SECRETS=1 for local only", key, weak)
+			return fmt.Errorf("%s is the docker-compose default %q; set a real secret (openssl rand -hex 32) or SAGABOARD_ALLOW_DEV_SECRETS=1 for local only", key, weak)
 		}
 	}
 	return nil
@@ -117,7 +117,7 @@ func serve(args []string) int {
 		return 1
 	}
 	store := NewStore(pool)
-	if err := store.Bootstrap(ctx, os.Getenv("GUTSAGA_BOOTSTRAP_GROUP"), os.Getenv("GUTSAGA_OWNER_BATTLETAG"), os.Getenv("DISCORD_WEBHOOK_URL")); err != nil {
+	if err := store.Bootstrap(ctx, os.Getenv("SAGABOARD_BOOTSTRAP_GROUP"), os.Getenv("SAGABOARD_OWNER_BATTLETAG"), os.Getenv("DISCORD_WEBHOOK_URL")); err != nil {
 		slog.Error("bootstrap", "err", err)
 		return 1
 	}
@@ -161,7 +161,7 @@ func serve(args []string) int {
 		imageURLTTL:      imageTTL,
 		discord:          notifier,
 		events:           hub,
-		devToken:         strings.TrimSpace(os.Getenv("GUTSAGA_DEV_TOKEN")),
+		devToken:         strings.TrimSpace(os.Getenv("SAGABOARD_DEV_TOKEN")),
 		bnetClientID:     strings.TrimSpace(os.Getenv("BNET_CLIENT_ID")),
 		bnetClientSecret: strings.TrimSpace(os.Getenv("BNET_CLIENT_SECRET")),
 		bnet:             newBnetFlow(),
@@ -215,7 +215,7 @@ func seedCmd() int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := store.Bootstrap(ctx, os.Getenv("GUTSAGA_BOOTSTRAP_GROUP"), os.Getenv("GUTSAGA_OWNER_BATTLETAG"), os.Getenv("DISCORD_WEBHOOK_URL")); err != nil {
+	if err := store.Bootstrap(ctx, os.Getenv("SAGABOARD_BOOTSTRAP_GROUP"), os.Getenv("SAGABOARD_OWNER_BATTLETAG"), os.Getenv("DISCORD_WEBHOOK_URL")); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

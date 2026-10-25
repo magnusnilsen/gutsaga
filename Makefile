@@ -9,7 +9,7 @@ dev:
 	@echo ""
 	@echo "API is up at $(API_URL)"
 	@echo "Start the companion against Classic Era:"
-	@echo "  GUTSAGA_DEV_TOKEN=dev-token GUTSAGA_ADDON_SRC=addon/SagaBoard go run ./cmd/sagaboard --api-url $(API_URL) --client classic_era"
+	@echo "  SAGABOARD_DEV_TOKEN=dev-token SAGABOARD_ADDON_SRC=addon/SagaBoard go run ./cmd/sagaboard --api-url $(API_URL) --client classic_era"
 
 wait:
 	@i=0; until curl -sf $(API_URL)/healthz >/dev/null; do \
@@ -19,7 +19,7 @@ wait:
 	done
 
 seed:
-	GUTSAGA_BOOTSTRAP_GROUP=tutorial:Tutorial DATABASE_URL="$(DATABASE_URL)" go run ./api seed
+	SAGABOARD_BOOTSTRAP_GROUP=tutorial:Tutorial DATABASE_URL="$(DATABASE_URL)" go run ./api seed
 
 down:
 	docker compose down

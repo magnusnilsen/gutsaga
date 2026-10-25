@@ -2,7 +2,7 @@
 
 Players sign in with Battle.net. The companion session is `gss_` and lasts 30 days. External clients use a personal token `gst_`. `ADMIN_TOKEN` is ops only.
 
-The module and many env vars still say `GUTSAGA_`. Paths stay `/v1/sagas`.
+The Go module path is still `github.com/magnusnilsen/gutsaga` until the public snapshot. Paths stay `/v1/sagas`.
 
 ## Login
 
@@ -14,7 +14,7 @@ The module and many env vars still say `GUTSAGA_`. Paths stay `/v1/sagas`.
 
 The redirect URI is `{PUBLIC_BASE_URL}/v1/auth/bnet/callback`. Each host registers its own Battle.net app.
 
-`POST /v1/auth/dev` with `Authorization: Bearer $GUTSAGA_DEV_TOKEN` issues a session without calling Blizzard. Dev and CI only.
+`POST /v1/auth/dev` with `Authorization: Bearer $SAGABOARD_DEV_TOKEN` issues a session without calling Blizzard. Dev and CI only.
 
 Login merges an existing player by `bnet_account_id`, else by BattleTag. No other key.
 
