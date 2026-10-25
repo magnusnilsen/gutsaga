@@ -8,7 +8,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 )
 
-// WriteLua renders GutSagaData.lua. The addon reads this file at load /reload.
+// WriteLua renders OurSagasData.lua. The addon reads this file at load /reload.
 func WriteLua(battletag, generatedAt string, entries []Entry) string {
 	return WriteLuaFile(battletag, generatedAt, entries, "", "")
 }
@@ -17,9 +17,9 @@ func WriteLua(battletag, generatedAt string, entries []Entry) string {
 // notice once, after /reload, when notice_id changes.
 func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, noticeID string) string {
 	var b strings.Builder
-	b.WriteString("-- Written by the SagaBoard companion. Do not edit by hand.\n")
+	b.WriteString("-- Written by the OurSagas companion. Do not edit by hand.\n")
 	b.WriteString("-- Type /reload to load new sagas.\n")
-	b.WriteString("SagaBoardData = {\n")
+	b.WriteString("OurSagasData = {\n")
 	b.WriteString("  version = 1,\n")
 	fmt.Fprintf(&b, "  battletag = %s,\n", luaString(battletag))
 	fmt.Fprintf(&b, "  generated_at = %s,\n", luaString(generatedAt))

@@ -57,7 +57,7 @@ func TestWebSocketURL(t *testing.T) {
 	if got := WebSocketURL("http://localhost:8080"); got != "ws://localhost:8080/v1/ws" {
 		t.Fatal(got)
 	}
-	if got := WebSocketURL("https://sagaboard.example.com/"); got != "wss://sagaboard.example.com/v1/ws" {
+	if got := WebSocketURL("https://oursagas.example.com/"); got != "wss://oursagas.example.com/v1/ws" {
 		t.Fatal(got)
 	}
 	if WebSocketURL("") != "" || WebSocketURL("ftp://x") != "" {

@@ -37,7 +37,7 @@ jobs:
       - name: Build API and Windows companion
         run: |
           CGO_ENABLED=0 go build -o /tmp/gutsaga-api ./api
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/sagaboard.exe ./cmd/sagaboard
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/oursagas.exe ./cmd/oursagas
       - name: luacheck
         run: |
           sudo apt-get update
@@ -70,17 +70,17 @@ jobs:
           - os: macos-latest
             goos: darwin
             goarch: arm64
-            asset: sagaboard-darwin-arm64
+            asset: oursagas-darwin-arm64
             cgo: "1"
           - os: macos-latest
             goos: darwin
             goarch: amd64
-            asset: sagaboard-darwin-amd64
+            asset: oursagas-darwin-amd64
             cgo: "1"
           - os: windows-latest
             goos: windows
             goarch: amd64
-            asset: sagaboard-windows-amd64.exe
+            asset: oursagas-windows-amd64.exe
             cgo: "0"
     steps:
       - uses: actions/checkout@v4
@@ -95,14 +95,14 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           VERSION: ${{ needs.version.outputs.version }}
           # Official builds bake the public API URL. Empty leaves --api-url required.
-          SAGABOARD_API_URL: ${{ vars.SAGABOARD_API_URL }}
+          OURSAGAS_API_URL: ${{ vars.OURSAGAS_API_URL }}
         run: |
           if [ "$GOOS" = "darwin" ] && [ "$GOARCH" = "amd64" ]; then
             export CC="clang -arch x86_64"
             export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
           fi
           mkdir -p dist
-          go build -trimpath -ldflags "-s -w -X github.com/magnusnilsen/gutsaga/internal/version.Version=${VERSION} -X github.com/magnusnilsen/gutsaga/internal/version.DefaultAPIBaseURL=${SAGABOARD_API_URL}" -o "dist/${{ matrix.asset }}" ./cmd/sagaboard
+          go build -trimpath -ldflags "-s -w -X github.com/magnusnilsen/gutsaga/internal/version.Version=${VERSION} -X github.com/magnusnilsen/gutsaga/internal/version.DefaultAPIBaseURL=${OURSAGAS_API_URL}" -o "dist/${{ matrix.asset }}" ./cmd/oursagas
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
@@ -121,7 +121,7 @@ jobs:
           merge-multiple: true
       - name: Package addon and checksums
         run: |
-          (cd addon && zip -r ../dist/SagaBoard-addon.zip SagaBoard)
+          (cd addon && zip -r ../dist/OurSagas-addon.zip OurSagas)
           cd dist
           sha256sum * > SHA256SUMS
       - name: Publish GitHub release
@@ -141,14 +141,14 @@ jobs:
             echo ""
             echo "## Last ned"
             echo ""
-            echo "- \`sagaboard-darwin-arm64\` and \`sagaboard-darwin-amd64\` (macOS)"
-            echo "- \`sagaboard-windows-amd64.exe\`"
-            echo "- \`SagaBoard-addon.zip\`"
+            echo "- \`oursagas-darwin-arm64\` and \`oursagas-darwin-amd64\` (macOS)"
+            echo "- \`oursagas-windows-amd64.exe\`"
+            echo "- \`OurSagas-addon.zip\`"
             echo "- \`SHA256SUMS\`"
             echo ""
             echo "The binaries are not signed."
           } >> notes.md
           gh release create "v${VERSION}" dist/* \
             --target "${GITHUB_SHA}" \
-            --title "SagaBoard v${VERSION}" \
+            --title "OurSagas v${VERSION}" \
             --notes-file notes.md

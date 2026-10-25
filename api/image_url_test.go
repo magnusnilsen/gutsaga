@@ -20,7 +20,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	srv := httptest.NewServer((&Server{
 		store:          NewStore(testPool),
 		adminToken:     "admin-test",
-		publicBaseURL:  "https://sagaboard.example.com",
+		publicBaseURL:  "https://oursagas.example.com",
 		imageURLSecret: secret,
 		imageURLTTL:    time.Hour,
 	}).Handler())
@@ -96,7 +96,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	if detail.ImageURL != "/v1/sagas/"+quest.ID+"/image" {
 		t.Fatalf("image_url %q", detail.ImageURL)
 	}
-	if !strings.HasPrefix(detail.ImageSignedURL, "https://sagaboard.example.com/v1/public/sagas/"+quest.ID+"/image?") {
+	if !strings.HasPrefix(detail.ImageSignedURL, "https://oursagas.example.com/v1/public/sagas/"+quest.ID+"/image?") {
 		t.Fatalf("signed url %q", detail.ImageSignedURL)
 	}
 	if !strings.Contains(detail.ImageSignedURL, "exp=") || !strings.Contains(detail.ImageSignedURL, "sig=") {
@@ -114,7 +114,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	for _, q := range listed.Quests {
 		if q.ID == quest.ID {
 			found = true
-			if q.ImageSignedURL != detail.ImageSignedURL && !strings.HasPrefix(q.ImageSignedURL, "https://sagaboard.example.com/v1/public/sagas/"+quest.ID+"/image?") {
+			if q.ImageSignedURL != detail.ImageSignedURL && !strings.HasPrefix(q.ImageSignedURL, "https://oursagas.example.com/v1/public/sagas/"+quest.ID+"/image?") {
 				t.Fatalf("list signed url %q", q.ImageSignedURL)
 			}
 		}
@@ -123,7 +123,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 		t.Fatal("quest missing from admin list")
 	}
 
-	signedPath := strings.TrimPrefix(detail.ImageSignedURL, "https://sagaboard.example.com")
+	signedPath := strings.TrimPrefix(detail.ImageSignedURL, "https://oursagas.example.com")
 	status, pubHdr, pubBody := rawGet(t, srv.Client(), srv.URL+signedPath, "")
 	if status != http.StatusOK || pubHdr.Get("Content-Type") != "image/png" || pubHdr.Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("public image %d type %q nosniff %q body %s", status, pubHdr.Get("Content-Type"), pubHdr.Get("X-Content-Type-Options"), pubBody)

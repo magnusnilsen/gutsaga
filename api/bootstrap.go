@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// ErrUnscopedSagas means quests have no group and SAGABOARD_BOOTSTRAP_GROUP is unset.
-var ErrUnscopedSagas = errors.New("sagas have no group_id and SAGABOARD_BOOTSTRAP_GROUP is unset (expected slug:Name)")
+// ErrUnscopedSagas means quests have no group and OURSAGAS_BOOTSTRAP_GROUP is unset.
+var ErrUnscopedSagas = errors.New("sagas have no group_id and OURSAGAS_BOOTSTRAP_GROUP is unset (expected slug:Name)")
 
 // Bootstrap attaches unscoped sagas to the group named by spec ("slug:Name").
 // A fresh database with no unscoped sagas does nothing, even when spec is set.
@@ -108,7 +108,7 @@ func splitBootstrap(spec string) (slug, name string, err error) {
 	slug = strings.ToLower(strings.TrimSpace(slug))
 	name = strings.TrimSpace(name)
 	if !ok || slug == "" || name == "" {
-		return "", "", fmt.Errorf("%w: SAGABOARD_BOOTSTRAP_GROUP must be slug:Name", ErrInvalid)
+		return "", "", fmt.Errorf("%w: OURSAGAS_BOOTSTRAP_GROUP must be slug:Name", ErrInvalid)
 	}
 	if err := validateSlug(slug); err != nil {
 		return "", "", err

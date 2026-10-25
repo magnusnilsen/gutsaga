@@ -23,7 +23,7 @@ func TestLoginUsesDevTokenBypass(t *testing.T) {
 		_, _ = w.Write([]byte(`{"token_type":"Bearer","session_token":"gss_test","expires_at":"2030-01-01T00:00:00Z","player":{"id":"p1","battletag":"Player#1234","display_name":"Player"}}`))
 	}))
 	defer srv.Close()
-	t.Setenv("SAGABOARD_DEV_TOKEN", "dev-secret")
+	t.Setenv("OURSAGAS_DEV_TOKEN", "dev-secret")
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 	a := &App{
@@ -40,7 +40,7 @@ func TestLoginUsesDevTokenBypass(t *testing.T) {
 	if a.Config.SessionToken != "gss_test" || a.Config.BattleTag != "Player#1234" {
 		t.Fatalf("session %+v", a.Config)
 	}
-	if os.Getenv("SAGABOARD_DEV_TOKEN") == "" {
+	if os.Getenv("OURSAGAS_DEV_TOKEN") == "" {
 		t.Fatal("dev token cleared")
 	}
 }

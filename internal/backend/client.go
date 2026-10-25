@@ -1,4 +1,4 @@
-// Package backend is the companion's client for the GutSaga API.
+// Package backend is the companion's client for the OurSagas API.
 package backend
 
 import (
@@ -48,7 +48,7 @@ func (e *HTTPError) Permanent() bool {
 	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusTooManyRequests && e.Status != http.StatusRequestTimeout
 }
 
-// DevLogin exchanges SAGABOARD_DEV_TOKEN for a gss_ session. It does not call Battle.net.
+// DevLogin exchanges OURSAGAS_DEV_TOKEN for a gss_ session. It does not call Battle.net.
 func (c *Client) DevLogin(ctx context.Context, devToken string) (contract.SessionResponse, error) {
 	var out contract.SessionResponse
 	err := c.doToken(ctx, devToken, http.MethodPost, "/v1/auth/dev", []byte(`{}`), "application/json", &out)
@@ -146,7 +146,7 @@ func (c *Client) SagaImage(ctx context.Context, questID string) (contentType str
 	if c.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
-	req.Header.Set("User-Agent", "SagaBoard")
+	req.Header.Set("User-Agent", "OurSagas")
 	resp, err := c.http().Do(req)
 	if err != nil {
 		return "", nil, err
@@ -242,7 +242,7 @@ func (c *Client) doToken(ctx context.Context, token, method, path string, body [
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	req.Header.Set("User-Agent", "SagaBoard")
+	req.Header.Set("User-Agent", "OurSagas")
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}

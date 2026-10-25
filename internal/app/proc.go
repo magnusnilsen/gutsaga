@@ -39,7 +39,7 @@ func installZip(wowDir string, body []byte) error {
 	}
 	for _, f := range r.File {
 		name := filepath.Base(f.Name)
-		if name == "" || name == "." || name == "SagaBoardData.lua" {
+		if name == "" || name == "." || name == "OurSagasData.lua" {
 			continue
 		}
 		if f.FileInfo().IsDir() {

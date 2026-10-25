@@ -947,5 +947,5 @@ function M.evaluate(objectives, state, saved, ordered, sagaWhen)
 end
 
 M.listed = listed
-SagaBoardObjectives = M
+OurSagasObjectives = M
 return M

@@ -1,4 +1,4 @@
-// Package config stores SagaBoard settings in the user config directory.
+// Package config stores OurSagas settings in the user config directory.
 package config
 
 import (
@@ -15,7 +15,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/wowpath"
 )
 
-// DefaultUpdateRepo is the public SagaBoard repo. Releases live there.
+// DefaultUpdateRepo is the public OurSagas repo. Releases live there.
 const DefaultUpdateRepo = "magnusnilsen/gutsaga"
 
 type Update struct {
@@ -51,7 +51,7 @@ type Config struct {
 	Update          Update `json:"update"`
 }
 
-// Token is the credential sent to the SagaBoard API. A session wins over a personal token stored in APIKey.
+// Token is the credential sent to the OurSagas API. A session wins over a personal token stored in APIKey.
 func (c Config) Token() string {
 	if strings.TrimSpace(c.SessionToken) != "" {
 		return strings.TrimSpace(c.SessionToken)
@@ -66,56 +66,62 @@ func Dir() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, "Library", "Application Support", "SagaBoard"), nil
+		return filepath.Join(home, "Library", "Application Support", "OurSagas"), nil
 	case "windows":
 		if app := os.Getenv("APPDATA"); app != "" {
-			return filepath.Join(app, "SagaBoard"), nil
+			return filepath.Join(app, "OurSagas"), nil
 		}
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, "AppData", "Roaming", "SagaBoard"), nil
+		return filepath.Join(home, "AppData", "Roaming", "OurSagas"), nil
 	default:
 		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-			return filepath.Join(xdg, "SagaBoard"), nil
+			return filepath.Join(xdg, "OurSagas"), nil
 		}
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, ".local", "share", "SagaBoard"), nil
+		return filepath.Join(home, ".local", "share", "OurSagas"), nil
 	}
 }
 
-// legacyDir is the GutSaga config directory copied once into SagaBoard.
-func legacyDir() (string, error) {
+// legacyDirs are older product config folders, preferred in order.
+// GutSaga was the original; SagaBoard was a short intermediate name.
+func legacyDirs() ([]string, error) {
+	var names []string
 	switch runtime.GOOS {
 	case "darwin":
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		return filepath.Join(home, "Library", "Application Support", "GutSaga"), nil
+		base := filepath.Join(home, "Library", "Application Support")
+		names = []string{filepath.Join(base, "GutSaga"), filepath.Join(base, "SagaBoard")}
 	case "windows":
-		if app := os.Getenv("APPDATA"); app != "" {
-			return filepath.Join(app, "GutSaga"), nil
+		base := os.Getenv("APPDATA")
+		if base == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return nil, err
+			}
+			base = filepath.Join(home, "AppData", "Roaming")
 		}
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(home, "AppData", "Roaming", "GutSaga"), nil
+		names = []string{filepath.Join(base, "GutSaga"), filepath.Join(base, "SagaBoard")}
 	default:
-		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-			return filepath.Join(xdg, "gutsaga"), nil
+		base := os.Getenv("XDG_DATA_HOME")
+		if base == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return nil, err
+			}
+			base = filepath.Join(home, ".local", "share")
 		}
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(home, ".local", "share", "gutsaga"), nil
+		names = []string{filepath.Join(base, "gutsaga"), filepath.Join(base, "SagaBoard")}
 	}
+	return names, nil
 }
 
 func dirEmpty(path string) bool {
@@ -123,7 +129,7 @@ func dirEmpty(path string) bool {
 	return err != nil || len(entries) == 0
 }
 
-// MigrateLegacy copies the old GutSaga config directory once when SagaBoard's directory is empty.
+// MigrateLegacy copies an older config directory once when OurSagas's directory is empty.
 func MigrateLegacy() error {
 	next, err := Dir()
 	if err != nil {
@@ -132,11 +138,18 @@ func MigrateLegacy() error {
 	if !dirEmpty(next) {
 		return nil
 	}
-	old, err := legacyDir()
+	olds, err := legacyDirs()
 	if err != nil {
 		return err
 	}
-	if st, err := os.Stat(filepath.Join(old, "config.json")); err != nil || st.IsDir() {
+	var old string
+	for _, cand := range olds {
+		if st, err := os.Stat(filepath.Join(cand, "config.json")); err == nil && !st.IsDir() {
+			old = cand
+			break
+		}
+	}
+	if old == "" {
 		return nil
 	}
 	if err := os.MkdirAll(next, 0o755); err != nil {

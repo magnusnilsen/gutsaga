@@ -18,7 +18,7 @@ function M.line(action, id)
     if action ~= "accept" and action ~= "decline" then
         return nil
     end
-    return "[SagaBoard] INVITE " .. action .. "|" .. id
+    return "[OurSagas] INVITE " .. action .. "|" .. id
 end
 
 function M.snooze(db, id, now)
@@ -72,5 +72,5 @@ function M.prompt(db, character, data, now)
     return nil
 end
 
-SagaBoardInvite = M
+OurSagasInvite = M
 return M

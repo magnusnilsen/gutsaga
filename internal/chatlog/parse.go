@@ -1,4 +1,4 @@
-// Package chatlog parses SagaBoard lines from WoWChatLog.txt.
+// Package chatlog parses OurSagas lines from WoWChatLog.txt.
 package chatlog
 
 import (
@@ -36,9 +36,9 @@ type Event struct {
 }
 
 func Parse(line string) (Event, bool) {
-	// Only the SagaBoard prefix. A channel echo can contain the prefix twice;
+	// Only the OurSagas prefix. A channel echo can contain the prefix twice;
 	// the machine verb is the one that counts. Older prefixes are ignored.
-	const marker = "[SagaBoard]"
+	const marker = "[OurSagas]"
 	rest := line
 	for {
 		i := strings.Index(rest, marker)

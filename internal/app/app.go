@@ -1,4 +1,4 @@
-// Package app runs the GutSaga companion: install the addon, sync quests, and
+// Package app runs the OurSagas companion: install the addon, sync quests, and
 // report completions from the chat log and SavedVariables. It never sends input
 // to the game.
 package app
@@ -296,7 +296,7 @@ func (a *App) pullSync(ctx context.Context) error {
 		}
 	}
 	body := syncdata.WriteSyncLua(sync.BattleTag, sync.GeneratedAt, entries, notice, noticeID, sync.Groups, sync.Invites, sync.Characters)
-	path := filepath.Join(addonDir, "SagaBoardData.lua")
+	path := filepath.Join(addonDir, "OurSagasData.lua")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -322,7 +322,7 @@ func (a *App) announce(desktop string) {
 	// Log only — Discord carries the player-facing alert. Notify is for tests.
 	a.Log.Info(desktop)
 	if a.Notify != nil {
-		a.Notify("SagaBoard", desktop)
+		a.Notify("OurSagas", desktop)
 	}
 }
 
@@ -426,7 +426,7 @@ func (a *App) pollChat() {
 
 // pollSavedVars enqueues completions the addon wrote locally. On Classic Era,
 // AddMessage lines never reach WoWChatLog.txt, so this is the reliable path.
-// It also applies /gutsaga reset requests queued in GutSagaDB.pending_resets.
+// It also applies /oursagas reset requests queued in OurSagasDB.pending_resets.
 func (a *App) pollSavedVars() {
 	if a.WowDir == "" {
 		return
@@ -462,7 +462,7 @@ func (a *App) pollSavedVars() {
 }
 
 // pollPendingResets deletes API progress for /gutsaga wipe|reset after /reload
-// wrote GutSagaDB.pending_resets. Without this, the next sync brings completed
+// wrote OurSagasDB.pending_resets. Without this, the next sync brings completed
 // status back and the local wipe looks broken.
 func (a *App) pollPendingResets() {
 	if a.Client == nil || a.Client.APIKey == "" {
@@ -757,7 +757,7 @@ func (a *App) ApplyUpdate() error {
 	if err := update.ReplaceExecutable(body); err != nil {
 		return err
 	}
-	a.Log.Info("starter GutSaga på nytt")
+	a.Log.Info("starter OurSagas på nytt")
 	restart()
 	return nil
 }

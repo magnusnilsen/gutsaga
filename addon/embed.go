@@ -1,7 +1,7 @@
-// Package addon embeds the SagaBoard addon so the companion can install it.
+// Package addon embeds the OurSagas addon so the companion can install it.
 package addon
 
 import "embed"
 
-//go:embed SagaBoard
+//go:embed OurSagas
 var Files embed.FS

@@ -32,7 +32,7 @@ func TestPostCompletionEmbed(t *testing.T) {
 			ContentType: "image/png",
 		})
 	})
-	if payload.Username != "SagaBoard" {
+	if payload.Username != "OurSagas" {
 		t.Fatalf("username %s", payload.Username)
 	}
 	if payload.Content != "**Magni** completed a saga!" {

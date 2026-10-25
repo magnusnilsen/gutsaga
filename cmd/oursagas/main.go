@@ -41,7 +41,7 @@ func main() {
 	case "sync":
 		code = syncOnce(opts)
 	case "version", "-version", "--version":
-		fmt.Println("SagaBoard", version.Version)
+		fmt.Println("OurSagas", version.Version)
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -86,13 +86,13 @@ func parseArgs(args []string) (options, string, error) {
 		}
 	}
 	if opts.APIURL == "" {
-		opts.APIURL = os.Getenv("SAGABOARD_API_URL")
+		opts.APIURL = os.Getenv("OURSAGAS_API_URL")
 	}
 	if opts.Client == "" {
-		opts.Client = os.Getenv("SAGABOARD_CLIENT")
+		opts.Client = os.Getenv("OURSAGAS_CLIENT")
 	}
 	if opts.WowPath == "" {
-		opts.WowPath = os.Getenv("SAGABOARD_WOW_PATH")
+		opts.WowPath = os.Getenv("OURSAGAS_WOW_PATH")
 	}
 	cmd := "run"
 	if len(positionals) > 0 {
@@ -113,18 +113,18 @@ func flagValue(a string, args []string, i *int) (string, error) {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `SagaBoard — a saga log for a World of Warcraft group
+	fmt.Fprintf(os.Stderr, `OurSagas — a saga log for a World of Warcraft group
 
-  sagaboard                       start, install the addon, log in with Battle.net
-  sagaboard --client retail       use _retail_
-  sagaboard --client classic_era  use _classic_era_
-  sagaboard --client classic      use _classic_
-  sagaboard --api-url http://localhost:8080
-  sagaboard sync                  fetch sagas once
-  sagaboard setup                 optional folder, language, and update repo
-  sagaboard --headless            run without a tray icon
+  oursagas                       start, install the addon, log in with Battle.net
+  oursagas --client retail       use _retail_
+  oursagas --client classic_era  use _classic_era_
+  oursagas --client classic      use _classic_
+  oursagas --api-url http://localhost:8080
+  oursagas sync                  fetch sagas once
+  oursagas setup                 optional folder, language, and update repo
+  oursagas --headless            run without a tray icon
 
-Environment: SAGABOARD_API_URL, SAGABOARD_CLIENT (forever|retail|classic_era|classic), SAGABOARD_WOW_PATH, SAGABOARD_DEV_TOKEN.
+Environment: OURSAGAS_API_URL, OURSAGAS_CLIENT (forever|retail|classic_era|classic), OURSAGAS_WOW_PATH, OURSAGAS_DEV_TOKEN.
 Settings live in config.json. The program reads the chat log. It never sends keystrokes to the game.
 `)
 }
@@ -152,7 +152,7 @@ func loadOrSetup(log *slog.Logger, opts options) (config.Config, int) {
 	}
 	cfg = applyOptions(cfg, opts)
 	if strings.TrimSpace(cfg.APIBaseURL) == "" {
-		fmt.Fprintln(os.Stderr, "--api-url or SAGABOARD_API_URL is required")
+		fmt.Fprintln(os.Stderr, "--api-url or OURSAGAS_API_URL is required")
 		return cfg, 1
 	}
 	if err := config.Validate(cfg); err != nil {
@@ -224,7 +224,7 @@ func run(opts options) int {
 		if trayMenu != nil {
 			refreshUpdate(trayMenu, application, log)
 		}
-		_ = notify.Show("GutSaga", "Ny versjon "+tag+" — start på nytt for å oppdatere")
+		_ = notify.Show("OurSagas", "Ny versjon "+tag+" — start på nytt for å oppdatere")
 	}
 	if isTerminal(os.Stdin) {
 		application.Prompt = func() (string, error) {
@@ -238,7 +238,7 @@ func run(opts options) int {
 	defer cancel()
 	go application.Run(ctx)
 	if opts.Headless || !tray.Supported() {
-		fmt.Println("SagaBoard is running. Log in with Battle.net if asked. Quit with Ctrl+C.")
+		fmt.Println("OurSagas is running. Log in with Battle.net if asked. Quit with Ctrl+C.")
 		<-ctx.Done()
 		return 0
 	}
@@ -263,7 +263,7 @@ func run(opts options) int {
 			}()
 		})
 	}
-	tray.Run(ctx, "SagaBoard "+version.Version, []tray.Item{
+	tray.Run(ctx, "OurSagas "+version.Version, []tray.Item{
 		{Title: "Create personal token", Tooltip: "Write a gst_ token once for external tools", OnClick: func() {
 			go func() {
 				path, err := application.MintPersonalToken(context.Background())
@@ -299,7 +299,7 @@ func run(opts options) int {
 				}
 			}()
 		}},
-		{Title: "Quit", Tooltip: "Quit SagaBoard", OnClick: cancel},
+		{Title: "Quit", Tooltip: "Quit OurSagas", OnClick: cancel},
 	}, func(m *tray.Menu) {
 		trayMenu = m
 		refreshTray(m)

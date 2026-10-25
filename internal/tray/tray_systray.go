@@ -48,7 +48,7 @@ func Run(ctx context.Context, tooltip string, items []Item, onReady func(*Menu))
 
 		m := &Menu{
 			user:    addDisabled("Not logged in", "Battle.net account"),
-			version: addDisabled("Version", "Installed SagaBoard version"),
+			version: addDisabled("Version", "Installed OurSagas version"),
 		}
 		systray.AddSeparator()
 
@@ -148,7 +148,7 @@ func (m *Menu) SetPendingUpdate(tag string, onRestart func()) {
 	}
 	title := "Ny versjon " + tag + " — start på nytt"
 	m.updateItem.SetTitle(title)
-	m.updateItem.SetTooltip("Last ned er klar. Start GutSaga på nytt for å oppdatere")
+	m.updateItem.SetTooltip("Last ned er klar. Start OurSagas på nytt for å oppdatere")
 	m.updateItem.Show()
 }
 
@@ -180,7 +180,7 @@ func (m *Menu) SetAuthAction(loggedIn bool, onClick func()) {
 	}
 	if loggedIn {
 		m.auth.SetTitle("Logg ut")
-		m.auth.SetTooltip("Log out of SagaBoard on this computer")
+		m.auth.SetTooltip("Log out of OurSagas on this computer")
 		return
 	}
 	m.auth.SetTitle("Log in with Battle.net")

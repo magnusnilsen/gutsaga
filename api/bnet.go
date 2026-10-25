@@ -140,7 +140,7 @@ func (s *Server) bnetCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.bnet.mu.Unlock()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = io.WriteString(w, "<!doctype html><title>SagaBoard</title><p>You are logged in. You can close this window.</p>")
+	_, _ = io.WriteString(w, "<!doctype html><title>OurSagas</title><p>You are logged in. You can close this window.</p>")
 }
 
 func (s *Server) bnetPoll(w http.ResponseWriter, r *http.Request) {

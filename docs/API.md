@@ -1,4 +1,4 @@
-# SagaBoard HTTP API
+# OurSagas HTTP API
 
 Players sign in with Battle.net. The companion session is `gss_` and lasts 30 days. External clients use a personal token `gst_`. `ADMIN_TOKEN` is ops only.
 
@@ -14,7 +14,7 @@ The Go module path is still `github.com/magnusnilsen/gutsaga` until the public s
 
 The redirect URI is `{PUBLIC_BASE_URL}/v1/auth/bnet/callback`. Each host registers its own Battle.net app.
 
-`POST /v1/auth/dev` with `Authorization: Bearer $SAGABOARD_DEV_TOKEN` issues a session without calling Blizzard. Dev and CI only.
+`POST /v1/auth/dev` with `Authorization: Bearer $OURSAGAS_DEV_TOKEN` issues a session without calling Blizzard. Dev and CI only.
 
 Login merges an existing player by `bnet_account_id`, else by BattleTag. No other key.
 
