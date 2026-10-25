@@ -221,15 +221,17 @@ local function unitLabel(fn)
     if not fn then
         return ""
     end
+    -- Prefer the localized display name. UnitClass's second return is the
+    -- English file token (HUNTER), which looks wrong in Discord and the UI.
     local ok, localized, english = pcall(fn, "player")
     if not ok then
         return ""
     end
-    local eng = plainString(english)
-    if eng then
-        return eng
+    local loc = plainString(localized)
+    if loc then
+        return loc
     end
-    return plainString(localized) or ""
+    return plainString(english) or ""
 end
 
 local function cachePlayer()

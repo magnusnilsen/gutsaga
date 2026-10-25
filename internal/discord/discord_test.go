@@ -42,7 +42,7 @@ func TestPostCompletionEmbed(t *testing.T) {
 		t.Fatalf("mentions %+v", payload.AllowedMentions)
 	}
 	emb := payload.Embeds[0]
-	if emb.Color != ColorDone || emb.Title != "Første vakt" {
+	if emb.Color != 0xF58CBA || emb.Title != "Første vakt" {
 		t.Fatalf("embed %+v", emb)
 	}
 	if emb.Timestamp != "" || emb.Footer != nil || len(emb.Fields) != 0 {
@@ -82,6 +82,27 @@ func TestCompletedObjectivesSummary(t *testing.T) {
 	got := CompletedObjectivesSummary([]ObjectiveLine{{Text: "A"}, {Text: "B"}})
 	if got != "✓ A\n✓ B" {
 		t.Fatalf("%q", got)
+	}
+}
+
+func TestDisplayClassAndColor(t *testing.T) {
+	if DisplayClass("HUNTER") != "Hunter" || DisplayClass("death knight") != "Death Knight" {
+		t.Fatalf("%q %q", DisplayClass("HUNTER"), DisplayClass("death knight"))
+	}
+	c, ok := ClassColor("HUNTER")
+	if !ok || c != 0xABD473 {
+		t.Fatalf("color %x %v", c, ok)
+	}
+	payload, _ := post(t, func(c *Client) (Message, error) {
+		return c.PostCompletion(context.Background(), Completion{
+			Character: "Magni", Race: "Dwarf", Class: "HUNTER", Level: 12, Title: "Test",
+		})
+	})
+	if payload.Embeds[0].Color != 0xABD473 {
+		t.Fatalf("embed color %x", payload.Embeds[0].Color)
+	}
+	if !strings.Contains(payload.Embeds[0].Description, "Hunter") || strings.Contains(payload.Embeds[0].Description, "HUNTER") {
+		t.Fatalf("description %q", payload.Embeds[0].Description)
 	}
 }
 

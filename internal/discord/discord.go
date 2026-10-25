@@ -422,6 +422,9 @@ func completionPayload(n Completion) ([]byte, *attach, error) {
 		Description: completionDetail(n),
 		Color:       ColorDone,
 	}
+	if c, ok := ClassColor(n.Class); ok {
+		embed.Color = c
+	}
 	var file *attach
 	if len(n.Image) > 0 {
 		file = &attach{Name: "screenshot" + screenshot.Extension(n.ContentType), Body: n.Image}
@@ -439,7 +442,7 @@ func completionDetail(n Completion) string {
 		b.WriteString(goals)
 	}
 	race := strings.TrimSpace(n.Race)
-	className := strings.TrimSpace(n.Class)
+	className := DisplayClass(n.Class)
 	if race != "" && className != "" && n.Level >= 1 {
 		if b.Len() > 0 {
 			b.WriteString("\n\n")
@@ -572,13 +575,17 @@ func levelPayload(n LevelNotice) ([]byte, error) {
 		name = "En karakter"
 	}
 	desc := escapeMD(name)
-	if className := strings.TrimSpace(n.Class); className != "" {
+	if className := DisplayClass(n.Class); className != "" {
 		desc = escapeMD(name) + " · " + escapeMD(className)
+	}
+	color := ColorLevel
+	if c, ok := ClassColor(n.Class); ok {
+		color = c
 	}
 	embed := dcEmbed{
 		Title:       "Nivå " + strconv.Itoa(n.Level),
 		Description: desc,
-		Color:       ColorLevel,
+		Color:       color,
 	}
 	return marshalPayload(bold(name)+" nådde et nytt nivå.", embed)
 }
