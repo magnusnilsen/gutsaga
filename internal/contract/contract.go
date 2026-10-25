@@ -96,19 +96,21 @@ type CompletionRequest struct {
 }
 
 type CompletionResponse struct {
-	Allowed          bool          `json:"allowed"`
-	AlreadyCompleted bool          `json:"already_completed"`
-	Completed        bool          `json:"completed"`
-	ProgressID       string        `json:"progress_id,omitempty"`
-	LogWritten       bool          `json:"log_written"`
-	DiscordPosted    bool          `json:"discord_posted"`
-	CharacterName    string        `json:"character_name,omitempty"`
-	CharacterRace    string        `json:"character_race,omitempty"`
-	CharacterClass   string        `json:"character_class,omitempty"`
-	CharacterLevel   int           `json:"character_level,omitempty"`
-	QuestTitle       string        `json:"saga_title,omitempty"`
-	QuestVersion     int           `json:"saga_version,omitempty"`
-	GroupCredited    []GroupCredit `json:"group_credited,omitempty"`
+	Allowed           bool          `json:"allowed"`
+	AlreadyCompleted  bool          `json:"already_completed"`
+	Completed         bool          `json:"completed"`
+	ProgressID        string        `json:"progress_id,omitempty"`
+	LogWritten        bool          `json:"log_written"`
+	DiscordPosted     bool          `json:"discord_posted"`
+	CharacterName     string        `json:"character_name,omitempty"`
+	CharacterRace     string        `json:"character_race,omitempty"`
+	CharacterClass    string        `json:"character_class,omitempty"`
+	CharacterLevel    int           `json:"character_level,omitempty"`
+	QuestTitle        string        `json:"saga_title,omitempty"`
+	QuestVersion      int           `json:"saga_version,omitempty"`
+	Objectives        []Objective   `json:"objectives,omitempty"`
+	ObjectivesOrdered bool          `json:"objectives_ordered,omitempty"`
+	GroupCredited     []GroupCredit `json:"group_credited,omitempty"`
 }
 
 type LevelRequest struct {

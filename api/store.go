@@ -1575,15 +1575,20 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 		}
 		raceName, className, storedLevel = race, class, level
 	}
-	var snapTitle, groupRaw string
+	var snapTitle, groupRaw, objRaw string
+	var snapOrdered bool
 	err = tx.QueryRow(ctx, `
-		SELECT title, COALESCE(group_rule::text, '')
-		FROM quest_versions WHERE quest_id=$1 AND version=$2`, in.QuestID, in.QuestVersion).Scan(&snapTitle, &groupRaw)
+		SELECT title, COALESCE(group_rule::text, ''), objectives::text, objectives_ordered
+		FROM quest_versions WHERE quest_id=$1 AND version=$2`, in.QuestID, in.QuestVersion).Scan(&snapTitle, &groupRaw, &objRaw, &snapOrdered)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.CompletionResponse{}, fmt.Errorf("%w: unknown quest version", ErrInvalid)
 	}
 	if err != nil {
 		return contract.CompletionResponse{}, err
+	}
+	snapObjectives, err := contract.DecodeObjectives(objRaw)
+	if err != nil {
+		return contract.CompletionResponse{}, fmt.Errorf("%w: objectives", ErrInvalid)
 	}
 	rule, err := contract.DecodeGroupRule(groupRaw)
 	if err != nil {
@@ -1718,6 +1723,7 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 		Allowed: true, Completed: true, LogWritten: true, ProgressID: progressID,
 		CharacterName: name, CharacterRace: raceName, CharacterClass: className, CharacterLevel: levelShown,
 		QuestTitle: snapTitle, QuestVersion: in.QuestVersion,
+		Objectives: snapObjectives, ObjectivesOrdered: snapOrdered,
 		GroupCredited: credits,
 	}, nil
 }

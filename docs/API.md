@@ -298,7 +298,7 @@ On a new completion the API:
 
 1. Stores the image in Postgres (TGA is converted to PNG).
 2. Inserts progress and an adventure-log line: `Magni fullførte «Første vakt» (versjon 3).`
-3. Queues a Discord embed, username `GutSaga`. The content line is short (`**Magni** fullførte en saga!`); the embed carries the saga title and an optional screenshot (`attachment://screenshot.png`).
+3. Queues a Discord embed, username `GutSaga`. The content line is short (`**Magni** fullførte en saga!`); the embed carries the saga title, the completed goals with checkmarks, optional race/class/level when those were sent fresh from the game, and an optional screenshot (`attachment://screenshot.png`).
 
 The HTTP call does not wait for Discord. `discord_posted` is true when the notice was accepted onto the queue (or delivered, if a synchronous notifier is plugged in). The progress row's `discord_url` is written when Discord returns the attachment URL. A webhook error, including HTTP 429, is retried in the background (`retry_after` on 429, backoff on network errors and 5xx) and then logged. It does not change the HTTP status and does not roll back the completion. When the queue cannot accept the notice, `discord_posted` is false.
 

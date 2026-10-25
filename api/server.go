@@ -182,6 +182,10 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 				when = t.UTC()
 			}
 		}
+		objLines := make([]discord.ObjectiveLine, 0, len(res.Objectives))
+		for _, o := range res.Objectives {
+			objLines = append(objLines, discord.ObjectiveLine{Text: o.Text})
+		}
 		msg, ok := s.postDiscord(r.Context(), func(ctx context.Context, n Notifier) (discord.Message, error) {
 			return n.PostCompletion(ctx, discord.Completion{
 				ProgressID: res.ProgressID,
@@ -192,6 +196,7 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 				Class:       strings.TrimSpace(in.Class),
 				Level:       in.Level,
 				Title:       res.QuestTitle,
+				Objectives:  objLines,
 				When:        when,
 				Image:       image,
 				ContentType: contentType,

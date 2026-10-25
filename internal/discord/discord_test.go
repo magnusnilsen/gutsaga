@@ -18,11 +18,15 @@ func TestPostCompletionEmbed(t *testing.T) {
 	when := time.Date(2026, 10, 24, 18, 30, 0, 0, time.UTC)
 	payload, file := post(t, func(c *Client) (Message, error) {
 		return c.PostCompletion(context.Background(), Completion{
-			Character:   "Magni",
-			Race:        "Dwarf",
-			Class:       "Paladin",
-			Level:       12,
-			Title:       "Første vakt",
+			Character: "Magni",
+			Race:      "Dwarf",
+			Class:     "Paladin",
+			Level:     12,
+			Title:     "Første vakt",
+			Objectives: []ObjectiveLine{
+				{Text: "Møt opp"},
+				{Text: "Hold ut"},
+			},
 			When:        when,
 			Image:       []byte("PNGDATA"),
 			ContentType: "image/png",
@@ -44,8 +48,9 @@ func TestPostCompletionEmbed(t *testing.T) {
 	if emb.Timestamp != "" || emb.Footer != nil || len(emb.Fields) != 0 {
 		t.Fatalf("want no stamp/footer/fields %+v", emb)
 	}
-	if emb.Description != "Dwarf · Paladin · nivå 12" {
-		t.Fatalf("description %s", emb.Description)
+	wantDesc := "✅ Møt opp\n✅ Hold ut\n\nDwarf · Paladin · nivå 12"
+	if emb.Description != wantDesc {
+		t.Fatalf("description %q", emb.Description)
 	}
 	if emb.Image == nil || emb.Image.URL != "attachment://screenshot.png" {
 		t.Fatalf("image %+v", emb.Image)
@@ -58,14 +63,25 @@ func TestPostCompletionEmbed(t *testing.T) {
 func TestPostCompletionOmitsStaleCharacterDetail(t *testing.T) {
 	payload, _ := post(t, func(c *Client) (Message, error) {
 		return c.PostCompletion(context.Background(), Completion{
-			Character: "Magni",
-			Class:     "Paladin",
-			Title:     "Første vakt",
+			Character:  "Magni",
+			Class:      "Paladin",
+			Title:      "Første vakt",
+			Objectives: []ObjectiveLine{{Text: "Møt opp"}},
 		})
 	})
 	emb := payload.Embeds[0]
-	if emb.Description != "" || len(emb.Fields) != 0 {
-		t.Fatalf("stale detail should be omitted: %+v", emb)
+	if emb.Description != "✅ Møt opp" || len(emb.Fields) != 0 {
+		t.Fatalf("want goals only without stale character line: %+v", emb)
+	}
+}
+
+func TestCompletedObjectivesSummary(t *testing.T) {
+	if CompletedObjectivesSummary(nil) != "" {
+		t.Fatal("empty")
+	}
+	got := CompletedObjectivesSummary([]ObjectiveLine{{Text: "A"}, {Text: "B"}})
+	if got != "✅ A\n✅ B" {
+		t.Fatalf("%q", got)
 	}
 }
 

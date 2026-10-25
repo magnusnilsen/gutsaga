@@ -77,6 +77,7 @@ type ObjectiveLine struct {
 
 // Completion is a character finishing a saga.
 // Race, Class, and Level are only shown when all three are set (fresh from the game).
+// Objectives are listed with checkmarks when present (the version that was completed).
 type Completion struct {
 	ProgressID  string
 	Character   string
@@ -84,6 +85,7 @@ type Completion struct {
 	Class       string
 	Level       int
 	Title       string
+	Objectives  []ObjectiveLine
 	When        time.Time
 	Image       []byte
 	ContentType string
@@ -429,15 +431,54 @@ func completionPayload(n Completion) ([]byte, *attach, error) {
 	return raw, file, err
 }
 
-// completionDetail is race/class/level only when all three are fresh from the game.
-// Otherwise the embed stays title (+ screenshot) only — no character table.
+// completionDetail is completed goals (checkmarks) plus race/class/level when fresh.
 func completionDetail(n Completion) string {
+	var b strings.Builder
+	goals := CompletedObjectivesSummary(n.Objectives)
+	if goals != "" {
+		b.WriteString(goals)
+	}
 	race := strings.TrimSpace(n.Race)
 	className := strings.TrimSpace(n.Class)
-	if race == "" || className == "" || n.Level < 1 {
+	if race != "" && className != "" && n.Level >= 1 {
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(escapeMD(race))
+		b.WriteString(" · ")
+		b.WriteString(escapeMD(className))
+		b.WriteString(" · nivå ")
+		b.WriteString(strconv.Itoa(n.Level))
+	}
+	return clipRunes(b.String(), 4096)
+}
+
+// CompletedObjectivesSummary lists finished goals with checkmarks.
+func CompletedObjectivesSummary(lines []ObjectiveLine) string {
+	if len(lines) == 0 {
 		return ""
 	}
-	return escapeMD(race) + " · " + escapeMD(className) + " · nivå " + strconv.Itoa(n.Level)
+	const maxLines = 8
+	show := len(lines)
+	if show > maxLines {
+		show = maxLines
+	}
+	var b strings.Builder
+	for i := 0; i < show; i++ {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		text := strings.TrimSpace(lines[i].Text)
+		if text == "" {
+			text = "Mål"
+		}
+		b.WriteString("✅ ")
+		b.WriteString(escapeMD(clipRunes(text, 200)))
+	}
+	if len(lines) > show {
+		fmt.Fprintf(&b, "\n… og %d mål til", len(lines)-show)
+	}
+	return clipRunes(b.String(), 3500)
 }
 
 func sagaPayload(n SagaNotice) ([]byte, *attach, error) {

@@ -282,17 +282,9 @@ Fullføring:
   "content": "**Magni** fullførte en saga!",
   "embeds": [{
     "title": "Første vakt",
-    "description": "Magni, Paladin på nivå 12, fullførte sagaen.",
+    "description": "✅ Møt opp\n✅ Hold ut\n\nDwarf · Paladin · nivå 12",
     "color": 3908957,
-    "fields": [
-      {"name": "Karakter", "value": "Magni", "inline": true},
-      {"name": "Klasse", "value": "Paladin", "inline": true},
-      {"name": "Nivå", "value": "12", "inline": true},
-      {"name": "Versjon", "value": "3", "inline": true}
-    ],
-    "timestamp": "2026-10-24T18:30:00Z",
-    "image": {"url": "attachment://screenshot.png"},
-    "footer": {"text": "GutSaga"}
+    "image": {"url": "attachment://screenshot.png"}
   }],
   "allowed_mentions": {"parse": []}
 }
