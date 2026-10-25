@@ -32,11 +32,32 @@ local function same(a, b)
 end
 
 local function needCount(obj)
+    if type(obj) == "table" and obj.type == "level" then
+        local n = tonumber(obj.level) or 0
+        if n < 1 then
+            return 0
+        end
+        return n
+    end
     local n = tonumber(obj.count) or 1
     if n < 1 then
         return 1
     end
     return n
+end
+
+local function kindAllowed(obj, instanceType)
+    local typ = tostring(instanceType or "")
+    local kinds = obj.kinds
+    if type(kinds) ~= "table" or #kinds == 0 then
+        return typ == "party" or typ == "raid"
+    end
+    for i = 1, #kinds do
+        if kinds[i] == typ then
+            return true
+        end
+    end
+    return false
 end
 
 local function playerXY(state)
@@ -115,6 +136,42 @@ local function listed(want, got)
         end
     end
     return false
+end
+
+-- Soft group gate for instance_run: at least size members (default 2).
+-- Optional group.instance filters the dungeon/raid name.
+local function runGroupOK(rule, group, instanceName)
+    if type(rule) ~= "table" then
+        return true
+    end
+    local need = tonumber(rule.size) or 2
+    if need < 2 then
+        need = 2
+    end
+    local minLevel = 1
+    local exact = tonumber(rule.level) or 0
+    if exact > 0 then
+        minLevel = exact
+    elseif rule.min_level ~= nil then
+        minLevel = tonumber(rule.min_level) or 1
+    end
+    group = type(group) == "table" and group or {}
+    local members = type(group.members) == "table" and group.members or {}
+    local n = 0
+    for i = 1, #members do
+        local m = members[i]
+        if type(m) == "table" and norm(m.name) ~= "" and (tonumber(m.level) or 0) >= minLevel then
+            n = n + 1
+        end
+    end
+    if n < need then
+        return false
+    end
+    local want = rule.instance
+    if type(want) == "string" and want ~= "" then
+        return listed(want, instanceName)
+    end
+    return true
 end
 
 local function placeHit(obj, state)
@@ -616,6 +673,7 @@ checkOne = function(obj, state, saved, prev, live)
         seen_at = tonumber(prev.seen_at) or 0,
         remain = tonumber(prev.remain) or 0,
         failed = prev.failed and true or false,
+        inside = prev.inside and true or false,
     }
     -- visit latches. hold is recomputed every check, including inside a composite.
     if memory ~= "hold" and not live and row.done then
@@ -677,6 +735,34 @@ checkOne = function(obj, state, saved, prev, live)
         else
             row.done = false
         end
+    elseif kind == "level" then
+        local have = tonumber(state.level) or 0
+        row.count = have
+        row.need = needCount(obj)
+        row.done = open and row.need > 0 and have >= row.need
+    elseif kind == "instance_run" then
+        local count = tonumber(prev.count) or 0
+        local inside = prev.inside and true or false
+        local typ = tostring(state.instance_type or "none")
+        local name = state.instance_name or ""
+        local matching = kindAllowed(obj, typ)
+        local grouped = runGroupOK(obj.group, state.group, name)
+        if open and matching and grouped then
+            inside = true
+        elseif inside and open and (typ == "none" or typ == "") then
+            count = count + 1
+            inside = false
+        elseif inside and matching and not grouped then
+            -- Dropped the group mid-run — this stay does not count.
+            inside = false
+        elseif typ ~= "none" and typ ~= "" and not matching then
+            -- Entered something that is not a counted kind (e.g. arena).
+            inside = false
+        end
+        row.count = count
+        row.need = needCount(obj)
+        row.inside = inside
+        row.done = open and count >= row.need
     elseif obj.type == "sequence" then
         local seq = checkSequence(obj, state, prev)
         row.done = open and seq.done

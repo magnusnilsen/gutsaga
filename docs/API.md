@@ -92,10 +92,39 @@ Every step has `id` (`[A-Za-z0-9_-]{1,40}`, unique across the saga including seq
 | `emote` | `emote` token such as `SALUTE` or `/salute`. Optional `npc` (target at emote time). Optional place fields, same as `go`, captured when the emote fires. |
 | `kill` | `npc` (creature name, not a GUID), `count` (default 1). A secret combat-log name does not count. Optional `group` (below). |
 | `sequence` | `within_sec` (1–600) and `beats` (2–6). Each beat is a `go`, `talk`, `emote`, or `kill` with its own `id` and `text`. One checkbox. The window starts when the first beat lands, on the computer clock. A later beat after the window resets the sequence. Repeating the first emote, talk, or kill restarts the window. |
+| `level` | `level` (1–1000): character must be at least that level. Always `visit`. Put a deadline on `when.ends_at` (local clock). |
+| `instance_run` | `count` (default 1, max 100): how many dungeon/raid stays to finish. Optional `kinds` (`party` and/or `raid`; default both). Optional soft `group` with `size` (default 2 when set) and optional name `instance` — must stay grouped while inside; the run counts when you **leave**. Dropping the group mid-run cancels that stay. Always `visit`. |
 
 Same-moment constraints are fields on one step: "salute Wilhelm" is one emote with `npc`, not two steps. Two steps are both required. Cross-verb "either" is not a type.
 
 `location`, `interact`, and `collect` are older names for `go`, `talk`, and `item`. `all_of` and `any_of` still evaluate (`objectives`, at least two children, nesting at most 4) but new sagas should not use them. Inside `all_of`, children stay live until the composite has been true, then it latches.
+
+### Examples: level deadline and dungeon runs
+
+Reach level 10 before 20 November 2026 (Europe/Oslo):
+
+```json
+{
+  "id": "ten",
+  "type": "level",
+  "text": "Bli level 10",
+  "level": 10,
+  "when": {"clock": "local", "ends_at": "2026-11-20T23:59:59+01:00"}
+}
+```
+
+Five dungeon or raid runs while grouped with at least one other player:
+
+```json
+{
+  "id": "runs",
+  "type": "instance_run",
+  "text": "Gå 5 dungeons/raids med gutane",
+  "count": 5,
+  "kinds": ["party", "raid"],
+  "group": {"size": 2}
+}
+```
 
 ### Group gate on a kill
 

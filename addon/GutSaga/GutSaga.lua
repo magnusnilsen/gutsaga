@@ -1120,20 +1120,22 @@ end
 
 local function readInstance()
     if not GetInstanceInfo then
-        return world.instanceName or ""
+        return world.instanceName or "", world.instanceType or "none"
     end
     local ok, name, instanceType = pcall(GetInstanceInfo)
     if not ok or secret(name) or secret(instanceType) then
-        return world.instanceName or ""
+        return world.instanceName or "", world.instanceType or "none"
     end
-    local typ = plainString(instanceType)
+    local typ = plainString(instanceType) or "none"
     local label = plainString(name)
-    if not typ or typ == "none" or not label then
+    if typ == "none" or not label then
         world.instanceName = ""
-        return ""
+        world.instanceType = "none"
+        return "", "none"
     end
     world.instanceName = label
-    return label
+    world.instanceType = typ
+    return label, typ
 end
 
 readGroup = function()
@@ -1327,7 +1329,7 @@ local function objectiveLines(entry)
                 end
             end
             local groupedKill = obj.type == "kill" and type(obj.group) == "table" and obj.group.level
-            if obj.type == "collect" or obj.type == "item" or (obj.type == "kill" and not groupedKill) then
+            if obj.type == "collect" or obj.type == "item" or (obj.type == "kill" and not groupedKill) or obj.type == "instance_run" then
                 local need = tonumber(obj.count) or 1
                 local have = tonumber(step.count) or 0
                 if obj.type == "collect" or obj.type == "item" then
@@ -1340,6 +1342,13 @@ local function objectiveLines(entry)
                     end
                 end
                 label = string.format("%s (%d/%d)", label, have, need)
+            end
+            if obj.type == "level" then
+                local need = tonumber(obj.level) or 0
+                local have = tonumber(step.count) or tonumber(player.level) or 0
+                if need > 0 then
+                    label = string.format("%s (%d/%d)", label, have, need)
+                end
             end
             if obj.type == "all_of" or obj.type == "any_of" then
                 local need = tonumber(step.need) or (type(obj.objectives) == "table" and #obj.objectives or 0)
@@ -1717,6 +1726,9 @@ local function objectiveState(entries)
         items = items,
         kill_name = world.killName,
         kill_secret = world.killSecret,
+        level = player.level,
+        instance_name = world.instanceName or "",
+        instance_type = world.instanceType or "none",
         emote = emote,
         emote_target = emoteTarget,
         emote_text = emoteText,
@@ -1739,9 +1751,13 @@ local function checkAll()
         local entries = currentEntries()
         local state = objectiveState(entries)
         local group = readGroup()
+        readInstance()
         state.now = unixNow()
         state.group = group
         state.death_name = world.deathName
+        state.level = player.level
+        state.instance_name = world.instanceName or ""
+        state.instance_type = world.instanceType or "none"
         for _, entry in ipairs(entries) do
             if not isComplete(entry) and not entryLocked(entry, entries) and type(entry.objectives) == "table" and #entry.objectives > 0 then
                 local bucket = savedSteps(entry)

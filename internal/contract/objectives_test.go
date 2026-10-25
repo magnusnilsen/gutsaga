@@ -55,6 +55,33 @@ func TestNormalizeRejectsLooseSteps(t *testing.T) {
 	}
 }
 
+func TestNormalizeLevelAndInstanceRun(t *testing.T) {
+	out, err := NormalizeObjectives([]Objective{
+		{ID: "ten", Type: "level", Text: "Bli level 10", Level: 10,
+			When: &TimeWindow{Clock: "local", EndsAt: "2026-11-20T23:59:59+01:00"}},
+		{ID: "runs", Type: "instance_run", Text: "Fem runs", Count: 5, Group: &StepGroup{Size: 2}},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out[0].Memory != MemoryVisit || out[0].Level != 10 || out[0].When == nil {
+		t.Fatalf("level: %+v", out[0])
+	}
+	if out[1].Count != 5 || len(out[1].Kinds) != 2 || out[1].Group == nil || out[1].Group.Size != 2 || out[1].Group.Level != 0 {
+		t.Fatalf("instance_run: %+v", out[1])
+	}
+	if _, err := NormalizeObjectives([]Objective{
+		{ID: "bad", Type: "level", Text: "X", Level: 10, Group: &StepGroup{Size: 2}},
+	}, false); err == nil {
+		t.Fatal("level must reject group")
+	}
+	if _, err := NormalizeObjectives([]Objective{
+		{ID: "bad", Type: "instance_run", Text: "X", Group: &StepGroup{Level: 17, Size: 2}},
+	}, false); err == nil {
+		t.Fatal("instance_run must reject group.level")
+	}
+}
+
 func TestLegacyObjectivesStillNormalize(t *testing.T) {
 	item := 159
 	out, err := NormalizeObjectives([]Objective{
