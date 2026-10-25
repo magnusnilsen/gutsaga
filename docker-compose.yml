@@ -1,3 +1,7 @@
+# Local development only. Railway does not use this file — it builds api/Dockerfile
+# via railway.json and takes ADMIN_TOKEN / IMAGE_URL_SECRET from the Railway dashboard.
+# The known defaults below (dev-admin-token, …) are rejected at API startup unless
+# GUTSAGA_ALLOW_DEV_SECRETS=1, so they cannot silently ship to production.
 services:
   postgres:
     image: postgres:16
@@ -21,8 +25,9 @@ services:
     environment:
       DATABASE_URL: postgres://gutsaga:gutsaga@postgres:5432/gutsaga?sslmode=disable
       ADMIN_TOKEN: dev-admin-token
-      PUBLIC_BASE_URL: http://localhost:8080
       IMAGE_URL_SECRET: dev-image-url-secret
+      GUTSAGA_ALLOW_DEV_SECRETS: "1"
+      PUBLIC_BASE_URL: http://localhost:8080
       SMIA_AUTH_MODE: smia
       # Optional: Discord incoming webhook (username GutSaga) for saga notices and completions.
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}

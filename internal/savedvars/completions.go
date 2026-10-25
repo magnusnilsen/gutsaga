@@ -20,6 +20,8 @@ type Completion struct {
 	QuestVersion int
 	Character    string
 	Realm        string
+	Race         string
+	Class        string
 	Level        int
 	At           time.Time
 	Path         string
@@ -29,7 +31,7 @@ type Completion struct {
 
 var (
 	completionBlock = regexp.MustCompile(`(?s)\["([0-9a-fA-F-]{36})"\]\s*=\s*\{(.*?)\},`)
-	fieldString     = regexp.MustCompile(`\["(saga_id|character|realm|group_members|instance)"\]\s*=\s*"([^"]*)"`)
+	fieldString     = regexp.MustCompile(`\["(saga_id|character|realm|race|class|group_members|instance)"\]\s*=\s*"([^"]*)"`)
 	fieldNumber     = regexp.MustCompile(`\["(version|level|completed_at)"\]\s*=\s*(-?\d+)`)
 )
 
@@ -86,6 +88,10 @@ func ParseCompletions(path string, body string) []Completion {
 				c.Character = f[2]
 			case "realm":
 				c.Realm = f[2]
+			case "race":
+				c.Race = f[2]
+			case "class":
+				c.Class = f[2]
 			case "instance":
 				c.Instance = f[2]
 			case "group_members":

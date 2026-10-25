@@ -62,7 +62,27 @@ Environment:
   SMIA_AUTH_MODE        smia (default) or dev
   SMIA_DEV_TOKEN        static token when SMIA_AUTH_MODE=dev
   SMIA_MCP_URL          default https://smia.tools/wow/mcp
+  GUTSAGA_ALLOW_DEV_SECRETS  set to 1 for local docker-compose only
 `)
+}
+
+// docker-compose.yml ships weak local defaults. Refuse them unless the
+// operator explicitly opts in — Railway never sets GUTSAGA_ALLOW_DEV_SECRETS.
+var knownDevSecrets = map[string]string{
+	"ADMIN_TOKEN":      "dev-admin-token",
+	"IMAGE_URL_SECRET": "dev-image-url-secret",
+}
+
+func rejectDevSecrets() error {
+	if os.Getenv("GUTSAGA_ALLOW_DEV_SECRETS") == "1" {
+		return nil
+	}
+	for key, weak := range knownDevSecrets {
+		if strings.TrimSpace(os.Getenv(key)) == weak {
+			return fmt.Errorf("%s is the docker-compose default %q; set a real secret (openssl rand -hex 32) or GUTSAGA_ALLOW_DEV_SECRETS=1 for local only", key, weak)
+		}
+	}
+	return nil
 }
 
 func openPool(ctx context.Context) (*pgxpool.Pool, error) {
@@ -82,6 +102,10 @@ func serve(args []string) int {
 	addr := fs.String("addr", "", "listen address (default :$PORT or :8080)")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if err := rejectDevSecrets(); err != nil {
+		slog.Error("secrets", "err", err)
+		return 1
 	}
 	ctx := context.Background()
 	pool, err := openPool(ctx)

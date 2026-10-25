@@ -88,6 +88,8 @@ type CompletionRequest struct {
 	QuestVersion     int           `json:"saga_version"`
 	BattleTag        string        `json:"battletag"`
 	Level            int           `json:"level,omitempty"`
+	Race             string        `json:"race,omitempty"`
+	Class            string        `json:"class,omitempty"`
 	CompletedAt      string        `json:"completed_at,omitempty"`
 	ScreenshotBase64 string        `json:"screenshot_base64,omitempty"`
 	Instance         string        `json:"instance,omitempty"`
@@ -102,6 +104,7 @@ type CompletionResponse struct {
 	LogWritten       bool          `json:"log_written"`
 	DiscordPosted    bool          `json:"discord_posted"`
 	CharacterName    string        `json:"character_name,omitempty"`
+	CharacterRace    string        `json:"character_race,omitempty"`
 	CharacterClass   string        `json:"character_class,omitempty"`
 	CharacterLevel   int           `json:"character_level,omitempty"`
 	Reward           string        `json:"reward,omitempty"`

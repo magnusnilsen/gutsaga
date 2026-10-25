@@ -182,19 +182,16 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 				when = t.UTC()
 			}
 		}
-		level := res.CharacterLevel
-		if level == 0 {
-			level = in.Level
-		}
 		msg, ok := s.postDiscord(r.Context(), func(ctx context.Context, n Notifier) (discord.Message, error) {
 			return n.PostCompletion(ctx, discord.Completion{
 				ProgressID:  res.ProgressID,
 				Character:   res.CharacterName,
-				Class:       res.CharacterClass,
-				Level:       level,
+				// Only values stamped on this completion (from the game) — never the
+				// characters row, which may be stale on Classic Era.
+				Race:        strings.TrimSpace(in.Race),
+				Class:       strings.TrimSpace(in.Class),
+				Level:       in.Level,
 				Title:       res.QuestTitle,
-				Version:     res.QuestVersion,
-				Reward:      res.Reward,
 				When:        when,
 				Image:       image,
 				ContentType: contentType,
@@ -959,6 +956,8 @@ func readCompletion(w http.ResponseWriter, r *http.Request) (contract.Completion
 		in.QuestVersion, _ = strconv.Atoi(r.FormValue("saga_version"))
 		in.BattleTag = r.FormValue("battletag")
 		in.Level, _ = strconv.Atoi(r.FormValue("level"))
+		in.Race = r.FormValue("race")
+		in.Class = r.FormValue("class")
 		in.CompletedAt = r.FormValue("completed_at")
 		in.Instance = r.FormValue("instance")
 		if raw := strings.TrimSpace(r.FormValue("group_members")); raw != "" {

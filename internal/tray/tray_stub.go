@@ -4,8 +4,6 @@ package tray
 
 import "context"
 
-const charSlots = 6
-
 type Item struct {
 	Title     string
 	Tooltip   string
@@ -15,9 +13,7 @@ type Item struct {
 }
 
 type Status struct {
-	User       string
-	BattleTag  string
-	Characters []string
+	User string
 }
 
 type Menu struct{}

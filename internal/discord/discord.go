@@ -75,22 +75,15 @@ type ObjectiveLine struct {
 	Text string
 }
 
-// Person is a character named on a saga.
-type Person struct {
-	Name  string
-	Class string
-	Level int
-}
-
 // Completion is a character finishing a saga.
+// Race, Class, and Level are only shown when all three are set (fresh from the game).
 type Completion struct {
 	ProgressID  string
 	Character   string
+	Race        string
 	Class       string
 	Level       int
 	Title       string
-	Version     int
-	Reward      string
 	When        time.Time
 	Image       []byte
 	ContentType string
@@ -103,20 +96,16 @@ type SagaNotice struct {
 	Description string
 	Objectives  []ObjectiveLine
 	Ordered     bool
-	MinLevel    *int
-	Reward      string
-	Party       bool
-	People      []Person
-	CreatedBy   string
 	// UpdatedBy is who changed the saga (display name). Used for update/retire lines.
 	UpdatedBy   string
+	CreatedBy   string
 	Version     int
 	When        time.Time
 	Image       []byte
 	ContentType string
 }
 
-// LevelNotice is a milestone level-up.
+// LevelNotice is a milestone level-up. Class is only shown when set (fresh).
 type LevelNotice struct {
 	Character string
 	Class     string
@@ -425,31 +414,10 @@ type dcFooter struct {
 }
 
 func completionPayload(n Completion) ([]byte, *attach, error) {
-	title := displayTitle(n.Title)
-	fields := []dcField{
-		{Name: "Karakter", Value: escapeMD(strings.TrimSpace(n.Character)), Inline: true},
-	}
-	if strings.TrimSpace(n.Class) != "" {
-		fields = append(fields, dcField{Name: "Klasse", Value: escapeMD(strings.TrimSpace(n.Class)), Inline: true})
-	}
-	if n.Level > 0 {
-		fields = append(fields, dcField{Name: "Nivå", Value: strconv.Itoa(n.Level), Inline: true})
-	}
-	version := n.Version
-	if version < 1 {
-		version = 1
-	}
-	fields = append(fields, dcField{Name: "Versjon", Value: strconv.Itoa(version), Inline: true})
-	if strings.TrimSpace(n.Reward) != "" {
-		fields = append(fields, dcField{Name: "Belønning", Value: clipRunes(escapeMD(strings.TrimSpace(n.Reward)), 1024), Inline: true})
-	}
 	embed := dcEmbed{
-		Title:       clipRunes(title, 256),
-		Description: completionDescription(n),
+		Title:       clipRunes(displayTitle(n.Title), 256),
+		Description: completionDetail(n),
 		Color:       ColorDone,
-		Fields:      fields,
-		Timestamp:   whenOrNow(n.When).Format(time.RFC3339),
-		Footer:      &dcFooter{Text: username},
 	}
 	var file *attach
 	if len(n.Image) > 0 {
@@ -460,27 +428,19 @@ func completionPayload(n Completion) ([]byte, *attach, error) {
 	return raw, file, err
 }
 
-func completionDescription(n Completion) string {
-	name := strings.TrimSpace(n.Character)
-	if name == "" {
-		name = "En karakter"
-	}
+// completionDetail is race/class/level only when all three are fresh from the game.
+// Otherwise the embed stays title (+ screenshot) only — no character table.
+func completionDetail(n Completion) string {
+	race := strings.TrimSpace(n.Race)
 	className := strings.TrimSpace(n.Class)
-	switch {
-	case className != "" && n.Level > 0:
-		return escapeMD(name) + ", " + escapeMD(className) + " på nivå " + strconv.Itoa(n.Level) + ", fullførte sagaen."
-	case className != "":
-		return escapeMD(name) + ", " + escapeMD(className) + ", fullførte sagaen."
-	case n.Level > 0:
-		return escapeMD(name) + " på nivå " + strconv.Itoa(n.Level) + " fullførte sagaen."
-	default:
-		return escapeMD(name) + " fullførte sagaen."
+	if race == "" || className == "" || n.Level < 1 {
+		return ""
 	}
+	return escapeMD(race) + " · " + escapeMD(className) + " · nivå " + strconv.Itoa(n.Level)
 }
 
 func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 	title := displayTitle(n.Title)
-	when := whenOrNow(n.When).Format(time.RFC3339)
 	var embed dcEmbed
 	var content string
 	switch n.Kind {
@@ -490,25 +450,10 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 		} else {
 			content = "Ny saga"
 		}
-		desc := shortDescription(n.Description)
-		if desc == "" {
-			desc = "En ny saga er klar."
-		} else {
-			desc = escapeMD(desc)
-		}
 		embed = dcEmbed{
 			Title:       clipRunes(title, 256),
-			Description: desc,
+			Description: announcedDescription(n),
 			Color:       ColorSaga,
-			Fields: []dcField{
-				{Name: "Mål", Value: ObjectivesSummary(n.Objectives, n.Ordered)},
-				{Name: "Minste nivå", Value: minLevelText(n.MinLevel), Inline: true},
-				{Name: "Belønning", Value: rewardText(n.Reward), Inline: true},
-				{Name: "Laget av", Value: createdByText(n.CreatedBy), Inline: true},
-				{Name: "Hvem", Value: peopleSummary(n.Party, n.People)},
-			},
-			Timestamp: when,
-			Footer:    &dcFooter{Text: username},
 		}
 	case KindUpdated:
 		version := n.Version
@@ -524,8 +469,6 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 			Title:       clipRunes(title, 256),
 			Description: "Ny versjon " + strconv.Itoa(version) + ".",
 			Color:       ColorUpdate,
-			Timestamp:   when,
-			Footer:      &dcFooter{Text: username},
 		}
 	case KindRetired:
 		if actor := strings.TrimSpace(n.UpdatedBy); actor != "" {
@@ -537,8 +480,6 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 			Title:       clipRunes(title, 256),
 			Description: "Sagaen er ikke lenger aktiv.",
 			Color:       ColorRetire,
-			Timestamp:   when,
-			Footer:      &dcFooter{Text: username},
 		}
 	default:
 		return nil, nil, fmt.Errorf("unknown saga notice %q", n.Kind)
@@ -550,6 +491,23 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 	}
 	raw, err := marshalPayload(content, embed)
 	return raw, file, err
+}
+
+// announcedDescription matches the Smia get_saga stack: goals, Beskrivelse, body.
+func announcedDescription(n SagaNotice) string {
+	goals := ObjectivesSummary(n.Objectives, n.Ordered)
+	body := strings.TrimSpace(n.Description)
+	var b strings.Builder
+	b.WriteString(goals)
+	if body != "" {
+		b.WriteString("\n\n**Beskrivelse**\n")
+		b.WriteString(escapeMD(clipRunes(body, 3500)))
+	}
+	out := strings.TrimSpace(b.String())
+	if out == "" {
+		return "En ny saga er klar."
+	}
+	return clipRunes(out, 4096)
 }
 
 func levelPayload(n LevelNotice) ([]byte, error) {
@@ -565,8 +523,6 @@ func levelPayload(n LevelNotice) ([]byte, error) {
 		Title:       "Nivå " + strconv.Itoa(n.Level),
 		Description: desc,
 		Color:       ColorLevel,
-		Timestamp:   whenOrNow(n.When).Format(time.RFC3339),
-		Footer:      &dcFooter{Text: username},
 	}
 	return marshalPayload(bold(name)+" nådde et nytt nivå.", embed)
 }
@@ -613,60 +569,6 @@ func ObjectivesSummary(lines []ObjectiveLine, ordered bool) string {
 	return clipRunes(b.String(), 1024)
 }
 
-func peopleSummary(party bool, people []Person) string {
-	var names []string
-	for _, p := range people {
-		name := strings.TrimSpace(p.Name)
-		if name == "" {
-			continue
-		}
-		label := name
-		switch {
-		case strings.TrimSpace(p.Class) != "" && p.Level > 0:
-			label = fmt.Sprintf("%s (%s, nivå %d)", name, strings.TrimSpace(p.Class), p.Level)
-		case strings.TrimSpace(p.Class) != "":
-			label = fmt.Sprintf("%s (%s)", name, strings.TrimSpace(p.Class))
-		case p.Level > 0:
-			label = fmt.Sprintf("%s (nivå %d)", name, p.Level)
-		}
-		names = append(names, escapeMD(label))
-	}
-	joined := strings.Join(names, ", ")
-	switch {
-	case party && joined != "":
-		return clipRunes("Parti — "+joined, 1024)
-	case party:
-		return "Parti — åpen for alle som er høye nok"
-	case joined != "":
-		return clipRunes(joined, 1024)
-	default:
-		return "Ingen tildelt"
-	}
-}
-
-func minLevelText(level *int) string {
-	if level == nil || *level <= 0 {
-		return "Ingen"
-	}
-	return strconv.Itoa(*level)
-}
-
-func rewardText(reward string) string {
-	reward = strings.TrimSpace(reward)
-	if reward == "" {
-		return "Ingen"
-	}
-	return clipRunes(escapeMD(reward), 1024)
-}
-
-func createdByText(by string) string {
-	by = strings.TrimSpace(by)
-	if by == "" {
-		return "Ukjent"
-	}
-	return clipRunes(escapeMD(by), 1024)
-}
-
 // announceActor is the short name in "X opprettet/oppdaterte …".
 func announceActor(n SagaNotice) string {
 	if a := strings.TrimSpace(n.UpdatedBy); a != "" {
@@ -682,18 +584,6 @@ func announceActor(n SagaNotice) string {
 	return by
 }
 
-func shortDescription(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
-	}
-	if i := strings.Index(s, "\n\n"); i >= 0 {
-		s = strings.TrimSpace(s[:i])
-	}
-	s = strings.Join(strings.Fields(s), " ")
-	return clipRunes(s, 300)
-}
-
 func displayTitle(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -702,15 +592,7 @@ func displayTitle(s string) string {
 	return clipRunes(s, 180)
 }
 
-func whenOrNow(t time.Time) time.Time {
-	if t.IsZero() {
-		return time.Now().UTC()
-	}
-	return t.UTC()
-}
-
-func bold(s string) string   { return "**" + escapeMD(strings.TrimSpace(s)) + "**" }
-func italic(s string) string { return "*" + escapeMD(strings.TrimSpace(s)) + "*" }
+func bold(s string) string { return "**" + escapeMD(strings.TrimSpace(s)) + "**" }
 
 func escapeMD(s string) string {
 	return strings.NewReplacer(
