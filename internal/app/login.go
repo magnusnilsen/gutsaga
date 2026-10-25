@@ -7,12 +7,14 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/magnusnilsen/gutsaga/internal/config"
 	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/magnusnilsen/gutsaga/internal/install"
 )
 
 func (a *App) ensureLogin(ctx context.Context) error {
@@ -28,6 +30,13 @@ func (a *App) ensureLogin(ctx context.Context) error {
 	a.loginTried = true
 	a.mu.Unlock()
 	return a.Login(ctx)
+}
+
+// ConfigLanguage is the saved en or nb choice. Empty means the addon uses GetLocale().
+func (a *App) ConfigLanguage() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.Config.Language
 }
 
 // LoggedIn reports whether the companion has a SagaBoard API credential.
@@ -139,6 +148,74 @@ func (a *App) clearSessionLocked(keepSignedOut bool) {
 	if !keepSignedOut {
 		a.loginTried = false
 	}
+}
+
+// MintPersonalToken creates a gst_ token, stores its id, and writes the raw token once.
+func (a *App) MintPersonalToken(ctx context.Context) (string, error) {
+	if err := a.ensureLogin(ctx); err != nil {
+		return "", err
+	}
+	tok, err := a.Client.MintToken(ctx, "companion")
+	if err != nil {
+		return "", err
+	}
+	dir, err := config.Dir()
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "personal-token.txt")
+	if err := os.WriteFile(path, []byte(tok.Token+"\n"), 0o600); err != nil {
+		return "", err
+	}
+	a.mu.Lock()
+	a.Config.PersonalTokenID = tok.ID
+	cfg := a.Config
+	a.mu.Unlock()
+	_ = config.Save(cfg)
+	return path, nil
+}
+
+// RevokePersonalToken revokes the token minted from this companion.
+func (a *App) RevokePersonalToken(ctx context.Context) error {
+	a.mu.Lock()
+	id := a.Config.PersonalTokenID
+	a.mu.Unlock()
+	if id == "" {
+		return errors.New("no personal token to revoke")
+	}
+	if err := a.Client.RevokeToken(ctx, id); err != nil {
+		return err
+	}
+	a.mu.Lock()
+	a.Config.PersonalTokenID = ""
+	cfg := a.Config
+	a.mu.Unlock()
+	_ = config.Save(cfg)
+	if dir, err := config.Dir(); err == nil {
+		_ = os.Remove(filepath.Join(dir, "personal-token.txt"))
+	}
+	return nil
+}
+
+// SetLanguage stores en or nb and rewrites the addon language file.
+func (a *App) SetLanguage(lang string) error {
+	switch lang {
+	case "en", "nb":
+	default:
+		return errors.New("language must be en or nb")
+	}
+	a.mu.Lock()
+	a.Config.Language = lang
+	cfg := a.Config
+	wow := a.WowDir
+	a.mu.Unlock()
+	if err := config.Save(cfg); err != nil {
+		return err
+	}
+	if wow != "" {
+		return install.WriteLanguage(wow, lang)
+	}
+	return nil
 }
 
 func (a *App) storePlayerLocked(p contract.Player) {

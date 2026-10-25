@@ -263,15 +263,43 @@ func run(opts options) int {
 			}()
 		})
 	}
-	tray.Run(ctx, "GutSaga "+version.Version, []tray.Item{
-		{Title: "Synkroniser nå", Tooltip: "Hent oppdrag fra API-et", OnClick: func() {
+	tray.Run(ctx, "SagaBoard "+version.Version, []tray.Item{
+		{Title: "Create personal token", Tooltip: "Write a gst_ token once for external tools", OnClick: func() {
 			go func() {
-				if err := application.SyncNow(context.Background()); err != nil {
-					log.Warn("synkronisering feilet", "err", err)
+				path, err := application.MintPersonalToken(context.Background())
+				if err != nil {
+					log.Warn("personal token", "err", err)
+					return
+				}
+				log.Info("personal token written", "path", path)
+			}()
+		}},
+		{Title: "Revoke personal token", Tooltip: "Revoke the token minted on this computer", OnClick: func() {
+			go func() {
+				if err := application.RevokePersonalToken(context.Background()); err != nil {
+					log.Warn("revoke token", "err", err)
 				}
 			}()
 		}},
-		{Title: "Avslutt", Tooltip: "Avslutt GutSaga", OnClick: cancel},
+		{Title: "Language: English / Norwegian", Tooltip: "Rewrite the addon language file", OnClick: func() {
+			go func() {
+				next := "nb"
+				if application.ConfigLanguage() == "nb" {
+					next = "en"
+				}
+				if err := application.SetLanguage(next); err != nil {
+					log.Warn("language", "err", err)
+				}
+			}()
+		}},
+		{Title: "Sync now", Tooltip: "Fetch sagas from the API", OnClick: func() {
+			go func() {
+				if err := application.SyncNow(context.Background()); err != nil {
+					log.Warn("sync failed", "err", err)
+				}
+			}()
+		}},
+		{Title: "Quit", Tooltip: "Quit SagaBoard", OnClick: cancel},
 	}, func(m *tray.Menu) {
 		trayMenu = m
 		refreshTray(m)
