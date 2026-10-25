@@ -74,6 +74,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/admin/sagas/{id}", s.withAdmin(s.getQuest))
 	mux.HandleFunc("GET /v1/admin/sagas/{id}/image", s.withAdmin(s.getAdminQuestImage))
 	mux.HandleFunc("PATCH /v1/admin/sagas/{id}", s.withAdmin(s.patchQuest))
+	mux.HandleFunc("DELETE /v1/admin/sagas/{id}", s.withAdmin(s.deleteQuest))
 	mux.HandleFunc("PUT /v1/admin/sagas/{id}/image", s.withAdmin(s.putAdminQuestImage))
 	mux.HandleFunc("DELETE /v1/admin/sagas/{id}/image", s.withAdmin(s.deleteAdminQuestImage))
 	mux.HandleFunc("GET /v1/admin/log", s.withAdmin(s.listLog))
@@ -444,6 +445,14 @@ func (s *Server) getQuest(w http.ResponseWriter, r *http.Request) {
 	out.Quest = withSagaImageURL(out.Quest)
 	out.Quest = s.withSignedCoverURL(out.Quest)
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) deleteQuest(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteQuest(r.Context(), r.PathValue("id")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) putAdminQuestImage(w http.ResponseWriter, r *http.Request) {
