@@ -3554,6 +3554,7 @@ events:SetScript("OnEvent", function(_, event, ...)
             cachePlayer()
         end
         emitCharacter()
+        onWorld()
         return
     end
     if event == "GOSSIP_SHOW" or event == "QUEST_DETAIL" or event == "QUEST_PROGRESS"

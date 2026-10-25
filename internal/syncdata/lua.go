@@ -130,6 +130,20 @@ func writeLuaObjective(b *strings.Builder, o contract.Objective, indent string) 
 	if o.Count > 0 {
 		fmt.Fprintf(b, "%scount = %d,\n", field, o.Count)
 	}
+	if o.Level > 0 {
+		fmt.Fprintf(b, "%slevel = %d,\n", field, o.Level)
+	}
+	if len(o.Kinds) > 0 {
+		b.WriteString(field)
+		b.WriteString("kinds = {")
+		for i, k := range o.Kinds {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(luaString(k))
+		}
+		b.WriteString("},\n")
+	}
 	if o.WithinSec > 0 {
 		fmt.Fprintf(b, "%swithin_sec = %d,\n", field, o.WithinSec)
 	}
