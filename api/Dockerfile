@@ -1,7 +1,7 @@
 # Build context is the repository root, not api/.
 # In Railway, leave the service root directory as the repo root.
 # railway.json points at this file.
-FROM golang:1.22-bookworm AS build
+FROM golang:1.25-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
