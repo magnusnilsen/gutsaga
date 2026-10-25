@@ -26,6 +26,7 @@ type Status struct {
 type Menu struct {
 	mu          sync.Mutex
 	user        *systray.MenuItem
+	version     *systray.MenuItem
 	auth        *systray.MenuItem
 	authClick   func()
 	updateItem  *systray.MenuItem
@@ -46,7 +47,8 @@ func Run(ctx context.Context, tooltip string, items []Item, onReady func(*Menu))
 		systray.SetTooltip(tooltip)
 
 		m := &Menu{
-			user: addDisabled("Ikke innlogget", "Smia-konto"),
+			user:    addDisabled("Ikke innlogget", "Smia-konto"),
+			version: addDisabled("Versjon", "Installert GutSaga-versjon"),
 		}
 		systray.AddSeparator()
 
@@ -196,6 +198,19 @@ func (m *Menu) SetStatus(s Status) {
 	user := stringsOr(s.User, "Ikke innlogget")
 	m.user.SetTitle(user)
 	m.user.SetTooltip(user)
+}
+
+// SetVersion sets the disabled companion version line (e.g. "Versjon 0.1.3").
+func (m *Menu) SetVersion(v string) {
+	if m == nil || m.version == nil {
+		return
+	}
+	title := "Versjon"
+	if v != "" {
+		title = "Versjon " + v
+	}
+	m.version.SetTitle(title)
+	m.version.SetTooltip(title)
 }
 
 func stringsOr(s, fallback string) string {
