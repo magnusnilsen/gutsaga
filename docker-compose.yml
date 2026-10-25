@@ -27,8 +27,10 @@ services:
       ADMIN_TOKEN: dev-admin-token
       IMAGE_URL_SECRET: dev-image-url-secret
       OURSAGAS_ALLOW_DEV_SECRETS: "1"
-      PUBLIC_BASE_URL: http://localhost:8080
-      OURSAGAS_DEV_TOKEN: dev-token
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      OURSAGAS_DEV_TOKEN: ${OURSAGAS_DEV_TOKEN:-}
+      BNET_CLIENT_ID: ${BNET_CLIENT_ID:-}
+      BNET_CLIENT_SECRET: ${BNET_CLIENT_SECRET:-}
       # slug:Name for the local tutorial group. A fresh database does nothing until seed creates sagas.
       OURSAGAS_BOOTSTRAP_GROUP: tutorial:Tutorial
       # Optional: copied once onto the bootstrap group when its webhook is empty.

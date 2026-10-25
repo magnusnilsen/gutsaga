@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -66,6 +68,11 @@ func (a *App) Login(ctx context.Context) error {
 		return err
 	}
 	start := strings.TrimRight(a.Config.APIBaseURL, "/") + "/v1/auth/bnet/start?attempt=" + attempt
+	// Register the attempt on the API before opening the browser. /start only
+	// creates the row when hit; polling first would race and get "unknown attempt".
+	if err := registerBnetAttempt(ctx, a.Client.HTTP, start); err != nil {
+		return err
+	}
 	if err := openBrowser(start); err != nil {
 		a.Log.Warn("could not open the browser", "err", err, "url", start)
 	}
@@ -90,6 +97,32 @@ func (a *App) Login(ctx context.Context) error {
 		case <-time.After(time.Second):
 		}
 	}
+}
+
+// registerBnetAttempt hits /v1/auth/bnet/start without following the Battle.net
+// redirect so the poll endpoint knows the attempt id before the browser opens.
+func registerBnetAttempt(ctx context.Context, httpClient *http.Client, startURL string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, startURL, nil)
+	if err != nil {
+		return err
+	}
+	client := httpClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	noRedirect := *client
+	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	resp, err := noRedirect.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Battle.net start failed: HTTP %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func (a *App) storeSession(out contract.SessionResponse) error {

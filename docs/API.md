@@ -35,6 +35,7 @@ Session or `gst_`:
 | --- | --- | --- |
 | `POST` | `/v1/groups` | Create. Caller becomes owner. |
 | `GET` | `/v1/groups` | Groups the account belongs to. |
+| `GET` | `/v1/groups/{id}/members` | Members of a group you belong to. |
 | `POST` | `/v1/groups/{id}/invites` | Owner. Body `{name, realm, battletag?}`. |
 | `POST` | `/v1/invites/{id}/accept` | Join the account. Marks that character participating. |
 | `POST` | `/v1/invites/{id}/decline` | Permanent for that invite. |

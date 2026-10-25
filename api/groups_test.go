@@ -109,6 +109,29 @@ func TestSyncIsolationBetweenGroups(t *testing.T) {
 	}
 }
 
+func TestListGroupMembers(t *testing.T) {
+	resetDB(t)
+	srv := httptest.NewServer((&Server{store: NewStore(testPool)}).Handler())
+	t.Cleanup(srv.Close)
+	owner, ownerToken := devSession(t, "bnet-owner", "Owner#1", "Owner")
+	group := devGroup(t, owner.ID, "tutorial", "Tutorial")
+	_, guestToken := devSession(t, "bnet-guest", "Guest#9", "Guest")
+	ownerAPI := apiClient{base: srv.URL, token: ownerToken, http: srv.Client()}
+	guestAPI := apiClient{base: srv.URL, token: guestToken, http: srv.Client()}
+
+	var listed struct {
+		Members []contract.GroupMemberRow `json:"members"`
+	}
+	resp, err := ownerAPI.do(http.MethodGet, "/v1/groups/"+group.ID+"/members", nil, &listed)
+	if err != nil || resp.StatusCode != http.StatusOK || len(listed.Members) != 1 || listed.Members[0].Role != "owner" {
+		t.Fatalf("owner list %d %v %+v", statusOf(resp), err, listed.Members)
+	}
+	resp, err = guestAPI.do(http.MethodGet, "/v1/groups/"+group.ID+"/members", nil, nil)
+	if err != nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("stranger %d %v", statusOf(resp), err)
+	}
+}
+
 func TestInvitesJoinDeclineAndPartyCredit(t *testing.T) {
 	resetDB(t)
 	srv := httptest.NewServer((&Server{store: NewStore(testPool)}).Handler())

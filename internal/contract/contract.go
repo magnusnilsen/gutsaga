@@ -147,6 +147,15 @@ type GroupSummary struct {
 	OwnerID string `json:"owner_player_id,omitempty"`
 }
 
+// GroupMemberRow is one account in a tenant group (not a party roster line).
+type GroupMemberRow struct {
+	PlayerID      string `json:"player_id"`
+	BattleTag     string `json:"battletag,omitempty"`
+	DisplayName   string `json:"display_name,omitempty"`
+	Role          string `json:"role"`
+	JoinedAt      string `json:"joined_at,omitempty"`
+}
+
 // Invite is addressed to a character. kind is join (new member) or include (alt already on a member account).
 type Invite struct {
 	ID        string `json:"id"`

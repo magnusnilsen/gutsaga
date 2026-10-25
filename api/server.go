@@ -69,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/public/empty.png", servePlaceholderPNG)
 	mux.HandleFunc("POST /v1/groups", s.withMember(s.createGroup))
 	mux.HandleFunc("GET /v1/groups", s.withPlayer(s.listGroups))
+	mux.HandleFunc("GET /v1/groups/{id}/members", s.withPlayer(s.listGroupMembers))
 	mux.HandleFunc("POST /v1/groups/{id}/invites", s.withMember(s.createInvite))
 	mux.HandleFunc("POST /v1/invites/{id}/accept", s.withPlayer(s.acceptInvite))
 	mux.HandleFunc("POST /v1/invites/{id}/decline", s.withPlayer(s.declineInvite))

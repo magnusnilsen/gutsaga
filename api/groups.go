@@ -105,6 +105,36 @@ func (s *Store) memberRole(ctx context.Context, groupID, playerID string) (strin
 	return role, err
 }
 
+func (s *Store) ListGroupMembers(ctx context.Context, playerID, groupID string) ([]contract.GroupMemberRow, error) {
+	if err := validUUID(groupID); err != nil {
+		return nil, err
+	}
+	if _, err := s.memberRole(ctx, groupID, playerID); err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT p.id::text, COALESCE(p.battletag, ''), COALESCE(p.display_name, ''), gm.role, gm.created_at
+		FROM group_members gm
+		JOIN players p ON p.id = gm.player_id
+		WHERE gm.group_id=$1
+		ORDER BY CASE gm.role WHEN 'owner' THEN 0 ELSE 1 END, gm.created_at`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []contract.GroupMemberRow
+	for rows.Next() {
+		var m contract.GroupMemberRow
+		var joined time.Time
+		if err := rows.Scan(&m.PlayerID, &m.BattleTag, &m.DisplayName, &m.Role, &joined); err != nil {
+			return nil, err
+		}
+		m.JoinedAt = joined.UTC().Format(time.RFC3339)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) GroupsForPlayer(ctx context.Context, playerID string) ([]contract.GroupSummary, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT g.id::text, g.slug, g.name, g.locale, gm.role, COALESCE(g.owner_player_id::text, '')
@@ -647,6 +677,18 @@ func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
 		out = []contract.GroupSummary{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"groups": out})
+}
+
+func (s *Server) listGroupMembers(w http.ResponseWriter, r *http.Request) {
+	out, err := s.store.ListGroupMembers(r.Context(), playerFrom(r).ID, r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if out == nil {
+		out = []contract.GroupMemberRow{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"members": out})
 }
 
 func (s *Server) createInvite(w http.ResponseWriter, r *http.Request) {
