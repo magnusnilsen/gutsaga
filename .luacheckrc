@@ -10,6 +10,7 @@ globals = {
     "SLASH_GUTSAGA2",
     "SlashCmdList",
     "itemCount",
+    "refresh",
 }
 read_globals = {
     "CreateFrame",
@@ -85,6 +86,12 @@ read_globals = {
     "UnitGUID",
     "GetQuestDifficultyColor",
     "GetQuestGreenRange",
+    "UIDropDownMenu_Initialize",
+    "UIDropDownMenu_CreateInfo",
+    "UIDropDownMenu_AddButton",
+    "UIDropDownMenu_SetText",
+    "UIDropDownMenu_SetWidth",
+    "UIDropDownMenu_JustifyText",
 }
 exclude_files = {
     "addon/GutSaga/GutSagaData.lua",
