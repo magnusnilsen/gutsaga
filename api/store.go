@@ -44,12 +44,12 @@ type querier interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 }
 
-func newAPIKey() (string, error) {
+func newToken(prefix string) (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
-	return "gsk_" + hex.EncodeToString(buf), nil
+	return prefix + hex.EncodeToString(buf), nil
 }
 
 func hashKey(key string) string {
@@ -145,100 +145,68 @@ func (s *Store) CreatePlayer(ctx context.Context, battletag, displayName string)
 	if displayName == "" || len([]rune(displayName)) > 80 {
 		return contract.CreatePlayerResponse{}, fmt.Errorf("%w: display name", ErrInvalid)
 	}
-	key, err := newAPIKey()
-	if err != nil {
-		return contract.CreatePlayerResponse{}, err
-	}
 	var id string
 	var created time.Time
-	err = s.pool.QueryRow(ctx, `
-		INSERT INTO players (battletag, display_name, api_key_hash)
-		VALUES ($1, $2, $3)
-		RETURNING id::text, created_at`, battletag, displayName, hashKey(key)).Scan(&id, &created)
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO players (battletag, display_name)
+		VALUES ($1, $2)
+		RETURNING id::text, created_at`, battletag, displayName).Scan(&id, &created)
 	if err != nil {
 		return contract.CreatePlayerResponse{}, mapPG(err)
 	}
 	return contract.CreatePlayerResponse{
-		APIKey: key,
 		Player: contract.Player{ID: id, BattleTag: battletag, DisplayName: displayName, CreatedAt: contract.FormatTime(created)},
 	}, nil
-}
-
-func (s *Store) RotateKey(ctx context.Context, playerID string) (contract.CreatePlayerResponse, error) {
-	if err := validUUID(playerID); err != nil {
-		return contract.CreatePlayerResponse{}, err
-	}
-	key, err := newAPIKey()
-	if err != nil {
-		return contract.CreatePlayerResponse{}, err
-	}
-	var tag, name string
-	var created time.Time
-	err = s.pool.QueryRow(ctx, `
-		UPDATE players SET api_key_hash=$2 WHERE id=$1
-		RETURNING COALESCE(battletag, ''), display_name, created_at`, playerID, hashKey(key)).Scan(&tag, &name, &created)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return contract.CreatePlayerResponse{}, ErrNotFound
-	}
-	if err != nil {
-		return contract.CreatePlayerResponse{}, err
-	}
-	return contract.CreatePlayerResponse{
-		APIKey: key,
-		Player: contract.Player{ID: playerID, BattleTag: tag, DisplayName: name, CreatedAt: contract.FormatTime(created)},
-	}, nil
-}
-
-func newSessionToken() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return "gss_" + hex.EncodeToString(buf), nil
 }
 
 func (s *Store) PlayerByKey(ctx context.Context, key string) (contract.Player, error) {
 	switch {
 	case strings.HasPrefix(key, "gss_"):
 		return s.playerBySession(ctx, key)
-	case strings.HasPrefix(key, "gsk_"):
-		return s.playerByAPIKey(ctx, key)
+	case strings.HasPrefix(key, "gst_"):
+		return s.playerByPersonalToken(ctx, key)
 	default:
 		return contract.Player{}, ErrForbidden
 	}
 }
 
-func (s *Store) playerByAPIKey(ctx context.Context, key string) (contract.Player, error) {
-	var p contract.Player
-	var created time.Time
-	err := s.pool.QueryRow(ctx, `
-		SELECT id::text, COALESCE(battletag, ''), display_name, COALESCE(email, ''), COALESCE(smia_subject, ''), created_at
-		FROM players WHERE api_key_hash=$1`, hashKey(key)).Scan(&p.ID, &p.BattleTag, &p.DisplayName, &p.Email, &p.SmiaSubject, &created)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return contract.Player{}, ErrForbidden
-	}
-	if err != nil {
-		return contract.Player{}, err
-	}
+func scanPlayer(p *contract.Player, created time.Time) {
 	p.CreatedAt = contract.FormatTime(created)
-	return p, nil
 }
 
 func (s *Store) playerBySession(ctx context.Context, key string) (contract.Player, error) {
 	var p contract.Player
 	var created time.Time
 	err := s.pool.QueryRow(ctx, `
-		SELECT p.id::text, COALESCE(p.battletag, ''), p.display_name, COALESCE(p.email, ''), COALESCE(p.smia_subject, ''), p.created_at
+		SELECT p.id::text, COALESCE(p.battletag, ''), p.display_name, COALESCE(p.bnet_account_id, ''), p.created_at
 		FROM sessions s
 		JOIN players p ON p.id = s.player_id
-		WHERE s.token_hash=$1 AND s.expires_at > now()`, hashKey(key)).Scan(&p.ID, &p.BattleTag, &p.DisplayName, &p.Email, &p.SmiaSubject, &created)
+		WHERE s.token_hash=$1 AND s.expires_at > now()`, hashKey(key)).Scan(&p.ID, &p.BattleTag, &p.DisplayName, &p.BnetAccountID, &created)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.Player{}, ErrForbidden
 	}
 	if err != nil {
 		return contract.Player{}, err
 	}
-	p.CreatedAt = contract.FormatTime(created)
+	scanPlayer(&p, created)
+	return p, nil
+}
+
+func (s *Store) playerByPersonalToken(ctx context.Context, key string) (contract.Player, error) {
+	var p contract.Player
+	var created time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT p.id::text, COALESCE(p.battletag, ''), p.display_name, COALESCE(p.bnet_account_id, ''), p.created_at
+		FROM personal_tokens t
+		JOIN players p ON p.id = t.player_id
+		WHERE t.token_hash=$1 AND t.revoked_at IS NULL`, hashKey(key)).Scan(&p.ID, &p.BattleTag, &p.DisplayName, &p.BnetAccountID, &created)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return contract.Player{}, ErrForbidden
+	}
+	if err != nil {
+		return contract.Player{}, err
+	}
+	scanPlayer(&p, created)
 	return p, nil
 }
 
@@ -445,14 +413,14 @@ func (s *Store) ListCharacters(ctx context.Context, battletag string) ([]contrac
 }
 
 const characterSelect = `
-	SELECT c.id::text, c.player_id::text, c.name, c.realm, c.level, c.race, c.class, COALESCE(p.battletag, ''), c.backstory
+	SELECT c.id::text, c.player_id::text, c.name, c.realm, c.level, c.race, c.class, COALESCE(p.battletag, ''), c.backstory, c.participating
 	FROM characters c JOIN players p ON p.id = c.player_id`
 
 func scanCharacters(rows pgx.Rows) ([]contract.Character, error) {
 	var out []contract.Character
 	for rows.Next() {
 		var c contract.Character
-		if err := rows.Scan(&c.ID, &c.PlayerID, &c.Name, &c.Realm, &c.Level, &c.Race, &c.Class, &c.BattleTag, &c.Backstory); err != nil {
+		if err := rows.Scan(&c.ID, &c.PlayerID, &c.Name, &c.Realm, &c.Level, &c.Race, &c.Class, &c.BattleTag, &c.Backstory, &c.Participating); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -471,6 +439,8 @@ type QuestInput struct {
 	PartyQuest           bool
 	Active               *bool
 	CreatedBy            string
+	GroupID              string
+	GroupSlug            string
 	AssignedCharacterIDs []string
 	Requires             []string
 	Chain                *contract.Chain
@@ -623,13 +593,17 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	if err := chainOrderAvailable(ctx, tx, "", in.Chain); err != nil {
 		return contract.Quest{}, err
 	}
+	var groupID any
+	if id := strings.TrimSpace(in.GroupID); id != "" {
+		groupID = id
+	}
 	var id string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO quests (title, description, objectives, min_level, party, active, version, created_by, created_by_player_id, objectives_ordered, time_window, group_rule, requires, chain_id, chain_name, chain_order)
-		VALUES ($1,$2,$3::jsonb,$4,$5,$6,1,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15)
+		INSERT INTO quests (title, description, objectives, min_level, party, active, version, created_by, created_by_player_id, objectives_ordered, time_window, group_rule, requires, chain_id, chain_name, chain_order, group_id)
+		VALUES ($1,$2,$3::jsonb,$4,$5,$6,1,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16)
 		RETURNING id::text`,
 		strings.TrimSpace(in.Title), in.Description, objJSON, nullableInt(in.MinLevel), in.PartyQuest, active, creatorTag, creatorID, ordered, whenJSON, groupJSON,
-		reqJSON, chainID, chainName, chainOrder,
+		reqJSON, chainID, chainName, chainOrder, groupID,
 	).Scan(&id)
 	if err != nil {
 		return contract.Quest{}, mapChainWrite(err)
@@ -1185,7 +1159,7 @@ func buildGoalsMarkdown(q contract.Quest) string {
 	return b.String()
 }
 
-// buildActivityCard is a Smia table for Aktivitet (who finished), matching the addon.
+// buildActivityCard is a table of who finished a saga, matching the addon.
 func buildActivityCard(completers []contract.QuestCompleter) *contract.QuestCard {
 	card := &contract.QuestCard{
 		Columns: []contract.QuestCardColumn{
@@ -1350,11 +1324,12 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 		chars = []contract.Character{}
 	}
 	rows, err := s.pool.Query(ctx, questSelect+`
-		WHERE q.active OR q.id IN (
+		WHERE q.group_id IN (SELECT group_id FROM group_members WHERE player_id=$1)
+		AND (q.active OR q.id IN (
 			SELECT p.quest_id FROM progress p
 			JOIN characters c ON c.id = p.character_id
 			WHERE c.player_id=$1
-		)
+		))
 		ORDER BY q.min_level NULLS FIRST, q.title`, playerID)
 	if err != nil {
 		return contract.SyncResponse{}, err
@@ -1431,9 +1406,24 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	if locks == nil {
 		locks = []contract.SagaLock{}
 	}
+	groups, err := s.GroupsForPlayer(ctx, playerID)
+	if err != nil {
+		return contract.SyncResponse{}, err
+	}
+	invites, err := s.SyncInvites(ctx, playerID)
+	if err != nil {
+		return contract.SyncResponse{}, err
+	}
+	if groups == nil {
+		groups = []contract.GroupSummary{}
+	}
+	if invites == nil {
+		invites = []contract.Invite{}
+	}
 	return contract.SyncResponse{
 		BattleTag: tag, GeneratedAt: contract.FormatTime(time.Now()),
 		Characters: chars, Quests: quests, Progress: progress, Completions: completions, Locks: locks,
+		Groups: groups, Invites: invites,
 	}, nil
 }
 
@@ -1454,6 +1444,11 @@ func (s *Store) sagaCompletions(ctx context.Context, questIDs []string) ([]contr
 		JOIN characters c ON c.id = p.character_id
 		JOIN players pl ON pl.id = c.player_id
 		WHERE p.status = 'completed'
+		AND EXISTS (
+			SELECT 1 FROM group_members gm
+			JOIN quests q ON q.group_id = gm.group_id
+			WHERE q.id = p.quest_id AND gm.player_id = c.player_id
+		)
 		ORDER BY p.completed_at ASC NULLS LAST, c.name, c.realm`)
 	if err != nil {
 		return nil, err
@@ -1544,13 +1539,26 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 	if err != nil {
 		return contract.CompletionResponse{}, err
 	}
-	if tag != "" && !strings.EqualFold(tag, in.BattleTag) {
+	if in.BattleTag != "" && !strings.EqualFold(tag, in.BattleTag) {
 		return contract.CompletionResponse{Allowed: false}, ErrForbidden
 	}
-	if tag == "" && in.BattleTag != "" {
-		if _, err := tx.Exec(ctx, `UPDATE players SET battletag=$2 WHERE id=$1 AND (battletag IS NULL OR battletag='')`, playerID, in.BattleTag); err != nil {
-			return contract.CompletionResponse{}, mapPG(err)
+	var questGroup sql.NullString
+	if err := tx.QueryRow(ctx, `SELECT group_id::text FROM quests WHERE id=$1`, in.QuestID).Scan(&questGroup); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return contract.CompletionResponse{}, fmt.Errorf("%w: saga", ErrNotFound)
 		}
+		return contract.CompletionResponse{}, err
+	}
+	if !questGroup.Valid || strings.TrimSpace(questGroup.String) == "" {
+		return contract.CompletionResponse{Allowed: false}, ErrForbidden
+	}
+	var member int
+	err = tx.QueryRow(ctx, `SELECT 1 FROM group_members WHERE group_id=$1 AND player_id=$2`, questGroup.String, playerID).Scan(&member)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return contract.CompletionResponse{Allowed: false}, ErrForbidden
+	}
+	if err != nil {
+		return contract.CompletionResponse{}, err
 	}
 	// Stamp fresh race/class/level from the game onto the character row when present.
 	freshRace := strings.TrimSpace(in.Race)
@@ -1696,13 +1704,13 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 	if err != nil {
 		return contract.CompletionResponse{}, err
 	}
-	body := fmt.Sprintf("%s fullførte «%s» (versjon %d).", name, snapTitle, in.QuestVersion)
+	body := fmt.Sprintf("%s completed \"%s\" (version %d).", name, snapTitle, in.QuestVersion)
 	if rule != nil {
-		body = fmt.Sprintf("%s fullførte «%s» (versjon %d) med gruppa.", name, snapTitle, in.QuestVersion)
+		body = fmt.Sprintf("%s completed \"%s\" (version %d) with the party.", name, snapTitle, in.QuestVersion)
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO adventure_log (player_id, character_id, quest_id, type, title, body)
-		VALUES ($1,$2,$3,'quest',$4,$5)`, playerID, in.CharacterID, in.QuestID, "Oppdrag fullført", body); err != nil {
+		INSERT INTO adventure_log (player_id, character_id, quest_id, group_id, type, title, body)
+		VALUES ($1,$2,$3,$4,'quest',$5,$6)`, playerID, in.CharacterID, in.QuestID, questGroup.String, "Saga completed", body); err != nil {
 		return contract.CompletionResponse{}, err
 	}
 	var credits []contract.GroupCredit
@@ -1759,6 +1767,17 @@ func creditGroup(ctx context.Context, tx querier, questID string, questVersion i
 		if id == callerID {
 			continue
 		}
+		var inGroup int
+		err = tx.QueryRow(ctx, `
+			SELECT 1 FROM group_members gm
+			JOIN quests q ON q.group_id = gm.group_id
+			WHERE q.id=$1 AND gm.player_id=$2`, questID, owner).Scan(&inGroup)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
 		var progressID string
 		var level any
 		if m.Level > 0 {
@@ -1777,10 +1796,10 @@ func creditGroup(ctx context.Context, tx querier, questID string, questVersion i
 		if err != nil {
 			return nil, err
 		}
-		body := fmt.Sprintf("%s fullførte «%s» (versjon %d) sammen med %s.", foundName, title, questVersion, callerName)
+		body := fmt.Sprintf("%s completed \"%s\" (version %d) with %s.", foundName, title, questVersion, callerName)
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO adventure_log (player_id, character_id, quest_id, type, title, body)
-			VALUES ($1,$2,$3,'quest',$4,$5)`, owner, id, questID, "Oppdrag fullført", body); err != nil {
+			INSERT INTO adventure_log (player_id, character_id, quest_id, group_id, type, title, body)
+			VALUES ($1,$2,$3,(SELECT group_id FROM quests WHERE id=$3),'quest',$4,$5)`, owner, id, questID, "Saga completed", body); err != nil {
 			return nil, err
 		}
 		out = append(out, contract.GroupCredit{CharacterID: id, Name: foundName, Realm: foundRealm})
@@ -1985,45 +2004,16 @@ func (s *Store) ListLog(ctx context.Context, battletag, characterID string, limi
 
 const sessionTTL = 30 * 24 * time.Hour
 
-// IssueSession finds or creates the player for a verified Smia subject and
-// returns a new GutSaga session token. The Smia access token is not stored.
-func (s *Store) IssueSession(ctx context.Context, subject, email, displayName string) (contract.SessionResponse, error) {
-	subject = strings.TrimSpace(subject)
-	email = strings.TrimSpace(email)
-	displayName = strings.TrimSpace(displayName)
-	if subject == "" || len(subject) > 200 {
-		return contract.SessionResponse{}, fmt.Errorf("%w: smia subject", ErrInvalid)
+// IssueSessionFor returns a 30-day gss_ session for a player who already exists.
+func (s *Store) IssueSessionFor(ctx context.Context, playerID string) (contract.SessionResponse, error) {
+	if err := validUUID(playerID); err != nil {
+		return contract.SessionResponse{}, err
 	}
-	if displayName == "" {
-		displayName = email
-		if i := strings.Index(displayName, "@"); i > 0 {
-			displayName = displayName[:i]
-		}
-	}
-	if displayName == "" {
-		displayName = "Spiller"
-	}
-	if len([]rune(displayName)) > 80 {
-		displayName = string([]rune(displayName)[:80])
-	}
-	if len(email) > 200 {
-		email = email[:200]
-	}
-	var p contract.Player
-	var created time.Time
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO players (display_name, email, smia_subject)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (smia_subject) WHERE smia_subject IS NOT NULL AND smia_subject <> ''
-		DO UPDATE SET
-			email = CASE WHEN EXCLUDED.email <> '' THEN EXCLUDED.email ELSE players.email END
-		RETURNING id::text, COALESCE(battletag, ''), display_name, COALESCE(email, ''), COALESCE(smia_subject, ''), created_at`,
-		displayName, email, subject).Scan(&p.ID, &p.BattleTag, &p.DisplayName, &p.Email, &p.SmiaSubject, &created)
+	p, err := s.playerByID(ctx, playerID)
 	if err != nil {
-		return contract.SessionResponse{}, mapPG(err)
+		return contract.SessionResponse{}, err
 	}
-	p.CreatedAt = contract.FormatTime(created)
-	token, err := newSessionToken()
+	token, err := newToken("gss_")
 	if err != nil {
 		return contract.SessionResponse{}, err
 	}
@@ -2036,6 +2026,22 @@ func (s *Store) IssueSession(ctx context.Context, subject, email, displayName st
 	return contract.SessionResponse{
 		TokenType: "Bearer", SessionToken: token, ExpiresAt: contract.FormatTime(expires), Player: p,
 	}, nil
+}
+
+func (s *Store) playerByID(ctx context.Context, id string) (contract.Player, error) {
+	var p contract.Player
+	var created time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT id::text, COALESCE(battletag, ''), display_name, COALESCE(bnet_account_id, ''), created_at
+		FROM players WHERE id=$1`, id).Scan(&p.ID, &p.BattleTag, &p.DisplayName, &p.BnetAccountID, &created)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return contract.Player{}, ErrNotFound
+	}
+	if err != nil {
+		return contract.Player{}, err
+	}
+	scanPlayer(&p, created)
+	return p, nil
 }
 
 // UpsertCharacter stores a character reported by the addon for the logged-in player.
@@ -2081,14 +2087,18 @@ func (s *Store) UpsertCharacter(ctx context.Context, playerID string, in contrac
 	if err != nil {
 		return contract.Character{}, err
 	}
-	if in.BattleTag != "" {
-		if tag == "" {
-			if _, err := tx.Exec(ctx, `UPDATE players SET battletag=$2 WHERE id=$1`, playerID, in.BattleTag); err != nil {
-				return contract.Character{}, mapPG(err)
-			}
-		} else if !strings.EqualFold(tag, in.BattleTag) {
-			return contract.Character{}, fmt.Errorf("%w: battletag", ErrConflict)
-		}
+	if in.BattleTag != "" && !strings.EqualFold(tag, in.BattleTag) {
+		return contract.Character{}, fmt.Errorf("%w: battletag", ErrForbidden)
+	}
+	var owner string
+	err = tx.QueryRow(ctx, `
+		SELECT player_id::text FROM characters
+		WHERE lower(name)=lower($1) AND lower(realm)=lower($2)`, in.Name, in.Realm).Scan(&owner)
+	if err == nil && owner != playerID {
+		return contract.Character{}, fmt.Errorf("%w: character", ErrConflict)
+	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return contract.Character{}, err
 	}
 	var id string
 	var oldLevel int
@@ -2113,10 +2123,10 @@ func (s *Store) UpsertCharacter(ctx context.Context, playerID string, in contrac
 			return contract.Character{}, err
 		}
 		if oldLevel != in.Level {
-			body := fmt.Sprintf("%s nådde nivå %d.", in.Name, in.Level)
+			body := fmt.Sprintf("%s reached level %d.", in.Name, in.Level)
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO adventure_log (player_id, character_id, type, title, body)
-				VALUES ($1,$2,'level',$3,$4)`, playerID, id, fmt.Sprintf("Nivå %d", in.Level), body); err != nil {
+				VALUES ($1,$2,'level',$3,$4)`, playerID, id, fmt.Sprintf("Level %d", in.Level), body); err != nil {
 				return contract.Character{}, err
 			}
 		}
@@ -2181,34 +2191,14 @@ func (s *Store) AssertQuestOwnerByBattleTag(ctx context.Context, questID, battle
 	return nil
 }
 
-// AssertQuestOwnerByEmail resolves the Smia caller's email to a GutSaga player
-// (set when they sign in via the companion) and checks saga ownership.
-func (s *Store) AssertQuestOwnerByEmail(ctx context.Context, questID, email string) error {
-	if err := validUUID(questID); err != nil {
-		return err
-	}
-	mail := strings.ToLower(strings.TrimSpace(email))
-	if mail == "" {
-		return fmt.Errorf("%w: editor_email required", ErrInvalid)
-	}
-	var playerID string
-	err := s.pool.QueryRow(ctx, `
-		SELECT id::text FROM players WHERE lower(email)=$1 ORDER BY created_at LIMIT 1`, mail).Scan(&playerID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrNotSagaAuthor
-	}
-	if err != nil {
-		return err
-	}
-	return s.assertQuestOwner(ctx, questID, playerID)
-}
-
-// ListQuestsByPlayer returns sagas created by this player.
+// ListQuestsByPlayer returns sagas in groups this player belongs to.
 func (s *Store) ListQuestsByPlayer(ctx context.Context, playerID string) ([]contract.Quest, error) {
 	if err := validUUID(playerID); err != nil {
 		return nil, err
 	}
-	rows, err := s.pool.Query(ctx, questSelect+` WHERE q.created_by_player_id=$1 ORDER BY q.updated_at DESC, q.title`, playerID)
+	rows, err := s.pool.Query(ctx, questSelect+`
+		WHERE q.group_id IN (SELECT group_id FROM group_members WHERE player_id=$1)
+		ORDER BY q.updated_at DESC, q.title`, playerID)
 	if err != nil {
 		return nil, err
 	}
@@ -2267,7 +2257,12 @@ func (s *Store) CreateQuestForPlayer(ctx context.Context, playerID string, in Qu
 	if tag == "" {
 		return contract.Quest{}, fmt.Errorf("%w: battletag required to create sagas", ErrInvalid)
 	}
+	groupID, err := s.resolveWriteGroup(ctx, playerID, in.GroupSlug)
+	if err != nil {
+		return contract.Quest{}, err
+	}
 	in.CreatedBy = tag
+	in.GroupID = groupID
 	return s.CreateQuest(ctx, in)
 }
 
@@ -2360,28 +2355,4 @@ func (s *Store) QuestImage(ctx context.Context, questID string) (contentType str
 		return "", nil, ErrNotFound
 	}
 	return contentType, image, nil
-}
-
-func (s *Store) CachedIdentity(ctx context.Context, tokenHash string) (subject, email, name, hub, server string, member, ok bool, err error) {
-	err = s.pool.QueryRow(ctx, `
-		SELECT subject, email, display_name, member, hub, server
-		FROM smia_token_cache WHERE token_hash=$1 AND expires_at > now()`, tokenHash).Scan(&subject, &email, &name, &member, &hub, &server)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", "", "", "", false, false, nil
-	}
-	if err != nil {
-		return "", "", "", "", "", false, false, err
-	}
-	return subject, email, name, hub, server, member, true, nil
-}
-
-func (s *Store) PutCachedIdentity(ctx context.Context, tokenHash, subject, email, name, hub, server string, member bool, until time.Time) error {
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO smia_token_cache (token_hash, subject, email, display_name, member, hub, server, expires_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		ON CONFLICT (token_hash) DO UPDATE SET
-			subject=EXCLUDED.subject, email=EXCLUDED.email, display_name=EXCLUDED.display_name,
-			member=EXCLUDED.member, hub=EXCLUDED.hub, server=EXCLUDED.server, expires_at=EXCLUDED.expires_at`,
-		tokenHash, subject, email, name, member, hub, server, until)
-	return err
 }

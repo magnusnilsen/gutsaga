@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/magnusnilsen/gutsaga/internal/discord"
 	"github.com/magnusnilsen/gutsaga/internal/realtime"
-	"github.com/magnusnilsen/gutsaga/internal/smia"
 )
 
 func main() {
@@ -29,8 +28,6 @@ func main() {
 	switch cmd {
 	case "serve":
 		os.Exit(serve(args))
-	case "mint":
-		os.Exit(mint(args))
 	case "seed":
 		os.Exit(seedCmd())
 	case "help", "-h", "--help":
@@ -42,44 +39,45 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `GutSaga API
+	fmt.Fprintf(os.Stderr, `OurSagas API
 
   gutsaga-api                 start the HTTP server
-  gutsaga-api seed            insert the local Elwynn test quests
-  gutsaga-api mint            create or rotate a player API key
+  gutsaga-api seed            insert the local Elwynn tutorial sagas
   gutsaga-api help
 
 GET /v1/ws is the player WebSocket (same bearer as /v1/sync).
 
 Environment:
-  DATABASE_URL          Postgres connection string (required)
-  DISCORD_WEBHOOK_URL   optional; saga notices post here as GutSaga
-  ADMIN_TOKEN           bearer token for /v1/admin
-  PUBLIC_BASE_URL       public origin for signed cover URLs (no trailing slash)
-  IMAGE_URL_SECRET      HMAC secret for those URLs (openssl rand -hex 32)
-  IMAGE_URL_TTL         signed URL lifetime (Go duration, default 1h)
-  PORT                  listen port (default 8080)
-  SMIA_AUTH_MODE        smia (default) or dev
-  SMIA_DEV_TOKEN        static token when SMIA_AUTH_MODE=dev
-  SMIA_MCP_URL          default https://smia.tools/wow/mcp
-  GUTSAGA_ALLOW_DEV_SECRETS  set to 1 for local docker-compose only
+  DATABASE_URL                 Postgres connection string (required)
+  ADMIN_TOKEN                  ops only: seed is a command; HTTP hard-delete of a saga or a group
+  BNET_CLIENT_ID               Battle.net OAuth client id
+  BNET_CLIENT_SECRET           Battle.net OAuth client secret (stays on the API)
+  PUBLIC_BASE_URL              public origin, also the OAuth redirect base (no trailing slash)
+  IMAGE_URL_SECRET             HMAC secret for signed cover URLs (openssl rand -hex 32)
+  IMAGE_URL_TTL                signed URL lifetime (Go duration, default 1h)
+  PORT                         listen port (default 8080)
+  OURSAGAS_DEV_TOKEN            dev/CI login bypass. Not a stand-in for Battle.net.
+  OURSAGAS_BOOTSTRAP_GROUP      slug:Name, required only when sagas have no group yet
+  OURSAGAS_OWNER_BATTLETAG      owner of the bootstrap group (else the oldest BattleTag)
+  DISCORD_WEBHOOK_URL          copied once onto the bootstrap group when its webhook is empty
+  OURSAGAS_ALLOW_DEV_SECRETS    set to 1 for local docker-compose only
 `)
 }
 
 // docker-compose.yml ships weak local defaults. Refuse them unless the
-// operator explicitly opts in — Railway never sets GUTSAGA_ALLOW_DEV_SECRETS.
+// operator explicitly opts in — Railway never sets OURSAGAS_ALLOW_DEV_SECRETS.
 var knownDevSecrets = map[string]string{
 	"ADMIN_TOKEN":      "dev-admin-token",
 	"IMAGE_URL_SECRET": "dev-image-url-secret",
 }
 
 func rejectDevSecrets() error {
-	if os.Getenv("GUTSAGA_ALLOW_DEV_SECRETS") == "1" {
+	if os.Getenv("OURSAGAS_ALLOW_DEV_SECRETS") == "1" {
 		return nil
 	}
 	for key, weak := range knownDevSecrets {
 		if strings.TrimSpace(os.Getenv(key)) == weak {
-			return fmt.Errorf("%s is the docker-compose default %q; set a real secret (openssl rand -hex 32) or GUTSAGA_ALLOW_DEV_SECRETS=1 for local only", key, weak)
+			return fmt.Errorf("%s is the docker-compose default %q; set a real secret (openssl rand -hex 32) or OURSAGAS_ALLOW_DEV_SECRETS=1 for local only", key, weak)
 		}
 	}
 	return nil
@@ -119,23 +117,22 @@ func serve(args []string) int {
 		return 1
 	}
 	store := NewStore(pool)
-	var notifier Notifier
-	if hook := strings.TrimSpace(os.Getenv("DISCORD_WEBHOOK_URL")); hook != "" {
-		q := discord.NewQueue(&discord.Client{WebhookURL: hook})
-		q.After = func(res discord.Result) {
-			if res.Err != nil || res.Kind != discord.KindCompletion || res.Ref == "" {
-				return
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := store.MarkDiscord(ctx, res.Ref, res.Message.AttachmentURL); err != nil {
-				slog.Error("mark discord", "err", err)
-			}
-		}
-		notifier = q
-	} else {
-		slog.Warn("DISCORD_WEBHOOK_URL is empty; Discord notices are skipped")
+	if err := store.Bootstrap(ctx, os.Getenv("OURSAGAS_BOOTSTRAP_GROUP"), os.Getenv("OURSAGAS_OWNER_BATTLETAG"), os.Getenv("DISCORD_WEBHOOK_URL")); err != nil {
+		slog.Error("bootstrap", "err", err)
+		return 1
 	}
+	q := discord.NewQueue(&discord.Client{})
+	q.After = func(res discord.Result) {
+		if res.Err != nil || res.Kind != discord.KindCompletion || res.Ref == "" {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := store.MarkDiscord(ctx, res.Ref, res.Message.AttachmentURL); err != nil {
+			slog.Error("mark discord", "err", err)
+		}
+	}
+	var notifier Notifier = q
 	if strings.TrimSpace(os.Getenv("ADMIN_TOKEN")) == "" {
 		slog.Warn("ADMIN_TOKEN is empty; admin routes are disabled")
 	}
@@ -157,17 +154,17 @@ func serve(args []string) int {
 		slog.Warn("signed saga image URLs need both PUBLIC_BASE_URL and IMAGE_URL_SECRET")
 	}
 	srv := &Server{
-		store:          store,
-		adminToken:     os.Getenv("ADMIN_TOKEN"),
-		publicBaseURL:  publicBase,
-		imageURLSecret: imageSecret,
-		imageURLTTL:    imageTTL,
-		discord:        notifier,
-		smia:           newVerifier(store),
-		events:         hub,
-	}
-	if strings.EqualFold(os.Getenv("SMIA_AUTH_MODE"), "dev") && strings.TrimSpace(os.Getenv("SMIA_DEV_TOKEN")) == "" {
-		slog.Warn("SMIA_AUTH_MODE=dev but SMIA_DEV_TOKEN is empty; login will fail")
+		store:            store,
+		adminToken:       os.Getenv("ADMIN_TOKEN"),
+		publicBaseURL:    publicBase,
+		imageURLSecret:   imageSecret,
+		imageURLTTL:      imageTTL,
+		discord:          notifier,
+		events:           hub,
+		devToken:         strings.TrimSpace(os.Getenv("OURSAGAS_DEV_TOKEN")),
+		bnetClientID:     strings.TrimSpace(os.Getenv("BNET_CLIENT_ID")),
+		bnetClientSecret: strings.TrimSpace(os.Getenv("BNET_CLIENT_SECRET")),
+		bnet:             newBnetFlow(),
 	}
 	listen := *addr
 	if listen == "" {
@@ -200,26 +197,6 @@ func serve(args []string) int {
 	return 0
 }
 
-func newVerifier(store *Store) smia.Verifier {
-	mode := strings.ToLower(strings.TrimSpace(os.Getenv("SMIA_AUTH_MODE")))
-	if mode == "dev" {
-		return smia.DevVerifier{Token: strings.TrimSpace(os.Getenv("SMIA_DEV_TOKEN"))}
-	}
-	resource := strings.TrimSpace(os.Getenv("SMIA_MCP_URL"))
-	if resource == "" {
-		resource = "https://smia.tools/wow/mcp"
-	}
-	hub := strings.TrimSpace(os.Getenv("SMIA_HUB"))
-	if hub == "" {
-		hub = smia.Hub
-	}
-	server := strings.TrimSpace(os.Getenv("SMIA_SERVER"))
-	if server == "" {
-		server = smia.Server
-	}
-	return smia.MCPVerifier{ResourceURL: resource, Hub: hub, Server: server, Cache: storeSmiaCache{store: store}}
-}
-
 func seedCmd() int {
 	ctx := context.Background()
 	pool, err := openPool(ctx)
@@ -232,63 +209,16 @@ func seedCmd() int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	created, updated, err := seed(ctx, NewStore(pool))
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	fmt.Printf("seed: %d nye oppdrag, %d oppdatert\n", created, updated)
-	return 0
-}
-
-func mint(args []string) int {
-	fs := flag.NewFlagSet("mint", flag.ContinueOnError)
-	tag := fs.String("battletag", "", "player BattleTag, for example Magnus#2231")
-	name := fs.String("name", "", "display name")
-	rotate := fs.Bool("rotate", false, "rotate the key if the BattleTag already exists")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *tag == "" || *name == "" && !*rotate {
-		fmt.Fprintln(os.Stderr, "mint requires --battletag and --name")
-		return 2
-	}
-	ctx := context.Background()
-	pool, err := openPool(ctx)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	defer pool.Close()
-	if err := migrate(ctx, pool); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
 	store := NewStore(pool)
-	var id string
-	err = pool.QueryRow(ctx, `SELECT id::text FROM players WHERE battletag=$1`, strings.TrimSpace(*tag)).Scan(&id)
-	if err == nil {
-		if !*rotate {
-			fmt.Fprintln(os.Stderr, "player already exists; pass --rotate to issue a new key")
-			return 1
-		}
-		out, err := store.RotateKey(ctx, id)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		fmt.Printf("battletag: %s\napi_key: %s\n", out.Player.BattleTag, out.APIKey)
-		return 0
-	}
-	if *name == "" {
-		fmt.Fprintln(os.Stderr, "--name is required for a new player")
-		return 2
-	}
-	out, err := store.CreatePlayer(ctx, *tag, *name)
+	created, updated, err := seed(ctx, store)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fmt.Printf("battletag: %s\napi_key: %s\n", out.Player.BattleTag, out.APIKey)
+	if err := store.Bootstrap(ctx, os.Getenv("OURSAGAS_BOOTSTRAP_GROUP"), os.Getenv("OURSAGAS_OWNER_BATTLETAG"), os.Getenv("DISCORD_WEBHOOK_URL")); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Printf("seed: %d new sagas, %d updated\n", created, updated)
 	return 0
 }

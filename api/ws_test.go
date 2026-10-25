@@ -49,19 +49,13 @@ func TestRealtimeTwoInstances(t *testing.T) {
 	}
 
 	admin := apiClient{base: srv1.URL, token: "admin-test", http: srv1.Client()}
-	var magnus, other contract.CreatePlayerResponse
-	resp, err = admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
-		"battletag": "Magnus#2231", "display_name": "Magnus",
-	}, &magnus)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("player %d %v", statusOf(resp), err)
-	}
-	resp, err = admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
-		"battletag": "Other#1", "display_name": "Other",
-	}, &other)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("other %d %v", statusOf(resp), err)
-	}
+	magnusPlayer, magnusToken := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
+	otherPlayer, otherToken := devSession(t, "bnet-other", "Other#1", "Other")
+	group := devGroup(t, magnusPlayer.ID, "tutorial", "Tutorial")
+	joinGroup(t, group.ID, otherPlayer.ID)
+	magnus := contract.CreatePlayerResponse{Player: magnusPlayer, APIKey: magnusToken}
+	other := contract.CreatePlayerResponse{Player: otherPlayer, APIKey: otherToken}
+	author := apiClient{base: srv1.URL, token: magnusToken, http: srv1.Client()}
 	var magni contract.Character
 	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
 		"player_id": magnus.Player.ID, "name": "Magni", "realm": "Argent Dawn",
@@ -76,10 +70,10 @@ func TestRealtimeTwoInstances(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
+	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{
 		"title": "Første vakt", "description": "Stå vakt.",
-		"objectives": []map[string]any{{"id": "stay", "type": "location", "text": "Hold ut", "zone": "Elwynn Forest"}},
-		"party":      true, "created_by": "Magnus#2231",
+		"objectives":             []map[string]any{{"id": "stay", "type": "location", "text": "Hold ut", "zone": "Elwynn Forest"}},
+		"party":                  true,
 		"assigned_character_ids": []string{magni.ID},
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated || quest.Version != 1 {
@@ -106,7 +100,7 @@ func TestRealtimeTwoInstances(t *testing.T) {
 	})
 
 	var updated contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
+	resp, err = author.do(http.MethodPatch, "/v1/sagas/"+quest.ID, map[string]any{
 		"title": "Første vakt, igjen", "changes": []string{"Nytt navn"},
 	}, &updated)
 	if err != nil || updated.Version != 2 {
@@ -115,7 +109,7 @@ func TestRealtimeTwoInstances(t *testing.T) {
 	wantBoth(t, a, b, realtime.TypeUpdated, quest.ID, 2)
 
 	var retired contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
+	resp, err = author.do(http.MethodPatch, "/v1/sagas/"+quest.ID, map[string]any{
 		"active": false, "changes": []string{"Lagt bort"},
 	}, &retired)
 	if err != nil || retired.Version != 3 || retired.Active {

@@ -66,7 +66,7 @@ func TestHandleLineFlushPostsQuestVersion(t *testing.T) {
 			ID: "quest-1", Title: "Første vakt", Version: 3, Active: true,
 		}},
 	}
-	line := "[GutSaga] COMPLETE quest-1 3 Magni Argent Dawn 12 1761144240"
+	line := "[OurSagas] COMPLETE quest-1 3 Magni Argent Dawn 12 1761144240"
 	if !a.HandleLine(line) {
 		t.Fatal("enqueue")
 	}

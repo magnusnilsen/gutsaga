@@ -23,9 +23,13 @@ func (e lockError) Error() string { return e.message }
 func (e lockError) Unwrap() error { return ErrLocked }
 
 func fillQuestInput(body questBody) (QuestInput, error) {
+	slug, rule, err := parseSagaGroup(body.Group)
+	if err != nil {
+		return QuestInput{}, fmt.Errorf("%w: group", ErrInvalid)
+	}
 	in := QuestInput{
 		Title: body.Title, Description: body.Description, Objectives: body.Objectives,
-		ObjectivesOrdered: body.ObjectivesOrdered, When: body.When, Group: body.Group,
+		ObjectivesOrdered: body.ObjectivesOrdered, When: body.When, Group: rule, GroupSlug: slug,
 		MinLevel:   body.MinLevel,
 		PartyQuest: body.PartyQuest, Active: body.Active, CreatedBy: body.CreatedBy,
 		AssignedCharacterIDs: body.AssignedCharacterIDs, Requires: []string{},
@@ -45,6 +49,43 @@ func fillQuestInput(body questBody) (QuestInput, error) {
 		in.Chain = chain
 	}
 	return in, nil
+}
+
+// parseSagaGroup accepts a tenant slug string or the party-size object.
+// An object may include "slug" when the player is in more than one group.
+func parseSagaGroup(raw json.RawMessage) (string, *contract.GroupRule, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", nil, nil
+	}
+	if raw[0] == '"' {
+		var slug string
+		if err := json.Unmarshal(raw, &slug); err != nil {
+			return "", nil, err
+		}
+		return strings.TrimSpace(slug), nil, nil
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return "", nil, err
+	}
+	var slug string
+	if v, ok := probe["slug"]; ok {
+		_ = json.Unmarshal(v, &slug)
+		delete(probe, "slug")
+	}
+	encoded, err := json.Marshal(probe)
+	if err != nil {
+		return "", nil, err
+	}
+	var rule contract.GroupRule
+	if err := json.Unmarshal(encoded, &rule); err != nil {
+		return "", nil, err
+	}
+	if rule.Size == 0 && rule.MinLevel == nil && strings.TrimSpace(rule.Instance) == "" {
+		return strings.TrimSpace(slug), nil, nil
+	}
+	return strings.TrimSpace(slug), &rule, nil
 }
 
 func fillQuestPatch(body questPatchBody) (QuestPatch, error) {

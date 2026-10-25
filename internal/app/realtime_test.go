@@ -45,7 +45,7 @@ func TestPushRewritesLuaAndNotifies(t *testing.T) {
 	if len(notes) != 0 {
 		t.Fatalf("startup notified: %v", notes)
 	}
-	path := filepath.Join(a.WowDir, "Interface", "AddOns", "GutSaga", "GutSagaData.lua")
+	path := filepath.Join(a.WowDir, "Interface", "AddOns", "OurSagas", "OurSagasData.lua")
 	first, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestPushRewritesLuaAndNotifies(t *testing.T) {
 	if err := a.pullSync(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(notes) != 1 || notes[0] != "GutSaga: Ny saga: En kveld i Goldshire — skriv /reload i WoW" {
+	if len(notes) != 1 || notes[0] != "OurSagas: New saga: En kveld i Goldshire — type /reload in WoW" {
 		t.Fatalf("%v", notes)
 	}
 	second, err := os.ReadFile(path)
@@ -66,7 +66,7 @@ func TestPushRewritesLuaAndNotifies(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(second)
-	if !strings.Contains(text, `notice = "Ny saga: En kveld i Goldshire er lastet inn."`) || !strings.Contains(text, "En kveld i Goldshire") {
+	if !strings.Contains(text, `notice = "New saga: En kveld i Goldshire is loaded."`) || !strings.Contains(text, "En kveld i Goldshire") {
 		t.Fatal(text)
 	}
 

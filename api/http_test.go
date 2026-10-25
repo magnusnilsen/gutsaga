@@ -20,7 +20,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 	"github.com/magnusnilsen/gutsaga/internal/discord"
-	"github.com/magnusnilsen/gutsaga/internal/smia"
 )
 
 var testPool *pgxpool.Pool
@@ -62,7 +61,7 @@ func TestMain(m *testing.M) {
 func resetDB(t *testing.T) {
 	t.Helper()
 	_, err := testPool.Exec(context.Background(), `
-		TRUNCATE smia_token_cache, adventure_log, progress, screenshots, quest_versions, quest_assignments, quests, characters, sessions, players CASCADE`)
+		TRUNCATE adventure_log, progress, screenshots, quest_versions, quest_assignments, quests, group_invites, group_members, characters, personal_tokens, sessions, groups, players CASCADE`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,20 +160,13 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	t.Cleanup(srv.Close)
 	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
 
-	var created contract.CreatePlayerResponse
-	resp, err := admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
-		"battletag": "Magnus#2231", "display_name": "Magnus",
-	}, &created)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("player %d %v", resp.StatusCode, err)
-	}
-	var other contract.CreatePlayerResponse
-	resp, err = admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
-		"battletag": "Other#1", "display_name": "Other",
-	}, &other)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatal(err, resp.StatusCode)
-	}
+	magnusPlayer, magnusToken := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
+	otherPlayer, otherToken := devSession(t, "bnet-other", "Other#1", "Other")
+	devGroup(t, magnusPlayer.ID, "tutorial", "Tutorial")
+	created := contract.CreatePlayerResponse{Player: magnusPlayer, APIKey: magnusToken}
+	other := contract.CreatePlayerResponse{Player: otherPlayer, APIKey: otherToken}
+	var resp *http.Response
+	var err error
 	var magni contract.Character
 	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
 		"player_id": created.Player.ID, "name": "Magni", "realm": "Argent Dawn",
@@ -184,13 +176,14 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 		t.Fatalf("character %d %v", resp.StatusCode, err)
 	}
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
+	author := apiClient{base: srv.URL, token: magnusToken, http: srv.Client()}
+	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{
 		"title": "Første vakt", "description": "Stå vakt.",
 		"objectives": []map[string]any{
 			{"id": "meet", "type": "interact", "text": "Møt opp", "npc": "Vakt"},
 			{"id": "stay", "type": "location", "text": "Hold ut", "zone": "Elwynn Forest"},
 		},
-		"min_level": 10, "party": false, "created_by": "Magnus#2231",
+		"min_level": 10, "party": false,
 		"assigned_character_ids": []string{magni.ID},
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated {
@@ -240,7 +233,7 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	if first.QuestVersion != 1 || first.QuestTitle != "Første vakt" {
 		t.Fatalf("recorded %+v", first)
 	}
-	if fake.calls != 1 || !strings.Contains(fake.last, "**Magni** fullførte en saga!") || fake.image == 0 {
+	if fake.calls != 1 || !strings.Contains(fake.last, "**Magni** completed a saga!") || fake.image == 0 {
 		t.Fatalf("discord calls=%d text=%q image=%d", fake.calls, fake.last, fake.image)
 	}
 
@@ -259,7 +252,7 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	}
 
 	var updated contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
+	resp, err = author.do(http.MethodPatch, "/v1/sagas/"+quest.ID, map[string]any{
 		"title": "Første vakt, igjen", "changes": []string{"Nytt navn"},
 	}, &updated)
 	if err != nil || resp.StatusCode != 200 {
@@ -329,7 +322,7 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatal(err, resp.StatusCode)
 	}
-	if len(logs.Entries) != 1 || !strings.Contains(logs.Entries[0].Body, "Magni fullførte") {
+	if len(logs.Entries) != 1 || !strings.Contains(logs.Entries[0].Body, "Magni completed") {
 		t.Fatalf("log %+v", logs.Entries)
 	}
 
@@ -377,17 +370,36 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	}
 }
 
-type fakeSmia struct{}
-
-func (fakeSmia) Verify(_ context.Context, token string) (smia.Identity, error) {
-	switch token {
-	case "good":
-		return smia.Identity{Subject: "user-1", Email: "magnus@example.com", DisplayName: "Magnus", Member: true, Hub: "wow", Server: "mcp"}, nil
-	case "outsider":
-		return smia.Identity{Subject: "user-2", Email: "nope@example.com", Member: false, Hub: "wow", Server: "mcp"}, nil
-	default:
-		return smia.Identity{}, smia.ErrUnauthorized
+func devSession(t *testing.T, account, tag, name string) (contract.Player, string) {
+	t.Helper()
+	p, err := NewStore(testPool).MergeBattleNet(context.Background(), account, tag, name)
+	if err != nil {
+		t.Fatal(err)
 	}
+	sess, err := NewStore(testPool).IssueSessionFor(context.Background(), p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sess.Player, sess.SessionToken
+}
+
+func joinGroup(t *testing.T, groupID, playerID string) {
+	t.Helper()
+	_, err := testPool.Exec(context.Background(), `
+		INSERT INTO group_members (group_id, player_id, role) VALUES ($1,$2,'member')
+		ON CONFLICT DO NOTHING`, groupID, playerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func devGroup(t *testing.T, ownerID, slug, name string) contract.GroupSummary {
+	t.Helper()
+	g, err := NewStore(testPool).CreateGroup(context.Background(), ownerID, slug, name, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return g
 }
 
 func TestGroupSagaCreditsEachCharacter(t *testing.T) {
@@ -396,19 +408,15 @@ func TestGroupSagaCreditsEachCharacter(t *testing.T) {
 	t.Cleanup(srv.Close)
 	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
 
-	var magnus, other contract.CreatePlayerResponse
-	resp, err := admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
-		"battletag": "Magnus#2231", "display_name": "Magnus",
-	}, &magnus)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("player %d %v", statusOf(resp), err)
-	}
-	resp, err = admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
-		"battletag": "Mira#1", "display_name": "Mira",
-	}, &other)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("mira player %d %v", statusOf(resp), err)
-	}
+	magnusPlayer, magnusToken := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
+	otherPlayer, otherToken := devSession(t, "bnet-mira", "Mira#1", "Mira")
+	group := devGroup(t, magnusPlayer.ID, "tutorial", "Tutorial")
+	joinGroup(t, group.ID, otherPlayer.ID)
+	magnus := contract.CreatePlayerResponse{Player: magnusPlayer, APIKey: magnusToken}
+	other := contract.CreatePlayerResponse{Player: otherPlayer, APIKey: otherToken}
+	author := apiClient{base: srv.URL, token: magnusToken, http: srv.Client()}
+	var resp *http.Response
+	var err error
 	var magni, mira contract.Character
 	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
 		"player_id": magnus.Player.ID, "name": "Magni", "realm": "Argent Dawn",
@@ -426,8 +434,8 @@ func TestGroupSagaCreditsEachCharacter(t *testing.T) {
 	}
 
 	var bad contract.ErrorBody
-	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
-		"title": "Ugyldig emote", "created_by": "Magnus#2231", "party": true,
+	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{
+		"title": "Ugyldig emote", "party": true,
 		"objectives": []map[string]any{{"id": "hi", "type": "emote", "text": "Hils"}},
 	}, &bad)
 	if err != nil || resp.StatusCode != http.StatusBadRequest || !strings.Contains(bad.Message, "emote") {
@@ -436,8 +444,8 @@ func TestGroupSagaCreditsEachCharacter(t *testing.T) {
 
 	level := 17
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
-		"title": "Deadmines", "description": "Fire stykker.", "created_by": "Magnus#2231",
+	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{
+		"title": "Deadmines", "description": "Fire stykker.",
 		"party": true, "min_level": 17,
 		"when":  map[string]any{"clock": "game", "start": "18:00", "end": "06:00"},
 		"group": map[string]any{"size": 2, "min_level": level, "instance": "The Deadmines"},
@@ -506,28 +514,25 @@ func TestGroupSagaCreditsEachCharacter(t *testing.T) {
 	}
 }
 
-func TestSmiaSessionUpsertsCharacter(t *testing.T) {
+func TestDevLoginUpsertsCharacter(t *testing.T) {
 	resetDB(t)
-	srv := httptest.NewServer((&Server{store: NewStore(testPool), smia: fakeSmia{}}).Handler())
+	srv := httptest.NewServer((&Server{store: NewStore(testPool), devToken: "dev-secret"}).Handler())
 	t.Cleanup(srv.Close)
-	client := apiClient{base: srv.URL, token: "outsider", http: srv.Client()}
-	resp, err := client.do(http.MethodPost, "/v1/auth/session", map[string]string{"email": "forged@example.com"}, nil)
-	if err != nil || resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("outsider %d %v", statusOf(resp), err)
-	}
-	client.token = "nope"
-	resp, err = client.do(http.MethodPost, "/v1/auth/session", nil, nil)
+	client := apiClient{base: srv.URL, token: "nope", http: srv.Client()}
+	resp, err := client.do(http.MethodPost, "/v1/auth/dev", nil, nil)
 	if err != nil || resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("bad token %d", statusOf(resp))
 	}
 	var session contract.SessionResponse
-	client.token = "good"
-	resp, err = client.do(http.MethodPost, "/v1/auth/session", map[string]string{"email": "forged@example.com", "sub": "not-trusted"}, &session)
+	client.token = "dev-secret"
+	resp, err = client.do(http.MethodPost, "/v1/auth/dev", map[string]string{
+		"bnet_account_id": "bnet-magnus", "battletag": "Magnus#2231", "display_name": "Magnus",
+	}, &session)
 	if err != nil || resp.StatusCode != http.StatusOK || !strings.HasPrefix(session.SessionToken, "gss_") {
 		t.Fatalf("session %+v %d %v", session, statusOf(resp), err)
 	}
-	if session.Player.Email != "magnus@example.com" || session.Player.SmiaSubject != "user-1" {
-		t.Fatalf("identity must come from Smia, got %+v", session.Player)
+	if session.Player.BattleTag != "Magnus#2231" || session.Player.BnetAccountID != "bnet-magnus" {
+		t.Fatalf("identity %+v", session.Player)
 	}
 	player := apiClient{base: srv.URL, token: session.SessionToken, http: srv.Client()}
 	var ch contract.Character
@@ -556,21 +561,17 @@ func TestAdminQuestCreateWithOptionalImage(t *testing.T) {
 	t.Cleanup(srv.Close)
 	admin := apiClient{base: srv.URL, token: "admin-img", http: srv.Client()}
 
-	var created contract.CreatePlayerResponse
-	resp, err := admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
-		"battletag": "Magnus#2231", "display_name": "Magnus",
-	}, &created)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("player %d %v", statusOf(resp), err)
-	}
+	playerRec, token := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
+	devGroup(t, playerRec.ID, "tutorial", "Tutorial")
+	author := apiClient{base: srv.URL, token: token, http: srv.Client()}
 
 	var noImg contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
+	resp, err := author.do(http.MethodPost, "/v1/sagas", map[string]any{
 		"title": "Uten bilde", "description": "Bare tekst.",
 		"objectives": []map[string]any{
 			{"id": "talk", "type": "interact", "text": "Snakk", "npc": "Tharynn Bouden"},
 		},
-		"party": true, "created_by": "Magnus#2231",
+		"party": true,
 	}, &noImg)
 	if err != nil || resp.StatusCode != http.StatusCreated || noImg.HasImage {
 		t.Fatalf("json create %+v %d %v", noImg, statusOf(resp), err)
@@ -583,7 +584,7 @@ func TestAdminQuestCreateWithOptionalImage(t *testing.T) {
 	_ = mw.WriteField("description", "Cover.")
 	_ = mw.WriteField("objectives", `[{"id":"talk","type":"interact","text":"Snakk","npc":"Tharynn Bouden"}]`)
 	_ = mw.WriteField("party", "true")
-	_ = mw.WriteField("created_by", "Magnus#2231")
+	_ = mw.WriteField("party", "true")
 	fw, err := mw.CreateFormFile("image", "cover.png")
 	if err != nil {
 		t.Fatal(err)
@@ -594,8 +595,8 @@ func TestAdminQuestCreateWithOptionalImage(t *testing.T) {
 	if err := mw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/admin/sagas", bytes.NewReader(body.Bytes()))
-	req.Header.Set("Authorization", "Bearer admin-img")
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/sagas", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	resp, err = admin.http.Do(req)
 	if err != nil {
@@ -623,8 +624,8 @@ func TestAdminQuestCreateWithOptionalImage(t *testing.T) {
 	if err := pmw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	req, _ = http.NewRequest(http.MethodPatch, srv.URL+"/v1/admin/sagas/"+noImg.ID, bytes.NewReader(patchBody.Bytes()))
-	req.Header.Set("Authorization", "Bearer admin-img")
+	req, _ = http.NewRequest(http.MethodPatch, srv.URL+"/v1/sagas/"+noImg.ID, bytes.NewReader(patchBody.Bytes()))
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", pmw.FormDataContentType())
 	resp, err = admin.http.Do(req)
 	if err != nil {

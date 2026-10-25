@@ -33,10 +33,10 @@ func TestReloadNews(t *testing.T) {
 		t.Fatalf("startup must stay quiet, got %q", d)
 	}
 	d, a := ReloadNews(prev, next)
-	if d != "Ny saga: En kveld i Goldshire — skriv /reload i WoW" {
+	if d != "New saga: En kveld i Goldshire — type /reload in WoW" {
 		t.Fatal(d)
 	}
-	if a != "Ny saga: En kveld i Goldshire er lastet inn." {
+	if a != "New saga: En kveld i Goldshire is loaded." {
 		t.Fatal(a)
 	}
 	same := next
@@ -52,7 +52,7 @@ func TestReloadNews(t *testing.T) {
 		party("q3", "Veien fra Northshire", 1, true),
 	}
 	d, _ = ReloadNews(next, two)
-	if d != "Ny saga: Melk til vaktlaget og 1 til — skriv /reload i WoW" {
+	if d != "New saga: Melk til vaktlaget and 1 more — type /reload in WoW" {
 		t.Fatal(d)
 	}
 
@@ -63,7 +63,7 @@ func TestReloadNews(t *testing.T) {
 		party("q3", "Veien fra Northshire", 1, true),
 	}
 	d, _ = ReloadNews(two, edited)
-	if d != "Saga oppdatert: En kveld i Goldshire — skriv /reload i WoW" {
+	if d != "Saga updated: En kveld i Goldshire — type /reload in WoW" {
 		t.Fatal(d)
 	}
 
@@ -74,7 +74,7 @@ func TestReloadNews(t *testing.T) {
 		party("q3", "Veien fra Northshire", 1, true),
 	}
 	d, _ = ReloadNews(edited, retired)
-	if d != "Saga avsluttet: En kveld i Goldshire — skriv /reload i WoW" {
+	if d != "Saga retired: En kveld i Goldshire — type /reload in WoW" {
 		t.Fatal(d)
 	}
 
@@ -86,10 +86,10 @@ func TestReloadNews(t *testing.T) {
 		QuestID: "q2", Character: "Magni", Realm: "Argent Dawn",
 	}}
 	d, a = ReloadNews(retired, done)
-	if d != "Saga fullført: Melk til vaktlaget — skriv /reload i WoW" {
+	if d != "Saga completed: Melk til vaktlaget — type /reload in WoW" {
 		t.Fatal(d)
 	}
-	if !strings.Contains(a, "er lastet inn") {
+	if !strings.Contains(a, "is loaded") {
 		t.Fatal(a)
 	}
 
@@ -113,14 +113,14 @@ func TestReloadNews(t *testing.T) {
 		ID: "c2", Name: "Mira", Realm: "Argent Dawn", Level: 20,
 	})
 	d, _ = ReloadNews(next, mira)
-	if d != "Saga oppdatert: En kveld i Goldshire — skriv /reload i WoW" {
+	if d != "Saga updated: En kveld i Goldshire — type /reload in WoW" {
 		t.Fatal(d)
 	}
 }
 
 func TestLuaNotice(t *testing.T) {
-	lua := WriteLuaFile("Magnus#2231", "t", nil, `Ny saga: Si "hei" er lastet inn.`, "id-1")
-	if !strings.Contains(lua, `notice = "Ny saga: Si \"hei\" er lastet inn."`) || !strings.Contains(lua, `notice_id = "id-1"`) {
+	lua := WriteLuaFile("Magnus#2231", "t", nil, `New saga: Say "hi" is loaded.`, "id-1")
+	if !strings.Contains(lua, `notice = "New saga: Say \"hi\" is loaded."`) || !strings.Contains(lua, `notice_id = "id-1"`) || !strings.Contains(lua, "OurSagasData") {
 		t.Fatal(lua)
 	}
 	if strings.Contains(WriteLua("Magnus#2231", "t", nil), "notice") {

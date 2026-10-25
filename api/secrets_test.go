@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func TestRejectDevSecrets(t *testing.T) {
-	t.Setenv("GUTSAGA_ALLOW_DEV_SECRETS", "")
+	t.Setenv("OURSAGAS_ALLOW_DEV_SECRETS", "")
 	t.Setenv("ADMIN_TOKEN", "dev-admin-token")
 	t.Setenv("IMAGE_URL_SECRET", "real-secret")
 	if err := rejectDevSecrets(); err == nil {
@@ -22,7 +22,7 @@ func TestRejectDevSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Setenv("GUTSAGA_ALLOW_DEV_SECRETS", "1")
+	t.Setenv("OURSAGAS_ALLOW_DEV_SECRETS", "1")
 	t.Setenv("ADMIN_TOKEN", "dev-admin-token")
 	t.Setenv("IMAGE_URL_SECRET", "dev-image-url-secret")
 	if err := rejectDevSecrets(); err != nil {

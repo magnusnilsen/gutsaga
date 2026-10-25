@@ -1,4 +1,4 @@
-// Package savedvars reads GutSaga completions from WoW SavedVariables.
+// Package savedvars reads OurSagas completions from WoW SavedVariables.
 // Classic Era does not write DEFAULT_CHAT_FRAME:AddMessage into WoWChatLog.txt,
 // so the companion also polls these files for COMPLETE events.
 package savedvars
@@ -14,7 +14,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 )
 
-// Completion is one local finish stored by the addon under GutSagaDB.completions.
+// Completion is one local finish stored by the addon under OurSagasDB.completions.
 type Completion struct {
 	QuestID      string
 	QuestVersion int
@@ -35,8 +35,8 @@ var (
 	fieldNumber     = regexp.MustCompile(`\["(version|level|completed_at)"\]\s*=\s*(-?\d+)`)
 )
 
-// ListGutSagaFiles returns every GutSaga.lua under WTF/Account for this flavor.
-func ListGutSagaFiles(wowDir string) ([]string, error) {
+// ListOurSagasFiles returns every OurSagas.lua under WTF/Account for this flavor.
+func ListOurSagasFiles(wowDir string) ([]string, error) {
 	root := filepath.Join(wowDir, "WTF", "Account")
 	var out []string
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -49,7 +49,7 @@ func ListGutSagaFiles(wowDir string) ([]string, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if strings.EqualFold(d.Name(), "GutSaga.lua") && strings.Contains(path, string(filepath.Separator)+"SavedVariables"+string(filepath.Separator)) {
+		if strings.EqualFold(d.Name(), "OurSagas.lua") && strings.Contains(path, string(filepath.Separator)+"SavedVariables"+string(filepath.Separator)) {
 			out = append(out, path)
 		}
 		return nil
@@ -57,7 +57,7 @@ func ListGutSagaFiles(wowDir string) ([]string, error) {
 	return out, err
 }
 
-// ParseCompletions extracts GutSagaDB.completions entries from one SavedVariables file.
+// ParseCompletions extracts OurSagasDB.completions entries from one SavedVariables file.
 func ParseCompletions(path string, body string) []Completion {
 	start := strings.Index(body, `["completions"]`)
 	if start < 0 {
@@ -147,9 +147,49 @@ func parseMemberBlob(s string) []contract.GroupMember {
 	return out
 }
 
-// ReadCompletions loads completions from every GutSaga SavedVariables file under wowDir.
+// CopyObjectiveChecks copies in-progress objective checks from an older
+// SavedVariables file (GutSaga or SagaBoard) into OurSagas once, when the new file has none.
+func CopyObjectiveChecks(wowDir string) error {
+	root := filepath.Join(wowDir, "WTF", "Account")
+	if _, err := os.Stat(root); err != nil {
+		return nil
+	}
+	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		if !strings.EqualFold(name, "GutSaga.lua") && !strings.EqualFold(name, "SagaBoard.lua") {
+			return nil
+		}
+		if !strings.Contains(path, string(filepath.Separator)+"SavedVariables"+string(filepath.Separator)) {
+			return nil
+		}
+		oldBody, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		start := strings.Index(string(oldBody), `["objectives"]`)
+		if start < 0 {
+			return nil
+		}
+		next := filepath.Join(filepath.Dir(path), "OurSagas.lua")
+		cur, _ := os.ReadFile(next)
+		if strings.Contains(string(cur), "objectives_copied") || (strings.Contains(string(cur), `["objectives"]`) && !strings.Contains(string(cur), `["objectives"] = {}`)) {
+			return nil
+		}
+		snippet := string(oldBody)[start:]
+		marker := "\nOurSagasDB = OurSagasDB or {}\nOurSagasDB.objectives_copied = true\n"
+		if err := os.WriteFile(next, append(cur, []byte(marker+snippet)...), 0o644); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+// ReadCompletions loads completions from every OurSagas SavedVariables file under wowDir.
 func ReadCompletions(wowDir string) ([]Completion, error) {
-	files, err := ListGutSagaFiles(wowDir)
+	files, err := ListOurSagasFiles(wowDir)
 	if err != nil {
 		return nil, err
 	}

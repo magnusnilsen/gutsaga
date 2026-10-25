@@ -17,7 +17,6 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/discord"
 	"github.com/magnusnilsen/gutsaga/internal/realtime"
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
-	"github.com/magnusnilsen/gutsaga/internal/smia"
 )
 
 type Notifier interface {
@@ -27,14 +26,17 @@ type Notifier interface {
 }
 
 type Server struct {
-	store          *Store
-	adminToken     string
-	publicBaseURL  string
-	imageURLSecret string
-	imageURLTTL    time.Duration
-	discord        Notifier
-	smia           smia.Verifier
-	events         *realtime.Hub
+	store            *Store
+	adminToken       string
+	publicBaseURL    string
+	imageURLSecret   string
+	imageURLTTL      time.Duration
+	discord          Notifier
+	events           *realtime.Hub
+	devToken         string
+	bnetClientID     string
+	bnetClientSecret string
+	bnet             *bnetFlow
 }
 
 type ctxKey int
@@ -44,36 +46,53 @@ const playerCtx ctxKey = 1
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
-	mux.HandleFunc("POST /v1/auth/session", s.session)
+	mux.HandleFunc("GET /v1/auth/bnet/start", s.bnetStart)
+	mux.HandleFunc("GET /v1/auth/bnet/callback", s.bnetCallback)
+	mux.HandleFunc("GET /v1/auth/bnet/poll", s.bnetPoll)
+	mux.HandleFunc("POST /v1/auth/dev", s.devLogin)
 	mux.HandleFunc("PUT /v1/characters", s.withPlayer(s.upsertCharacter))
+	mux.HandleFunc("PATCH /v1/characters/{id}", s.withPlayer(s.patchCharacterParticipating))
 	mux.HandleFunc("GET /v1/sync", s.withPlayer(s.sync))
 	mux.HandleFunc("GET /v1/ws", s.serveWS)
 	mux.HandleFunc("POST /v1/complete", s.withPlayer(s.complete))
 	mux.HandleFunc("DELETE /v1/progress", s.withPlayer(s.deleteProgress))
 	mux.HandleFunc("POST /v1/level", s.withPlayer(s.level))
-	mux.HandleFunc("POST /v1/sagas", s.withPlayer(s.createSaga))
+	mux.HandleFunc("POST /v1/sagas", s.withMember(s.createSaga))
 	mux.HandleFunc("GET /v1/sagas", s.withPlayer(s.listSagas))
 	mux.HandleFunc("GET /v1/sagas/{id}", s.withPlayer(s.getSaga))
-	mux.HandleFunc("PATCH /v1/sagas/{id}", s.withPlayer(s.patchSaga))
+	mux.HandleFunc("PATCH /v1/sagas/{id}", s.withMember(s.patchSaga))
 	mux.HandleFunc("PUT /v1/sagas/{id}/image", s.withPlayer(s.putSagaImage))
 	mux.HandleFunc("DELETE /v1/sagas/{id}/image", s.withPlayer(s.deleteSagaImage))
 	mux.HandleFunc("GET /v1/sagas/{id}/image", s.withPlayer(s.getSagaImage))
 	mux.HandleFunc("GET /v1/public/sagas/{id}/image", s.getPublicSagaImage)
 	mux.HandleFunc("GET /v1/public/placeholder.png", servePlaceholderPNG)
-	mux.HandleFunc("GET /v1/public/empty.png", servePlaceholderPNG) // alias; was a 1×1 that collapsed Smia media cards
+	mux.HandleFunc("GET /v1/public/empty.png", servePlaceholderPNG)
+	mux.HandleFunc("POST /v1/groups", s.withMember(s.createGroup))
+	mux.HandleFunc("GET /v1/groups", s.withPlayer(s.listGroups))
+	mux.HandleFunc("GET /v1/groups/{id}/members", s.withPlayer(s.listGroupMembers))
+	mux.HandleFunc("POST /v1/groups/{id}/invites", s.withMember(s.createInvite))
+	mux.HandleFunc("POST /v1/invites/{id}/accept", s.withPlayer(s.acceptInvite))
+	mux.HandleFunc("POST /v1/invites/{id}/decline", s.withPlayer(s.declineInvite))
+	mux.HandleFunc("POST /v1/groups/{id}/leave", s.withPlayer(s.leaveGroup))
+	mux.HandleFunc("DELETE /v1/groups/{id}/members/{playerID}", s.withMember(s.removeMember))
+	mux.HandleFunc("PUT /v1/groups/{id}/discord", s.withMember(s.putGroupDiscord))
+	mux.HandleFunc("PUT /v1/groups/{id}/locale", s.withMember(s.putGroupLocale))
+	mux.HandleFunc("POST /v1/me/tokens", s.withPlayer(s.mintToken))
+	mux.HandleFunc("DELETE /v1/me/tokens/{id}", s.withPlayer(s.revokeToken))
 	mux.HandleFunc("POST /v1/admin/players", s.withAdmin(s.createPlayer))
 	mux.HandleFunc("GET /v1/admin/players", s.withAdmin(s.listPlayers))
-	mux.HandleFunc("POST /v1/admin/players/{id}/rotate-key", s.withAdmin(s.rotateKey))
+	mux.HandleFunc("DELETE /v1/admin/sagas/{id}", s.withAdmin(s.deleteAdminSaga))
+	mux.HandleFunc("DELETE /v1/admin/groups/{id}", s.withAdmin(s.deleteAdminGroup))
 	mux.HandleFunc("POST /v1/admin/characters", s.withAdmin(s.createCharacter))
 	mux.HandleFunc("GET /v1/admin/characters", s.withAdmin(s.listCharacters))
 	mux.HandleFunc("GET /v1/admin/characters/{id}", s.withAdmin(s.getCharacter))
 	mux.HandleFunc("PATCH /v1/admin/characters/{id}", s.withAdmin(s.patchCharacter))
 	mux.HandleFunc("DELETE /v1/admin/characters/{id}", s.withAdmin(s.deleteCharacter))
-	mux.HandleFunc("POST /v1/admin/sagas", s.withAdmin(s.createQuest))
+	mux.HandleFunc("POST /v1/admin/sagas", s.rejectAdminWrite)
 	mux.HandleFunc("GET /v1/admin/sagas", s.withAdmin(s.listQuests))
 	mux.HandleFunc("GET /v1/admin/sagas/{id}", s.withAdmin(s.getQuest))
 	mux.HandleFunc("GET /v1/admin/sagas/{id}/image", s.withAdmin(s.getAdminQuestImage))
-	mux.HandleFunc("PATCH /v1/admin/sagas/{id}", s.withAdmin(s.patchQuest))
+	mux.HandleFunc("PATCH /v1/admin/sagas/{id}", s.rejectAdminWrite)
 	mux.HandleFunc("PUT /v1/admin/sagas/{id}/image", s.withAdmin(s.putAdminQuestImage))
 	mux.HandleFunc("DELETE /v1/admin/sagas/{id}/image", s.withAdmin(s.deleteAdminQuestImage))
 	mux.HandleFunc("GET /v1/admin/log", s.withAdmin(s.listLog))
@@ -110,6 +129,10 @@ func (s *Server) withPlayer(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (s *Server) rejectAdminWrite(w http.ResponseWriter, r *http.Request) {
+	writeErr(w, http.StatusForbidden, "admin_cannot_author", "ADMIN_TOKEN cannot author sagas or change groups")
+}
+
 func (s *Server) withAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.adminToken == "" {
@@ -141,9 +164,6 @@ func (s *Server) sync(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	// Session auth already resolved the player; expose identity on sync so the
-	// companion tray can show email without re-running OAuth.
-	out.Email = p.Email
 	out.DisplayName = p.DisplayName
 	if out.BattleTag == "" {
 		out.BattleTag = p.BattleTag
@@ -185,21 +205,23 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 		for _, o := range res.Objectives {
 			objLines = append(objLines, discord.ObjectiveLine{Text: o.Text})
 		}
+		note := discord.Completion{
+			ProgressID: res.ProgressID,
+			Character:  res.CharacterName,
+			// Only values stamped on this completion (from the game) — never the
+			// characters row, which may be stale on Classic Era.
+			Race:        strings.TrimSpace(in.Race),
+			Class:       strings.TrimSpace(in.Class),
+			Level:       in.Level,
+			Title:       res.QuestTitle,
+			Objectives:  objLines,
+			When:        when,
+			Image:       image,
+			ContentType: contentType,
+		}
+		s.attachGroupDiscord(r.Context(), in.QuestID, &note.WebhookURL, &note.Locale)
 		msg, ok := s.postDiscord(r.Context(), func(ctx context.Context, n Notifier) (discord.Message, error) {
-			return n.PostCompletion(ctx, discord.Completion{
-				ProgressID: res.ProgressID,
-				Character:  res.CharacterName,
-				// Only values stamped on this completion (from the game) — never the
-				// characters row, which may be stale on Classic Era.
-				Race:        strings.TrimSpace(in.Race),
-				Class:       strings.TrimSpace(in.Class),
-				Level:       in.Level,
-				Title:       res.QuestTitle,
-				Objectives:  objLines,
-				When:        when,
-				Image:       image,
-				ContentType: contentType,
-			})
+			return n.PostCompletion(ctx, note)
 		})
 		if ok {
 			res.DiscordPosted = true
@@ -300,15 +322,6 @@ func (s *Server) listPlayers(w http.ResponseWriter, r *http.Request) {
 		out = []contract.Player{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"players": out})
-}
-
-func (s *Server) rotateKey(w http.ResponseWriter, r *http.Request) {
-	out, err := s.store.RotateKey(r.Context(), r.PathValue("id"))
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) createCharacter(w http.ResponseWriter, r *http.Request) {
@@ -487,20 +500,11 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	// Smia MCP sends editor_email (caller). updated_by (BattleTag) is the older check.
-	if body.EditorEmail != nil {
-		if err := s.store.AssertQuestOwnerByEmail(r.Context(), id, *body.EditorEmail); err != nil {
-			s.fail(w, err)
-			return
-		}
-		patch.CreatedBy = nil
-	} else if body.UpdatedBy != nil {
-		if err := s.store.AssertQuestOwnerByBattleTag(r.Context(), id, *body.UpdatedBy); err != nil {
-			s.fail(w, err)
-			return
-		}
-		patch.CreatedBy = nil
+	if body.EditorEmail != nil || body.UpdatedBy != nil || (body.CreatedBy != nil && strings.TrimSpace(*body.CreatedBy) != "") {
+		writeErr(w, http.StatusBadRequest, "invalid", "created_by is not accepted")
+		return
 	}
+	patch.CreatedBy = nil
 	hasFields := questPatchHasFields(patch)
 	if !hasFields && len(image) == 0 {
 		writeErr(w, http.StatusBadRequest, "invalid", "empty patch")
@@ -593,13 +597,8 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusForbidden, "forbidden", "forbidden")
 	case errors.Is(err, ErrLocked):
 		writeErr(w, http.StatusConflict, "locked", err.Error())
-	case errors.Is(err, smia.ErrUnauthorized):
-		writeErr(w, http.StatusUnauthorized, "unauthorized", "Smia avslo tokenet")
-	case errors.Is(err, smia.ErrNotConfigured):
-		writeErr(w, http.StatusServiceUnavailable, "smia_not_configured", "Smia-innlogging er ikke satt opp")
-	case errors.Is(err, smia.ErrUnavailable):
-		slog.Error("smia unavailable", "err", err)
-		writeErr(w, http.StatusBadGateway, "smia_unavailable", "fikk ikke svar fra Smia")
+	case errors.Is(err, ErrUnscopedSagas):
+		writeErr(w, http.StatusServiceUnavailable, "bootstrap_required", err.Error())
 	default:
 		slog.Error("request failed", "err", err)
 		writeErr(w, http.StatusInternalServerError, "internal", "internal error")
@@ -689,7 +688,7 @@ type questBody struct {
 	Objectives           []contract.Objective `json:"objectives"`
 	ObjectivesOrdered    *bool                `json:"objectives_ordered"`
 	When                 *contract.TimeWindow `json:"when"`
-	Group                *contract.GroupRule  `json:"group"`
+	Group                json.RawMessage      `json:"group"`
 	MinLevel             *int                 `json:"min_level"`
 	PartyQuest           bool                 `json:"party"`
 	Active               *bool                `json:"active"`
@@ -717,7 +716,7 @@ type questPatchBody struct {
 	CreatedBy         *string               `json:"created_by"`
 	// UpdatedBy is who edited the saga (Discord line / BattleTag ownership). Admin optional.
 	UpdatedBy *string `json:"updated_by"`
-	// EditorEmail is the Smia caller's email. When set, only that player's sagas may be edited.
+	// EditorEmail is rejected. Saga authorship is the signed-in player.
 	EditorEmail          *string         `json:"editor_email"`
 	AssignedCharacterIDs *[]string       `json:"assigned_character_ids"`
 	Requires             json.RawMessage `json:"requires"`

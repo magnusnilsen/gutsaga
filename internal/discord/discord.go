@@ -1,5 +1,5 @@
-// Package discord posts GutSaga notices to an incoming Discord webhook.
-// The username is always GutSaga. User-facing text is Norwegian.
+// Package discord posts OurSagas notices to an incoming Discord webhook.
+// The username is always OurSagas. Text follows the group's locale (default English).
 //
 // Messages are embeds with a shared palette:
 //
@@ -10,7 +10,7 @@
 //	ColorLevel  amber   a milestone level
 //
 // Images are attached as webhook files and referenced as attachment://
-// so Discord renders them without a public GutSaga URL.
+// so Discord renders them without a public OurSagas URL.
 package discord
 
 import (
@@ -27,12 +27,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/magnusnilsen/gutsaga/internal/i18n"
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
 )
 
-const username = "GutSaga"
+const username = "OurSagas"
 
-// Palette shared by every GutSaga embed.
+// Palette shared by every OurSagas embed.
 const (
 	ColorSaga   = 0xC6A15B
 	ColorDone   = 0x3BA55D
@@ -53,15 +54,20 @@ const (
 // ErrNotConfigured is returned when DISCORD_WEBHOOK_URL is empty.
 var ErrNotConfigured = errors.New("discord webhook is not configured")
 
-// CompletionText is the Norwegian line friends see above a completion embed.
-// The saga title lives on the embed; this line stays short.
+// CompletionText is the line friends see above a completion embed.
+// The saga title lives on the embed; this line stays short. Locale defaults to English.
 func CompletionText(character, questTitle string) string {
+	return CompletionTextLang(character, questTitle, "")
+}
+
+// CompletionTextLang is CompletionText in the group's locale.
+func CompletionTextLang(character, questTitle, lang string) string {
 	_ = questTitle
 	name := strings.TrimSpace(character)
 	if name == "" {
-		name = "En karakter"
+		name = i18n.T(lang, "discord.someone")
 	}
-	return bold(name) + " fullførte en saga!"
+	return bold(name) + " " + i18n.T(lang, "discord.completed")
 }
 
 // Milestone reports whether a level is worth a Discord note.
@@ -89,6 +95,10 @@ type Completion struct {
 	When        time.Time
 	Image       []byte
 	ContentType string
+	// WebhookURL overrides the client URL. Empty uses the client default.
+	WebhookURL string
+	// Locale is the group's language (en or nb). Empty is English.
+	Locale string
 }
 
 // SagaNotice is a new saga, a new version, or a retirement.
@@ -106,14 +116,18 @@ type SagaNotice struct {
 	When        time.Time
 	Image       []byte
 	ContentType string
+	WebhookURL  string
+	Locale      string
 }
 
 // LevelNotice is a milestone level-up. Class is only shown when set (fresh).
 type LevelNotice struct {
-	Character string
-	Class     string
-	Level     int
-	When      time.Time
+	Character  string
+	Class      string
+	Level      int
+	When       time.Time
+	WebhookURL string
+	Locale     string
 }
 
 // Message is what the webhook accepted, or (for Queue) what was queued.
@@ -427,7 +441,7 @@ func completionPayload(n Completion) ([]byte, *attach, error) {
 		file = &attach{Name: "screenshot" + screenshot.Extension(n.ContentType), Body: n.Image}
 		embed.Image = &dcImage{URL: "attachment://" + file.Name}
 	}
-	raw, err := marshalPayload(CompletionText(n.Character, n.Title), embed)
+	raw, err := marshalPayload(CompletionTextLang(n.Character, n.Title, n.Locale), embed)
 	return raw, file, err
 }
 
@@ -470,13 +484,13 @@ func CompletedObjectivesSummary(lines []ObjectiveLine) string {
 		}
 		text := strings.TrimSpace(lines[i].Text)
 		if text == "" {
-			text = "Mål"
+			text = i18n.T("", "discord.goal")
 		}
 		b.WriteString("✓ ")
 		b.WriteString(escapeMD(clipRunes(text, 200)))
 	}
 	if len(lines) > show {
-		fmt.Fprintf(&b, "\n… og %d mål til", len(lines)-show)
+		fmt.Fprintf(&b, "\n"+i18n.T("", "discord.more_checked"), len(lines)-show)
 	}
 	return clipRunes(b.String(), 3500)
 }
@@ -485,12 +499,13 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 	title := displayTitle(n.Title)
 	var embed dcEmbed
 	var content string
+	lang := n.Locale
 	switch n.Kind {
 	case KindAnnounced:
 		if actor := announceActor(n); actor != "" {
-			content = escapeMD(actor) + " opprettet en ny saga"
+			content = fmt.Sprintf(i18n.T(lang, "discord.created"), escapeMD(actor))
 		} else {
-			content = "Ny saga"
+			content = i18n.T(lang, "discord.created_anon")
 		}
 		embed = dcEmbed{
 			Title:       clipRunes(title, 256),
@@ -503,24 +518,24 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 			version = 1
 		}
 		if actor := strings.TrimSpace(n.UpdatedBy); actor != "" {
-			content = escapeMD(actor) + " oppdaterte en saga"
+			content = fmt.Sprintf(i18n.T(lang, "discord.updated"), escapeMD(actor))
 		} else {
-			content = "En saga er oppdatert"
+			content = i18n.T(lang, "discord.updated_anon")
 		}
 		embed = dcEmbed{
 			Title:       clipRunes(title, 256),
-			Description: updateDescription(version, n.Changes),
+			Description: updateDescription(version, n.Changes, lang),
 			Color:       ColorUpdate,
 		}
 	case KindRetired:
 		if actor := strings.TrimSpace(n.UpdatedBy); actor != "" {
-			content = escapeMD(actor) + " la bort en saga"
+			content = fmt.Sprintf(i18n.T(lang, "discord.retired"), escapeMD(actor))
 		} else {
-			content = "En saga er lagt bort"
+			content = i18n.T(lang, "discord.retired_anon")
 		}
 		embed = dcEmbed{
 			Title:       clipRunes(title, 256),
-			Description: "Sagaen er ikke lenger aktiv.",
+			Description: i18n.T(lang, "discord.retired_body"),
 			Color:       ColorRetire,
 		}
 	default:
@@ -535,9 +550,9 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 	return raw, file, err
 }
 
-func updateDescription(version int, changes []string) string {
+func updateDescription(version int, changes []string, lang string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Ny versjon %d.", version)
+	fmt.Fprintf(&b, i18n.T(lang, "discord.version"), version)
 	for _, line := range changes {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -549,19 +564,19 @@ func updateDescription(version int, changes []string) string {
 	return clipRunes(b.String(), 4096)
 }
 
-// announcedDescription matches the Smia get_saga stack: goals, Beskrivelse, body.
+// announcedDescription is the goal list, then the description heading, then the body.
 func announcedDescription(n SagaNotice) string {
-	goals := ObjectivesSummary(n.Objectives, n.Ordered)
+	goals := ObjectivesSummaryLang(n.Objectives, n.Ordered, n.Locale)
 	body := strings.TrimSpace(n.Description)
 	var b strings.Builder
 	b.WriteString(goals)
 	if body != "" {
-		b.WriteString("\n\n**Beskrivelse**\n")
+		b.WriteString("\n\n**" + i18n.T(n.Locale, "discord.description") + "**\n")
 		b.WriteString(escapeMD(clipRunes(body, 3500)))
 	}
 	out := strings.TrimSpace(b.String())
 	if out == "" {
-		return "En ny saga er klar."
+		return i18n.T(n.Locale, "discord.ready")
 	}
 	return clipRunes(out, 4096)
 }
@@ -569,7 +584,7 @@ func announcedDescription(n SagaNotice) string {
 func levelPayload(n LevelNotice) ([]byte, error) {
 	name := strings.TrimSpace(n.Character)
 	if name == "" {
-		name = "En karakter"
+		name = i18n.T(n.Locale, "discord.someone")
 	}
 	desc := escapeMD(name)
 	if className := DisplayClass(n.Class); className != "" {
@@ -580,7 +595,7 @@ func levelPayload(n LevelNotice) ([]byte, error) {
 		Description: desc,
 		Color:       ColorLevel,
 	}
-	return marshalPayload(bold(name)+" nådde et nytt nivå.", embed)
+	return marshalPayload(bold(name)+" "+i18n.T(n.Locale, "discord.level"), embed)
 }
 
 func marshalPayload(content string, embed dcEmbed) ([]byte, error) {
@@ -592,10 +607,15 @@ func marshalPayload(content string, embed dcEmbed) ([]byte, error) {
 	})
 }
 
-// ObjectivesSummary is the Norwegian goal list for an announcement embed.
+// ObjectivesSummary is the goal list for an announcement embed (English).
 func ObjectivesSummary(lines []ObjectiveLine, ordered bool) string {
+	return ObjectivesSummaryLang(lines, ordered, "")
+}
+
+// ObjectivesSummaryLang is ObjectivesSummary in the group's locale.
+func ObjectivesSummaryLang(lines []ObjectiveLine, ordered bool, lang string) string {
 	if len(lines) == 0 {
-		return "Ingen mål"
+		return i18n.T(lang, "discord.no_goals")
 	}
 	const maxLines = 8
 	show := len(lines)
@@ -609,7 +629,7 @@ func ObjectivesSummary(lines []ObjectiveLine, ordered bool) string {
 		}
 		text := strings.TrimSpace(lines[i].Text)
 		if text == "" {
-			text = "Mål"
+			text = i18n.T(lang, "discord.goal")
 		}
 		text = escapeMD(clipRunes(text, 200))
 		if ordered {
@@ -620,7 +640,7 @@ func ObjectivesSummary(lines []ObjectiveLine, ordered bool) string {
 		}
 	}
 	if len(lines) > show {
-		fmt.Fprintf(&b, "\n… og %d mål til", len(lines)-show)
+		fmt.Fprintf(&b, "\n"+i18n.T(lang, "discord.more_goals"), len(lines)-show)
 	}
 	return clipRunes(b.String(), 1024)
 }

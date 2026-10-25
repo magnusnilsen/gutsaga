@@ -1,4 +1,4 @@
-// Package backend is the companion's client for the GutSaga API.
+// Package backend is the companion's client for the OurSagas API.
 package backend
 
 import (
@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -48,10 +49,84 @@ func (e *HTTPError) Permanent() bool {
 	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusTooManyRequests && e.Status != http.StatusRequestTimeout
 }
 
-func (c *Client) CreateSession(ctx context.Context, smiaAccessToken string) (contract.SessionResponse, error) {
+// DevLogin exchanges OURSAGAS_DEV_TOKEN for a gss_ session. It does not call Battle.net.
+// Optional identity comes from OURSAGAS_DEV_BATTLETAG / OURSAGAS_DEV_BNET_ACCOUNT /
+// OURSAGAS_DEV_DISPLAY_NAME so a local run can merge onto an existing player.
+func (c *Client) DevLogin(ctx context.Context, devToken string) (contract.SessionResponse, error) {
+	body := map[string]string{}
+	if v := strings.TrimSpace(os.Getenv("OURSAGAS_DEV_BATTLETAG")); v != "" {
+		body["battletag"] = v
+	}
+	if v := strings.TrimSpace(os.Getenv("OURSAGAS_DEV_BNET_ACCOUNT")); v != "" {
+		body["bnet_account_id"] = v
+	}
+	if v := strings.TrimSpace(os.Getenv("OURSAGAS_DEV_DISPLAY_NAME")); v != "" {
+		body["display_name"] = v
+	}
+	raw := []byte(`{}`)
+	if len(body) > 0 {
+		var err error
+		raw, err = json.Marshal(body)
+		if err != nil {
+			return contract.SessionResponse{}, err
+		}
+	}
 	var out contract.SessionResponse
-	err := c.doToken(ctx, smiaAccessToken, http.MethodPost, "/v1/auth/session", nil, "", &out)
+	err := c.doToken(ctx, devToken, http.MethodPost, "/v1/auth/dev", raw, "application/json", &out)
 	return out, err
+}
+
+// PollBnet waits on a Battle.net attempt. pending is true while the browser flow is open.
+func (c *Client) PollBnet(ctx context.Context, attempt string) (contract.SessionResponse, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.BaseURL, "/")+"/v1/auth/bnet/poll?attempt="+url.QueryEscape(attempt), nil)
+	if err != nil {
+		return contract.SessionResponse{}, false, err
+	}
+	resp, err := c.http().Do(req)
+	if err != nil {
+		return contract.SessionResponse{}, false, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode == http.StatusAccepted {
+		return contract.SessionResponse{}, true, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var body contract.ErrorBody
+		_ = json.Unmarshal(raw, &body)
+		return contract.SessionResponse{}, false, &HTTPError{Status: resp.StatusCode, Code: body.Error, Message: body.Message}
+	}
+	var out contract.SessionResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return contract.SessionResponse{}, false, err
+	}
+	return out, false, nil
+}
+
+// MintToken creates a gst_ personal token. The raw token is returned once.
+func (c *Client) MintToken(ctx context.Context, label string) (contract.PersonalToken, error) {
+	raw, err := json.Marshal(map[string]string{"label": label})
+	if err != nil {
+		return contract.PersonalToken{}, err
+	}
+	var out contract.PersonalToken
+	err = c.do(ctx, http.MethodPost, "/v1/me/tokens", raw, "application/json", nil, &out)
+	return out, err
+}
+
+// AcceptInvite joins the signed-in account for one invite.
+func (c *Client) AcceptInvite(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodPost, "/v1/invites/"+url.PathEscape(id)+"/accept", []byte(`{}`), "application/json", nil, nil)
+}
+
+// DeclineInvite marks an invite declined. The decision sticks.
+func (c *Client) DeclineInvite(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodPost, "/v1/invites/"+url.PathEscape(id)+"/decline", []byte(`{}`), "application/json", nil, nil)
+}
+
+// RevokeToken revokes a personal token by id.
+func (c *Client) RevokeToken(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodDelete, "/v1/me/tokens/"+url.PathEscape(id), nil, "", nil, nil)
 }
 
 func (c *Client) UpsertCharacter(ctx context.Context, req contract.CharacterUpsert) (contract.Character, error) {
@@ -92,7 +167,7 @@ func (c *Client) SagaImage(ctx context.Context, questID string) (contentType str
 	if c.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
-	req.Header.Set("User-Agent", "GutSaga")
+	req.Header.Set("User-Agent", "OurSagas")
 	resp, err := c.http().Do(req)
 	if err != nil {
 		return "", nil, err
@@ -188,7 +263,7 @@ func (c *Client) doToken(ctx context.Context, token, method, path string, body [
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	req.Header.Set("User-Agent", "GutSaga")
+	req.Header.Set("User-Agent", "OurSagas")
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}

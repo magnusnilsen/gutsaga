@@ -1,0 +1,17 @@
+## Interface: 16001
+## Title: OurSagas
+## Notes: A saga log for a World of Warcraft group
+## Author: OurSagas
+## Version: 0.1.0
+## SavedVariablesPerCharacter: OurSagasDB
+## IconTexture: Interface\AddOns\OurSagas\OurSagasList
+
+Locales/enUS.lua
+Locales/nbNO.lua
+Locales/locale.lua
+OurSagasLanguage.lua
+OurSagasData.lua
+OurSagasObjectives.lua
+OurSagasChains.lua
+OurSagasInvite.lua
+OurSagas.lua

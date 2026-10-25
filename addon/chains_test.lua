@@ -1,6 +1,6 @@
 local src = debug.getinfo(1, "S").source
 local dir = src:match("^@(.*)[/\\][^/\\]+$") or "."
-local M = dofile(dir .. "/GutSaga/GutSagaChains.lua")
+local M = dofile(dir .. "/OurSagas/OurSagasChains.lua")
 
 local function assertTrue(cond, msg)
     if not cond then
@@ -21,21 +21,21 @@ local entries = {
     { saga_id = "d", title = "Siste", chain_id = "goldshire", chain_name = "Goldshire", chain_order = 4 },
 }
 
-assertTrue(M.chapterLabel(entries[2]) == "Kapittel 2 av 4", "server index")
-assertTrue(M.chapterLabel({ saga_id = "b", chain_id = "goldshire", chain_order = 2 }, entries) == "Kapittel 2 av 4", "local rank")
-assertTrue(M.lockText(M.missing(entries[2], entries, {})) == "Låst: fullfør En kveld først", "one prereq")
+assertTrue(M.chapterLabel(entries[2]) == "Chapter 2 of 4", "server index")
+assertTrue(M.chapterLabel({ saga_id = "b", chain_id = "goldshire", chain_order = 2 }, entries) == "Chapter 2 of 4", "local rank")
+assertTrue(M.lockText(M.missing(entries[2], entries, {})) == "Locked: finish En kveld first", "one prereq")
 assertTrue(M.isLocked(entries[2], entries, {}), "locked before")
 assertTrue(not M.isLocked(entries[2], entries, { a = true }), "any completion unlocks, version ignored")
-assertTrue(M.lockText(M.missing(entries[3], entries, {})) == "Låst: fullfør En kveld og Veien først", "two titles")
-assertTrue(M.listSub(entries[2], entries, {}, "Ukjent") == "Kapittel 2 av 4 — Låst: fullfør En kveld først", "list lock")
-assertTrue(M.listSub(entries[2], entries, { a = true }, "Ukjent") == "Goldshire · Kapittel 2 av 4", "list chapter")
+assertTrue(M.lockText(M.missing(entries[3], entries, {})) == "Locked: finish En kveld and Veien first", "two titles")
+assertTrue(M.listSub(entries[2], entries, {}, "Ukjent") == "Chapter 2 of 4 — Locked: finish En kveld first", "list lock")
+assertTrue(M.listSub(entries[2], entries, { a = true }, "Ukjent") == "Goldshire · Chapter 2 of 4", "list chapter")
 
 local unlocked = M.newlyUnlocked(entries, {}, { a = true })
 assertTrue(#unlocked == 1 and unlocked[1].saga_id == "b", "local unlock of the next chapter")
 assertTrue(not M.isLocked(entries[1], entries, { a = true }), "finished saga is not locked")
 
 local detail = M.detailLines(entries[2], entries, {})
-assertTrue(detail:find("Kapittel 2 av 4", 1, true) ~= nil, "detail chapter")
-assertTrue(detail:find("Låst: fullfør En kveld først", 1, true) ~= nil, "detail lock")
+assertTrue(detail:find("Chapter 2 of 4", 1, true) ~= nil, "detail chapter")
+assertTrue(detail:find("Locked: finish En kveld first", 1, true) ~= nil, "detail lock")
 
 print("chains ok")

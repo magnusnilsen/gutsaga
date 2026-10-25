@@ -2,13 +2,18 @@ std = "lua51"
 max_line_length = 160
 codes = true
 globals = {
-    "GutSagaDB",
-    "GutSagaData",
-    "GutSagaObjectives",
-    "GutSagaChains",
-    "SLASH_GUTSAGA1",
-    "SLASH_GUTSAGA2",
+    "OurSagasDB",
+    "OurSagasData",
+    "OurSagasObjectives",
+    "OurSagasChains",
+    "OurSagasInvite",
+    "OurSagasLocale",
+    "OurSagasLanguage",
+    "OurSagas_L",
+    "SLASH_OURSAGAS1",
+    "SLASH_OURSAGAS2",
     "SlashCmdList",
+    "GetLocale",
     "itemCount",
     "refresh",
 }
@@ -94,7 +99,9 @@ read_globals = {
     "UIDropDownMenu_JustifyText",
 }
 exclude_files = {
-    "addon/GutSaga/GutSagaData.lua",
+    "addon/OurSagas/OurSagasData.lua",
+    "addon/OurSagas/OurSagasLanguage.lua",
+    "addon/invite_test.lua",
     "addon/objectives_test.lua",
     "addon/chains_test.lua",
 }

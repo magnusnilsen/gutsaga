@@ -32,10 +32,10 @@ func TestPostCompletionEmbed(t *testing.T) {
 			ContentType: "image/png",
 		})
 	})
-	if payload.Username != "GutSaga" {
+	if payload.Username != "OurSagas" {
 		t.Fatalf("username %s", payload.Username)
 	}
-	if payload.Content != "**Magni** fullførte en saga!" {
+	if payload.Content != "**Magni** completed a saga!" {
 		t.Fatalf("content %s", payload.Content)
 	}
 	if payload.AllowedMentions.Parse == nil || len(payload.AllowedMentions.Parse) != 0 {
@@ -121,7 +121,7 @@ func TestPostSagaAnnounced(t *testing.T) {
 			ContentType: "image/png",
 		})
 	})
-	if payload.Content != "Magnus opprettet en ny saga" {
+	if payload.Content != "Magnus created a new saga" {
 		t.Fatalf("content %s", payload.Content)
 	}
 	emb := payload.Embeds[0]
@@ -131,7 +131,7 @@ func TestPostSagaAnnounced(t *testing.T) {
 	if emb.Timestamp != "" || emb.Footer != nil || len(emb.Fields) != 0 {
 		t.Fatalf("want no stamp/footer/fields %+v", emb)
 	}
-	want := "1. Møt opp\n2. Hold ut\n\n**Beskrivelse**\nStå vakt ved porten.\n\nLengre detalj."
+	want := "1. Møt opp\n2. Hold ut\n\n**Description**\nStå vakt ved porten.\n\nLengre detalj."
 	if emb.Description != want {
 		t.Fatalf("description %q", emb.Description)
 	}
@@ -150,10 +150,10 @@ func TestPostSagaUpdateAndRetireAreMinimal(t *testing.T) {
 			Image:     []byte("SHOULD-NOT-ATTACH"), ContentType: "image/png",
 		})
 	})
-	if updated.Content != "Magnus oppdaterte en saga" {
+	if updated.Content != "Magnus updated a saga" {
 		t.Fatalf("content %s", updated.Content)
 	}
-	if updated.Embeds[0].Color != ColorUpdate || updated.Embeds[0].Description != "Ny versjon 2.\n• Nytt mål" || len(updated.Embeds[0].Fields) != 0 {
+	if updated.Embeds[0].Color != ColorUpdate || updated.Embeds[0].Description != "New version 2.\n• Nytt mål" || len(updated.Embeds[0].Fields) != 0 {
 		t.Fatalf("embed %+v", updated.Embeds[0])
 	}
 	if file.name != "" || updated.Embeds[0].Image != nil {
@@ -165,7 +165,7 @@ func TestPostSagaUpdateAndRetireAreMinimal(t *testing.T) {
 			Kind: KindUpdated, Title: "Første vakt", Version: 2, When: when,
 		})
 	})
-	if anonymous.Content != "En saga er oppdatert" {
+	if anonymous.Content != "A saga was updated" {
 		t.Fatalf("anonymous %s", anonymous.Content)
 	}
 
@@ -174,11 +174,11 @@ func TestPostSagaUpdateAndRetireAreMinimal(t *testing.T) {
 			Kind: KindRetired, Title: "Første vakt", When: when, UpdatedBy: "Magnus", Image: []byte("NO"),
 		})
 	})
-	if retired.Content != "Magnus la bort en saga" {
+	if retired.Content != "Magnus retired a saga" {
 		t.Fatalf("content %s", retired.Content)
 	}
 	emb := retired.Embeds[0]
-	if emb.Color != ColorRetire || emb.Description != "Sagaen er ikke lenger aktiv." || emb.Image != nil || len(emb.Fields) != 0 {
+	if emb.Color != ColorRetire || emb.Description != "This saga is no longer active." || emb.Image != nil || len(emb.Fields) != 0 {
 		t.Fatalf("embed %+v", emb)
 	}
 }
@@ -191,7 +191,7 @@ func TestPostLevelMilestone(t *testing.T) {
 	payload, _ := post(t, func(c *Client) (Message, error) {
 		return c.PostLevel(context.Background(), LevelNotice{Character: "Magni", Level: 20, When: when})
 	})
-	if payload.Content != "**Magni** nådde et nytt nivå." {
+	if payload.Content != "**Magni** reached a new level." {
 		t.Fatalf("content %s", payload.Content)
 	}
 	emb := payload.Embeds[0]
@@ -206,7 +206,7 @@ func TestPostLevelMilestone(t *testing.T) {
 
 func TestCompletionTextEscapesMarkdown(t *testing.T) {
 	got := CompletionText("A*b", "Stjerne *kveld*")
-	if got != `**A\*b** fullførte en saga!` {
+	if got != `**A\*b** completed a saga!` {
 		t.Fatal(got)
 	}
 }
@@ -399,10 +399,10 @@ func TestObjectivesSummaryCapsLines(t *testing.T) {
 		lines[i] = ObjectiveLine{Text: "Mål"}
 	}
 	got := ObjectivesSummary(lines, false)
-	if strings.Count(got, "•") != 8 || !strings.Contains(got, "og 2 mål til") {
+	if strings.Count(got, "•") != 8 || !strings.Contains(got, "and 2 more goals") {
 		t.Fatal(got)
 	}
-	if ObjectivesSummary(nil, false) != "Ingen mål" {
+	if ObjectivesSummary(nil, false) != "No goals" {
 		t.Fatal("empty")
 	}
 }

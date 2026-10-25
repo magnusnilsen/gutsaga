@@ -23,36 +23,36 @@ func seedQuests() []QuestInput {
 	one := 1
 	return []QuestInput{
 		{
-			Title: "En kveld i Goldshire",
-			Description: "Gå til Lion's Pride Inn i hjertet av Goldshire.\n\n" +
-				"Snakk med verten Farley om dagens rykter, og sørg for at du har kildevann i sekken før du setter deg ned ved peisen.",
+			Title: "An evening in Goldshire",
+			Description: "Go to Lion's Pride Inn in the heart of Goldshire.\n\n" +
+				"Talk to Innkeeper Farley about the day's rumors, and make sure you have spring water in your bag before you sit by the fire.",
 			PartyQuest: true,
-			CreatedBy:  "GutSaga#0000",
+			CreatedBy:  "Player#1234",
 			Objectives: []contract.Objective{
-				{ID: "goldshire", Type: contract.ObjectiveLocation, Text: "Stå i eller rett utenfor Lion's Pride Inn i Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
-				{ID: "farley", Type: contract.ObjectiveInteract, Text: "Snakk med Innkeeper Farley", NPC: "Innkeeper Farley"},
-				{ID: "water", Type: contract.ObjectiveCollect, Text: "Ha 1 Refreshing Spring Water (kjøpes av Farley)", ItemID: &water, ItemName: "Refreshing Spring Water", Count: one},
+				{ID: "goldshire", Type: contract.ObjectiveLocation, Text: "Stand in or just outside Lion's Pride Inn in Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
+				{ID: "farley", Type: contract.ObjectiveInteract, Text: "Talk to Innkeeper Farley", NPC: "Innkeeper Farley"},
+				{ID: "water", Type: contract.ObjectiveCollect, Text: "Have 1 Refreshing Spring Water (sold by Farley)", ItemID: &water, ItemName: "Refreshing Spring Water", Count: one},
 			},
 		},
 		{
-			Title: "Veien fra Northshire",
-			Description: "Nord for Goldshire ligger veien ut av Northshire Abbey.\n\n" +
-				"Stå der Falkhaan Isenstrider pleier å stå, der skogen åpner seg mot Elwynn.",
+			Title: "The road from Northshire",
+			Description: "North of Goldshire is the road out of Northshire Abbey.\n\n" +
+				"Stand where Falkhaan Isenstrider usually stands, where the forest opens toward Elwynn.",
 			PartyQuest: true,
-			CreatedBy:  "GutSaga#0000",
+			CreatedBy:  "Player#1234",
 			Objectives: []contract.Objective{
-				{ID: "road", Type: contract.ObjectiveLocation, Text: "Stå på veien sør for Northshire", MapID: intPtr(37), X: &roadX, Y: &roadY, Radius: &roadR},
+				{ID: "road", Type: contract.ObjectiveLocation, Text: "Stand on the road south of Northshire", MapID: intPtr(37), X: &roadX, Y: &roadY, Radius: &roadR},
 			},
 		},
 		{
-			Title: "Melk til vaktlaget",
-			Description: "Vaktene i Goldshire trenger noe kaldt å drikke.\n\n" +
-				"Ice Cold Milk selges av Innkeeper Farley — kjøp én og møt opp på plassen foran innstedet.",
+			Title: "Milk for the watch",
+			Description: "The guards in Goldshire need something cold to drink.\n\n" +
+				"Ice Cold Milk is sold by Innkeeper Farley — buy one and meet on the square in front of the inn.",
 			PartyQuest: true,
-			CreatedBy:  "GutSaga#0000",
+			CreatedBy:  "Player#1234",
 			Objectives: []contract.Objective{
-				{ID: "square", Type: contract.ObjectiveLocation, Text: "Stå i Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
-				{ID: "milk", Type: contract.ObjectiveCollect, Text: "Ha 1 Ice Cold Milk", ItemID: &milk, ItemName: "Ice Cold Milk", Count: one},
+				{ID: "square", Type: contract.ObjectiveLocation, Text: "Stand in Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
+				{ID: "milk", Type: contract.ObjectiveCollect, Text: "Have 1 Ice Cold Milk", ItemID: &milk, ItemName: "Ice Cold Milk", Count: one},
 			},
 		},
 	}
@@ -61,7 +61,7 @@ func seedQuests() []QuestInput {
 func intPtr(n int) *int { return &n }
 
 func seed(ctx context.Context, store *Store) (created, updated int, err error) {
-	if _, err = store.EnsurePlayer(ctx, "GutSaga#0000", "GutSaga"); err != nil {
+	if _, err = store.EnsurePlayer(ctx, "Player#1234", "Player"); err != nil {
 		return 0, 0, fmt.Errorf("system creator: %w", err)
 	}
 	for _, q := range seedQuests() {

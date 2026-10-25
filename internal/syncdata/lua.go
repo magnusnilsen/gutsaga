@@ -8,7 +8,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 )
 
-// WriteLua renders GutSagaData.lua. The addon reads this file at load /reload.
+// WriteLua renders OurSagasData.lua. The addon reads this file at load /reload.
 func WriteLua(battletag, generatedAt string, entries []Entry) string {
 	return WriteLuaFile(battletag, generatedAt, entries, "", "")
 }
@@ -17,9 +17,9 @@ func WriteLua(battletag, generatedAt string, entries []Entry) string {
 // notice once, after /reload, when notice_id changes.
 func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, noticeID string) string {
 	var b strings.Builder
-	b.WriteString("-- Generert av GutSaga-programmet. Ikke rediger for hånd.\n")
-	b.WriteString("-- Last inn på nytt med /reload for å se nye oppdrag.\n")
-	b.WriteString("GutSagaData = {\n")
+	b.WriteString("-- Written by the OurSagas companion. Do not edit by hand.\n")
+	b.WriteString("-- Type /reload to load new sagas.\n")
+	b.WriteString("OurSagasData = {\n")
 	b.WriteString("  version = 1,\n")
 	fmt.Fprintf(&b, "  battletag = %s,\n", luaString(battletag))
 	fmt.Fprintf(&b, "  generated_at = %s,\n", luaString(generatedAt))
@@ -84,6 +84,40 @@ func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, notice
 	}
 	b.WriteString("  },\n}\n")
 	return b.String()
+}
+
+// WriteSyncLua is WriteLuaFile plus groups, invites, and character participation.
+func WriteSyncLua(battletag, generatedAt string, entries []Entry, notice, noticeID string, groups []contract.GroupSummary, invites []contract.Invite, characters []contract.Character) string {
+	body := WriteLuaFile(battletag, generatedAt, entries, notice, noticeID)
+	// WriteLuaFile closes the table. Replace the final closing brace with the extra sections.
+	const close = "}\n"
+	if !strings.HasSuffix(body, close) {
+		return body
+	}
+	var extra strings.Builder
+	writeLuaGroups(&extra, groups, invites, characters)
+	return strings.TrimSuffix(body, close) + extra.String() + close
+}
+
+func writeLuaGroups(b *strings.Builder, groups []contract.GroupSummary, invites []contract.Invite, characters []contract.Character) {
+	b.WriteString("  groups = {\n")
+	for _, g := range groups {
+		fmt.Fprintf(b, "    { id = %s, slug = %s, name = %s },\n", luaString(g.ID), luaString(g.Slug), luaString(g.Name))
+	}
+	b.WriteString("  },\n  invites = {\n")
+	for _, inv := range invites {
+		fmt.Fprintf(b, "    { id = %s, group_name = %s, name = %s, realm = %s, battletag = %s, kind = %s },\n",
+			luaString(inv.ID), luaString(inv.GroupName), luaString(inv.Name), luaString(inv.Realm), luaString(inv.BattleTag), luaString(inv.Kind))
+	}
+	b.WriteString("  },\n  characters = {\n")
+	for _, c := range characters {
+		flag := "false"
+		if c.Participating {
+			flag = "true"
+		}
+		fmt.Fprintf(b, "    { name = %s, realm = %s, participating = %s },\n", luaString(c.Name), luaString(c.Realm), flag)
+	}
+	b.WriteString("  },\n")
 }
 
 func luaObjectives(list []contract.Objective) string {

@@ -156,20 +156,17 @@ func formatNews(kind string, titles []string) (string, string) {
 	title := titles[0]
 	extra := ""
 	if len(titles) > 1 {
-		extra = fmt.Sprintf(" og %d til", len(titles)-1)
+		extra = fmt.Sprintf(" and %d more", len(titles)-1)
 	}
 	switch kind {
 	case "created":
-		if len(titles) == 1 {
-			return "Ny saga: " + title + " — skriv /reload i WoW", "Ny saga: " + title + " er lastet inn."
-		}
-		return "Ny saga: " + title + extra + " — skriv /reload i WoW", "Ny saga: " + title + extra + " er lastet inn."
+		return "New saga: " + title + extra + " — type /reload in WoW", "New saga: " + title + extra + " is loaded."
 	case "updated":
-		return "Saga oppdatert: " + title + extra + " — skriv /reload i WoW", "Saga oppdatert: " + title + extra + " er lastet inn."
+		return "Saga updated: " + title + extra + " — type /reload in WoW", "Saga updated: " + title + extra + " is loaded."
 	case "retired":
-		return "Saga avsluttet: " + title + extra + " — skriv /reload i WoW", "Saga avsluttet: " + title + extra + " er lastet inn."
+		return "Saga retired: " + title + extra + " — type /reload in WoW", "Saga retired: " + title + extra + " is loaded."
 	default:
-		return "Saga fullført: " + title + extra + " — skriv /reload i WoW", "Saga fullført: " + title + extra + " er lastet inn."
+		return "Saga completed: " + title + extra + " — type /reload in WoW", "Saga completed: " + title + extra + " is loaded."
 	}
 }
 

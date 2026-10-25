@@ -1,4 +1,4 @@
-// Package app runs the GutSaga companion: install the addon, sync quests, and
+// Package app runs the OurSagas companion: install the addon, sync quests, and
 // report completions from the chat log and SavedVariables. It never sends input
 // to the game.
 package app
@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/chatlog"
 	"github.com/magnusnilsen/gutsaga/internal/config"
 	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/magnusnilsen/gutsaga/internal/i18n"
 	"github.com/magnusnilsen/gutsaga/internal/install"
 	"github.com/magnusnilsen/gutsaga/internal/queue"
 	"github.com/magnusnilsen/gutsaga/internal/savedvars"
@@ -81,7 +83,6 @@ func New(cfg config.Config, queuePath string, log *slog.Logger) (*App, error) {
 		player: contract.Player{
 			BattleTag:   cfg.BattleTag,
 			DisplayName: cfg.PlayerName,
-			Email:       cfg.PlayerEmail,
 		},
 	}, nil
 }
@@ -92,43 +93,43 @@ func (a *App) notifyAccount() {
 	}
 }
 
-// AccountStatus is the Smia account line the tray shows.
+// AccountStatus is the account line the tray shows.
 func (a *App) AccountStatus() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return accountStatus(a.Config.Token() != "", a.player, a.Config, a.sync)
+	return accountStatus(a.Config.Token() != "", a.player, a.Config, a.sync, a.Config.Language)
 }
 
-func accountStatus(loggedIn bool, player contract.Player, cfg config.Config, sync contract.SyncResponse) string {
+func accountStatus(loggedIn bool, player contract.Player, cfg config.Config, sync contract.SyncResponse, lang string) string {
 	if !loggedIn {
-		return "Ikke innlogget"
+		return i18n.T(lang, "app.logged_out")
 	}
-	switch {
-	case strings.TrimSpace(sync.Email) != "":
-		return "Konto: " + strings.TrimSpace(sync.Email)
-	case strings.TrimSpace(player.Email) != "":
-		return "Konto: " + strings.TrimSpace(player.Email)
-	case strings.TrimSpace(cfg.PlayerEmail) != "":
-		return "Konto: " + strings.TrimSpace(cfg.PlayerEmail)
-	case strings.TrimSpace(sync.DisplayName) != "":
-		return "Konto: " + strings.TrimSpace(sync.DisplayName)
-	case strings.TrimSpace(player.DisplayName) != "":
-		return "Konto: " + strings.TrimSpace(player.DisplayName)
-	case strings.TrimSpace(cfg.PlayerName) != "":
-		return "Konto: " + strings.TrimSpace(cfg.PlayerName)
-	default:
-		return "Konto: innlogget"
+	who := strings.TrimSpace(sync.BattleTag)
+	if who == "" {
+		who = strings.TrimSpace(player.BattleTag)
 	}
+	if who == "" {
+		who = strings.TrimSpace(cfg.BattleTag)
+	}
+	if who == "" {
+		who = strings.TrimSpace(sync.DisplayName)
+	}
+	if who == "" {
+		who = strings.TrimSpace(player.DisplayName)
+	}
+	if who == "" {
+		who = strings.TrimSpace(cfg.PlayerName)
+	}
+	if who == "" {
+		return i18n.T(lang, "app.logged_out")
+	}
+	return fmt.Sprintf(i18n.T(lang, "app.account"), who)
 }
 
-// applySyncIdentityLocked copies email / name / battletag from sync onto the
+// applySyncIdentityLocked copies name and battletag from sync onto the
 // in-memory player and config. Caller holds a.mu.
 func (a *App) applySyncIdentityLocked(sync contract.SyncResponse) {
 	a.sync = sync
-	if email := strings.TrimSpace(sync.Email); email != "" {
-		a.player.Email = email
-		a.Config.PlayerEmail = email
-	}
 	if name := strings.TrimSpace(sync.DisplayName); name != "" {
 		a.player.DisplayName = name
 		a.Config.PlayerName = name
@@ -227,12 +228,18 @@ func (a *App) bootstrap(ctx context.Context) error {
 	}
 	if a.WowDir != "" {
 		if err := install.Install(a.WowDir, a.Config.Client); err != nil {
-			a.Log.Error("installasjon av tillegget feilet", "err", err)
+			a.Log.Error("addon install failed", "err", err)
+		}
+		if err := install.WriteLanguage(a.WowDir, a.Config.Language); err != nil {
+			a.Log.Warn("could not write addon language", "err", err)
+		}
+		if err := savedvars.CopyObjectiveChecks(a.WowDir); err != nil {
+			a.Log.Warn("could not copy objective checks", "err", err)
 		}
 	}
 	if a.Client.APIKey == "" {
 		if err := a.ensureLogin(ctx); err != nil {
-			a.Log.Warn("ikke innlogget med Smia", "err", err)
+			a.Log.Warn("not logged in", "err", err)
 			return err
 		}
 	}
@@ -288,8 +295,8 @@ func (a *App) pullSync(ctx context.Context) error {
 			entries[i].ImageAspect = ar
 		}
 	}
-	body := syncdata.WriteLuaFile(sync.BattleTag, sync.GeneratedAt, entries, notice, noticeID)
-	path := filepath.Join(addonDir, "GutSagaData.lua")
+	body := syncdata.WriteSyncLua(sync.BattleTag, sync.GeneratedAt, entries, notice, noticeID, sync.Groups, sync.Invites, sync.Characters)
+	path := filepath.Join(addonDir, "OurSagasData.lua")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -315,7 +322,7 @@ func (a *App) announce(desktop string) {
 	// Log only — Discord carries the player-facing alert. Notify is for tests.
 	a.Log.Info(desktop)
 	if a.Notify != nil {
-		a.Notify("GutSaga", desktop)
+		a.Notify("OurSagas", desktop)
 	}
 }
 
@@ -387,6 +394,11 @@ func (a *App) HandleLine(line string) bool {
 			a.Log.Info("karakter", "character", ev.Character, "realm", ev.Realm, "level", ev.Level)
 		}
 		return ok
+	case chatlog.KindInvite:
+		return a.Queue.Enqueue(queue.Item{
+			Kind: "invite", Key: "invite\n" + ev.Action + "\n" + ev.InviteID,
+			Action: ev.Action, InviteID: ev.InviteID,
+		})
 	case chatlog.KindLevel:
 		return a.Queue.Enqueue(queue.Item{
 			Kind: "level", Key: queue.LevelKey(ev.Character, ev.Realm, ev.Level),
@@ -414,7 +426,7 @@ func (a *App) pollChat() {
 
 // pollSavedVars enqueues completions the addon wrote locally. On Classic Era,
 // AddMessage lines never reach WoWChatLog.txt, so this is the reliable path.
-// It also applies /gutsaga reset requests queued in GutSagaDB.pending_resets.
+// It also applies /oursagas reset requests queued in OurSagasDB.pending_resets.
 func (a *App) pollSavedVars() {
 	if a.WowDir == "" {
 		return
@@ -450,7 +462,7 @@ func (a *App) pollSavedVars() {
 }
 
 // pollPendingResets deletes API progress for /gutsaga wipe|reset after /reload
-// wrote GutSagaDB.pending_resets. Without this, the next sync brings completed
+// wrote OurSagasDB.pending_resets. Without this, the next sync brings completed
 // status back and the local wipe looks broken.
 func (a *App) pollPendingResets() {
 	if a.Client == nil || a.Client.APIKey == "" {
@@ -557,6 +569,12 @@ func (a *App) Flush(ctx context.Context) {
 }
 
 func (a *App) send(ctx context.Context, item queue.Item) error {
+	if item.Kind == "invite" {
+		if item.Action == "decline" {
+			return a.Client.DeclineInvite(ctx, item.InviteID)
+		}
+		return a.Client.AcceptInvite(ctx, item.InviteID)
+	}
 	if item.Kind == "character" {
 		level := item.Level
 		if level < 1 {
@@ -739,7 +757,7 @@ func (a *App) ApplyUpdate() error {
 	if err := update.ReplaceExecutable(body); err != nil {
 		return err
 	}
-	a.Log.Info("starter GutSaga på nytt")
+	a.Log.Info("starter OurSagas på nytt")
 	restart()
 	return nil
 }

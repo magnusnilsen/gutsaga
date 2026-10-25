@@ -1,15 +1,12 @@
--- Smia login issues a GutSaga session. BattleTag arrives later from the game.
+-- Sessions. BattleTag may arrive with the character report. A fresh database
+-- never creates the retired login cache; migration 009 drops it if present.
 
-ALTER TABLE players ADD COLUMN smia_subject text;
 ALTER TABLE players ADD COLUMN email text NOT NULL DEFAULT '';
 ALTER TABLE players ALTER COLUMN battletag DROP NOT NULL;
 ALTER TABLE players DROP CONSTRAINT players_battletag_key;
 CREATE UNIQUE INDEX players_battletag_uidx
     ON players (lower(battletag))
     WHERE battletag IS NOT NULL AND battletag <> '';
-CREATE UNIQUE INDEX players_smia_subject_uidx
-    ON players (smia_subject)
-    WHERE smia_subject IS NOT NULL AND smia_subject <> '';
 ALTER TABLE players ALTER COLUMN api_key_hash DROP NOT NULL;
 
 CREATE TABLE sessions (
@@ -21,18 +18,6 @@ CREATE TABLE sessions (
 );
 
 CREATE INDEX sessions_player_idx ON sessions (player_id);
-
--- SHA-256 of the Smia access token. The token itself is never stored.
-CREATE TABLE smia_token_cache (
-    token_hash text PRIMARY KEY,
-    subject text NOT NULL DEFAULT '',
-    email text NOT NULL DEFAULT '',
-    display_name text NOT NULL DEFAULT '',
-    member boolean NOT NULL,
-    hub text NOT NULL DEFAULT '',
-    server text NOT NULL DEFAULT '',
-    expires_at timestamptz NOT NULL
-);
 
 ALTER TABLE quests ALTER COLUMN objectives DROP DEFAULT;
 ALTER TABLE quests

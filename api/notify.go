@@ -48,8 +48,10 @@ func (s *Server) announceCreated(ctx context.Context, q contract.Quest, flag *bo
 			img, ct = b, c
 		}
 	}
+	notice := sagaNotice(ctx, s.store, discord.KindAnnounced, q, "", img, ct)
+	s.attachGroupDiscord(ctx, q.ID, &notice.WebhookURL, &notice.Locale)
 	s.postDiscord(ctx, func(ctx context.Context, n Notifier) (discord.Message, error) {
-		return n.PostSaga(ctx, sagaNotice(ctx, s.store, discord.KindAnnounced, q, "", img, ct))
+		return n.PostSaga(ctx, notice)
 	})
 }
 
@@ -70,6 +72,7 @@ func (s *Server) announceEdited(ctx context.Context, before, after contract.Ques
 	}
 	notice := sagaNotice(ctx, s.store, kind, after, actor, nil, "")
 	notice.Changes = changes
+	s.attachGroupDiscord(ctx, after.ID, &notice.WebhookURL, &notice.Locale)
 	s.postDiscord(ctx, func(ctx context.Context, n Notifier) (discord.Message, error) {
 		return n.PostSaga(ctx, notice)
 	})
@@ -138,6 +141,22 @@ func displayActor(displayName, email, battleTag string) string {
 		return mail
 	}
 	return ""
+}
+
+func (s *Server) attachGroupDiscord(ctx context.Context, questID string, webhook, locale *string) {
+	if s == nil || s.store == nil || questID == "" {
+		return
+	}
+	hook, lang, err := s.store.GroupDiscordForQuest(ctx, questID)
+	if err != nil {
+		return
+	}
+	if webhook != nil {
+		*webhook = hook
+	}
+	if locale != nil {
+		*locale = lang
+	}
 }
 
 // announceCreate reports whether a new saga should be posted.

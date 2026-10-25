@@ -25,13 +25,12 @@ func TestAdminDiscordNotices(t *testing.T) {
 	t.Cleanup(srv.Close)
 	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
 
-	var created contract.CreatePlayerResponse
-	resp, err := admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
-		"battletag": "Magnus#2231", "display_name": "Magnus",
-	}, &created)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("player %d %v", statusOf(resp), err)
-	}
+	playerRec, token := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
+	devGroup(t, playerRec.ID, "tutorial", "Tutorial")
+	created := contract.CreatePlayerResponse{Player: playerRec, APIKey: token}
+	author := apiClient{base: srv.URL, token: token, http: srv.Client()}
+	var resp *http.Response
+	var err error
 	var magni contract.Character
 	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
 		"player_id": created.Player.ID, "name": "Magni", "realm": "Argent Dawn",
@@ -43,7 +42,7 @@ func TestAdminDiscordNotices(t *testing.T) {
 
 	png := tinyPNG(t)
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
+	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{
 		"title":       "Første vakt",
 		"description": "Stå vakt ved porten.\n\nMer som ikke trengs i kortteksten.",
 		"objectives": []map[string]any{
@@ -53,7 +52,6 @@ func TestAdminDiscordNotices(t *testing.T) {
 		"objectives_ordered":     true,
 		"min_level":              10,
 		"party":                  true,
-		"created_by":             "Magnus#2231",
 		"assigned_character_ids": []string{magni.ID},
 		"image_base64":           base64.StdEncoding.EncodeToString(png),
 	}, &quest)
@@ -79,18 +77,18 @@ func TestAdminDiscordNotices(t *testing.T) {
 		t.Fatalf("objectives/image %+v img %d", note.Objectives, len(note.Image))
 	}
 
-	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
+	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{
 		"title": "Stille utkast", "description": "Ikke klar.",
 		"objectives": []map[string]any{{"id": "x", "type": "interact", "text": "Vent", "npc": "Vakt"}},
-		"created_by": "Magnus#2231", "active": false,
+		"active":     false,
 	}, &contract.Quest{})
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("draft %d %v", statusOf(resp), err)
 	}
-	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
+	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{
 		"title": "Hemmelig", "description": "Ikke post.",
 		"objectives": []map[string]any{{"id": "x", "type": "interact", "text": "Vent", "npc": "Vakt"}},
-		"created_by": "Magnus#2231", "announce": false,
+		"announce":   false,
 	}, &contract.Quest{})
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("quiet %d %v", statusOf(resp), err)
@@ -101,17 +99,16 @@ func TestAdminDiscordNotices(t *testing.T) {
 	}
 	fake.mu.Unlock()
 
-	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
+	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{
 		"title": "Ødelagt", "description": "x",
 		"objectives":   []map[string]any{{"id": "x", "type": "interact", "text": "Vent", "npc": "Vakt"}},
-		"created_by":   "Magnus#2231",
 		"image_base64": "!!!",
 	}, nil)
 	if err != nil || resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bad image %d %v", statusOf(resp), err)
 	}
 
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
+	resp, err = author.do(http.MethodPatch, "/v1/sagas/"+quest.ID, map[string]any{
 		"assigned_character_ids": []string{magni.ID},
 		"changes":                []string{"Tildelt Magni"},
 	}, &contract.Quest{})
@@ -125,7 +122,7 @@ func TestAdminDiscordNotices(t *testing.T) {
 	fake.mu.Unlock()
 
 	var updated contract.Quest
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
+	resp, err = author.do(http.MethodPatch, "/v1/sagas/"+quest.ID, map[string]any{
 		"title": "Første vakt, igjen", "changes": []string{"Nytt navn"},
 	}, &updated)
 	if err != nil || resp.StatusCode != http.StatusOK || updated.Version != 3 {
@@ -140,14 +137,14 @@ func TestAdminDiscordNotices(t *testing.T) {
 	}
 	fake.mu.Unlock()
 
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
+	resp, err = author.do(http.MethodPatch, "/v1/sagas/"+quest.ID, map[string]any{
 		"title": "Stille", "announce": false, "changes": []string{"Skjult"},
 	}, &contract.Quest{})
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("silent edit %d %v", statusOf(resp), err)
 	}
 	active := false
-	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
+	resp, err = author.do(http.MethodPatch, "/v1/sagas/"+quest.ID, map[string]any{
 		"active": active, "changes": []string{"Ferdig"},
 	}, &contract.Quest{})
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -185,13 +182,12 @@ func TestDiscordFailureDoesNotFailTheAPI(t *testing.T) {
 	srv := httptest.NewServer((&Server{store: NewStore(testPool), adminToken: "admin-test", discord: errNotifier{}}).Handler())
 	t.Cleanup(srv.Close)
 	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
-	var created contract.CreatePlayerResponse
-	resp, err := admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
-		"battletag": "Magnus#2231", "display_name": "Magnus",
-	}, &created)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatal(err, statusOf(resp))
-	}
+	playerRec, token := devSession(t, "bnet-magnus-2", "Magnus#2231", "Magnus")
+	devGroup(t, playerRec.ID, "tutorial", "Tutorial")
+	created := contract.CreatePlayerResponse{Player: playerRec, APIKey: token}
+	author := apiClient{base: srv.URL, token: token, http: srv.Client()}
+	var resp *http.Response
+	var err error
 	var magni contract.Character
 	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
 		"player_id": created.Player.ID, "name": "Magni", "realm": "Argent Dawn",
@@ -201,10 +197,10 @@ func TestDiscordFailureDoesNotFailTheAPI(t *testing.T) {
 		t.Fatal(err, statusOf(resp))
 	}
 	var quest contract.Quest
-	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
+	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{
 		"title": "Vakt", "description": "Stå.",
-		"objectives": []map[string]any{{"id": "a", "type": "interact", "text": "Møt", "npc": "Vakt"}},
-		"created_by": "Magnus#2231", "assigned_character_ids": []string{magni.ID},
+		"objectives":             []map[string]any{{"id": "a", "type": "interact", "text": "Møt", "npc": "Vakt"}},
+		"assigned_character_ids": []string{magni.ID},
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated || quest.ID == "" {
 		t.Fatalf("create still succeeds: %d %+v %v", statusOf(resp), quest, err)
@@ -255,12 +251,10 @@ func TestDiscordQueueDoesNotBlockTheRequest(t *testing.T) {
 	apiSrv := httptest.NewServer((&Server{store: NewStore(testPool), adminToken: "admin-test", discord: q}).Handler())
 	t.Cleanup(apiSrv.Close)
 	admin := apiClient{base: apiSrv.URL, token: "admin-test", http: &http.Client{Timeout: 3 * time.Second}}
-	var created contract.CreatePlayerResponse
-	if resp, err := admin.do(http.MethodPost, "/v1/admin/players", map[string]string{
-		"battletag": "Magnus#2231", "display_name": "Magnus",
-	}, &created); err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatal(err, statusOf(resp))
-	}
+	playerRec, token := devSession(t, "bnet-magnus-3", "Magnus#2231", "Magnus")
+	devGroup(t, playerRec.ID, "tutorial", "Tutorial")
+	created := contract.CreatePlayerResponse{Player: playerRec, APIKey: token}
+	author := apiClient{base: apiSrv.URL, token: token, http: &http.Client{Timeout: 3 * time.Second}}
 	var magni contract.Character
 	if resp, err := admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
 		"player_id": created.Player.ID, "name": "Magni", "realm": "Argent Dawn",
@@ -271,12 +265,11 @@ func TestDiscordQueueDoesNotBlockTheRequest(t *testing.T) {
 
 	start := time.Now()
 	var quest contract.Quest
-	resp, err := admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
+	resp, err := author.do(http.MethodPost, "/v1/sagas", map[string]any{
 		"title": "Køtest", "description": "Kort tekst.",
 		"objectives": []map[string]any{{"id": "a", "type": "interact", "text": "Møt opp", "npc": "Vakt"}},
-		"min_level":  10, "created_by": "Magnus#2231",
-		"assigned_character_ids": []string{magni.ID},
-		"image_base64":           base64.StdEncoding.EncodeToString(tinyPNG(t)),
+		"min_level":  10, "assigned_character_ids": []string{magni.ID},
+		"image_base64": base64.StdEncoding.EncodeToString(tinyPNG(t)),
 	}, &quest)
 	elapsed := time.Since(start)
 	if err != nil || resp.StatusCode != http.StatusCreated {
@@ -290,7 +283,7 @@ func TestDiscordQueueDoesNotBlockTheRequest(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("webhook was not called")
 	}
-	if payload.Username != "GutSaga" || !strings.Contains(payload.Content, "opprettet") {
+	if payload.Username != "OurSagas" || !strings.Contains(payload.Content, "created a new saga") {
 		t.Fatalf("payload %+v", payload)
 	}
 	if len(payload.Embeds) != 1 || payload.Embeds[0].Title != "Køtest" || payload.Embeds[0].Color != discord.ColorSaga || payload.Embeds[0].Image == nil {
