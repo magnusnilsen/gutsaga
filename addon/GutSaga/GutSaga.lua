@@ -3395,6 +3395,8 @@ local function inferEmoteToken(msg)
     end
     s = string.lower(s)
     -- English + Norwegian fragments for the emotes we author in sagas.
+    -- Prefer longer phrases first (e.g. "hearty hello" before generic words).
+    -- Do not map bare "greet" → HELLO: /greet is GREET ("…warmly"), /hello is HELLO.
     local hints = {
         { "salute", "SALUTE" }, { "hils", "SALUTE" },
         { "bow", "BOW" }, { "bukk", "BOW" },
@@ -3407,6 +3409,8 @@ local function inferEmoteToken(msg)
         { "rude", "RUDE" }, { "frekk", "RUDE" }, { "ufin", "RUDE" },
         { "flex", "FLEX" },
         { "dance", "DANCE" }, { "dans", "DANCE" },
+        { "hearty hello", "HELLO" }, { "hello", "HELLO" }, { "hei", "HELLO" },
+        { "greetings", "GREET" }, { "warmly", "GREET" },
     }
     for i = 1, #hints do
         if string.find(s, hints[i][1], 1, true) then
