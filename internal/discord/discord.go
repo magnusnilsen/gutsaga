@@ -472,7 +472,7 @@ func CompletedObjectivesSummary(lines []ObjectiveLine) string {
 		if text == "" {
 			text = "Mål"
 		}
-		b.WriteString("✅ ")
+		b.WriteString("✓ ")
 		b.WriteString(escapeMD(clipRunes(text, 200)))
 	}
 	if len(lines) > show {

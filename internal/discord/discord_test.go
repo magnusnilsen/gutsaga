@@ -48,7 +48,7 @@ func TestPostCompletionEmbed(t *testing.T) {
 	if emb.Timestamp != "" || emb.Footer != nil || len(emb.Fields) != 0 {
 		t.Fatalf("want no stamp/footer/fields %+v", emb)
 	}
-	wantDesc := "✅ Møt opp\n✅ Hold ut\n\nDwarf · Paladin · nivå 12"
+	wantDesc := "✓ Møt opp\n✓ Hold ut\n\nDwarf · Paladin · nivå 12"
 	if emb.Description != wantDesc {
 		t.Fatalf("description %q", emb.Description)
 	}
@@ -70,7 +70,7 @@ func TestPostCompletionOmitsStaleCharacterDetail(t *testing.T) {
 		})
 	})
 	emb := payload.Embeds[0]
-	if emb.Description != "✅ Møt opp" || len(emb.Fields) != 0 {
+	if emb.Description != "✓ Møt opp" || len(emb.Fields) != 0 {
 		t.Fatalf("want goals only without stale character line: %+v", emb)
 	}
 }
@@ -80,7 +80,7 @@ func TestCompletedObjectivesSummary(t *testing.T) {
 		t.Fatal("empty")
 	}
 	got := CompletedObjectivesSummary([]ObjectiveLine{{Text: "A"}, {Text: "B"}})
-	if got != "✅ A\n✅ B" {
+	if got != "✓ A\n✓ B" {
 		t.Fatalf("%q", got)
 	}
 }

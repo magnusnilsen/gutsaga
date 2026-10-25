@@ -282,7 +282,7 @@ Fullføring:
   "content": "**Magni** fullførte en saga!",
   "embeds": [{
     "title": "Første vakt",
-    "description": "✅ Møt opp\n✅ Hold ut\n\nDwarf · Paladin · nivå 12",
+    "description": "✓ Møt opp\n✓ Hold ut\n\nDwarf · Paladin · nivå 12",
     "color": 3908957,
     "image": {"url": "attachment://screenshot.png"}
   }],
