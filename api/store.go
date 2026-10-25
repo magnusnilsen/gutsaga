@@ -1854,40 +1854,6 @@ func (s *Store) DeleteAdminProgress(ctx context.Context, characterID, questID st
 	return tag.RowsAffected(), nil
 }
 
-// AdminComplete marks a quest completed for a character without a player session.
-func (s *Store) AdminComplete(ctx context.Context, characterID, questID string, questVersion, level int) (contract.CompletionResponse, error) {
-	if err := validUUID(characterID); err != nil {
-		return contract.CompletionResponse{}, err
-	}
-	if err := validUUID(questID); err != nil {
-		return contract.CompletionResponse{}, err
-	}
-	var playerID, tag string
-	err := s.pool.QueryRow(ctx, `
-		SELECT c.player_id::text, COALESCE(p.battletag, '')
-		FROM characters c JOIN players p ON p.id = c.player_id
-		WHERE c.id=$1`, characterID).Scan(&playerID, &tag)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return contract.CompletionResponse{}, ErrNotFound
-	}
-	if err != nil {
-		return contract.CompletionResponse{}, err
-	}
-	if questVersion < 1 {
-		err = s.pool.QueryRow(ctx, `SELECT version FROM quests WHERE id=$1`, questID).Scan(&questVersion)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return contract.CompletionResponse{}, ErrNotFound
-		}
-		if err != nil {
-			return contract.CompletionResponse{}, err
-		}
-	}
-	return s.Complete(ctx, playerID, contract.CompletionRequest{
-		CharacterID: characterID, QuestID: questID, QuestVersion: questVersion,
-		BattleTag: tag, Level: level,
-	}, nil, "")
-}
-
 func (s *Store) SetLevel(ctx context.Context, playerID string, in contract.LevelRequest) (contract.LevelResponse, error) {
 	if err := validUUID(in.CharacterID); err != nil {
 		return contract.LevelResponse{}, err

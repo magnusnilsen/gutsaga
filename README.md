@@ -182,7 +182,7 @@ En saga kan kreve at karakteren har fullført andre sagaer først, og kan ligge 
 
 `requires` er en liste med saga-id-er. **Alle** må være fullført av den samme karakteren. `chain` er bare visning: `id` er en stabil nøkkel (`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`), `name` er teksten i loggen, `order` er rekkefølgen (unikt innenfor samme `id`, fra 1). Samme `id` deler navn. Setter du et nytt navn, oppdateres navnet på de andre sagaene i kjeden. Versjonen deres økes ikke.
 
-Admin (`POST`/`PATCH /v1/admin/sagas`) og spiller-API-et (`/v1/sagas`) tar samme JSON. Smia-verktøyene `create_saga` og `update_saga` sender feltene videre som de er.
+Admin (`POST`/`PATCH /v1/admin/sagas`) og spiller-API-et (`/v1/sagas`) tar samme JSON. Smia-verktøyene `create_saga` og `update_saga` sender feltene videre som de er. `archive_saga` setter `active: false` (legger sagaen bort). Fullføring skjer bare i spillet via følgeprogrammet — det finnes ikke et chat-verktøy for å merke sagaer som fullført.
 
 ```json
 {

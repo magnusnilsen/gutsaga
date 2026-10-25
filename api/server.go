@@ -78,7 +78,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/admin/sagas/{id}/image", s.withAdmin(s.deleteAdminQuestImage))
 	mux.HandleFunc("GET /v1/admin/log", s.withAdmin(s.listLog))
 	mux.HandleFunc("POST /v1/admin/log", s.withAdmin(s.createLog))
-	mux.HandleFunc("POST /v1/admin/complete", s.withAdmin(s.adminComplete))
 	mux.HandleFunc("DELETE /v1/admin/progress", s.withAdmin(s.deleteAdminProgress))
 	return mux
 }
@@ -578,25 +577,6 @@ func (s *Server) createLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, out)
-}
-
-func (s *Server) adminComplete(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		CharacterID  string `json:"character_id"`
-		QuestID      string `json:"saga_id"`
-		QuestVersion int    `json:"saga_version"`
-		Level        int    `json:"level"`
-	}
-	if err := readJSON(r, &body, 1<<20); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
-		return
-	}
-	out, err := s.store.AdminComplete(r.Context(), body.CharacterID, body.QuestID, body.QuestVersion, body.Level)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {
