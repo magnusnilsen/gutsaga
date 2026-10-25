@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -49,9 +50,29 @@ func (e *HTTPError) Permanent() bool {
 }
 
 // DevLogin exchanges OURSAGAS_DEV_TOKEN for a gss_ session. It does not call Battle.net.
+// Optional identity comes from OURSAGAS_DEV_BATTLETAG / OURSAGAS_DEV_BNET_ACCOUNT /
+// OURSAGAS_DEV_DISPLAY_NAME so a local run can merge onto an existing player.
 func (c *Client) DevLogin(ctx context.Context, devToken string) (contract.SessionResponse, error) {
+	body := map[string]string{}
+	if v := strings.TrimSpace(os.Getenv("OURSAGAS_DEV_BATTLETAG")); v != "" {
+		body["battletag"] = v
+	}
+	if v := strings.TrimSpace(os.Getenv("OURSAGAS_DEV_BNET_ACCOUNT")); v != "" {
+		body["bnet_account_id"] = v
+	}
+	if v := strings.TrimSpace(os.Getenv("OURSAGAS_DEV_DISPLAY_NAME")); v != "" {
+		body["display_name"] = v
+	}
+	raw := []byte(`{}`)
+	if len(body) > 0 {
+		var err error
+		raw, err = json.Marshal(body)
+		if err != nil {
+			return contract.SessionResponse{}, err
+		}
+	}
 	var out contract.SessionResponse
-	err := c.doToken(ctx, devToken, http.MethodPost, "/v1/auth/dev", []byte(`{}`), "application/json", &out)
+	err := c.doToken(ctx, devToken, http.MethodPost, "/v1/auth/dev", raw, "application/json", &out)
 	return out, err
 }
 

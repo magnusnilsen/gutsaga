@@ -52,6 +52,19 @@ CREATE INDEX IF NOT EXISTS group_invites_lookup_idx
 
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS participating boolean NOT NULL DEFAULT false;
 
+-- One character per name+realm globally. Prefer the row with progress, else the oldest.
+WITH ranked AS (
+    SELECT c.id,
+           ROW_NUMBER() OVER (
+               PARTITION BY lower(c.name), lower(c.realm)
+               ORDER BY (SELECT count(*) FROM progress p WHERE p.character_id = c.id) DESC,
+                        c.created_at ASC
+           ) AS rn
+    FROM characters c
+)
+DELETE FROM characters
+WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
+
 CREATE UNIQUE INDEX IF NOT EXISTS characters_name_realm_global_uidx
     ON characters (lower(name), lower(realm));
 
