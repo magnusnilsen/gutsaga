@@ -2,16 +2,16 @@ std = "lua51"
 max_line_length = 160
 codes = true
 globals = {
-    "SagaBoardDB",
-    "SagaBoardData",
-    "SagaBoardObjectives",
-    "SagaBoardChains",
-    "SagaBoardInvite",
-    "SagaBoardLocale",
-    "SagaBoardLanguage",
-    "SagaBoard_L",
-    "SLASH_SAGABOARD1",
-    "SLASH_SAGABOARD2",
+    "OurSagasDB",
+    "OurSagasData",
+    "OurSagasObjectives",
+    "OurSagasChains",
+    "OurSagasInvite",
+    "OurSagasLocale",
+    "OurSagasLanguage",
+    "OurSagas_L",
+    "SLASH_OURSAGAS1",
+    "SLASH_OURSAGAS2",
     "SlashCmdList",
     "GetLocale",
     "itemCount",
@@ -99,8 +99,8 @@ read_globals = {
     "UIDropDownMenu_JustifyText",
 }
 exclude_files = {
-    "addon/SagaBoard/SagaBoardData.lua",
-    "addon/SagaBoard/SagaBoardLanguage.lua",
+    "addon/OurSagas/OurSagasData.lua",
+    "addon/OurSagas/OurSagasLanguage.lua",
     "addon/invite_test.lua",
     "addon/objectives_test.lua",
     "addon/chains_test.lua",
