@@ -1057,6 +1057,22 @@ func loadAssignments(ctx context.Context, q querier, questIDs []string) (map[str
 	return out, rows.Err()
 }
 
+// DeleteQuest hard-deletes a saga. Progress, versions, and assignments cascade;
+// adventure_log.quest_id is set null. Admin routes only — no player DELETE.
+func (s *Store) DeleteQuest(ctx context.Context, id string) error {
+	if err := validUUID(id); err != nil {
+		return err
+	}
+	tag, err := s.pool.Exec(ctx, `DELETE FROM quests WHERE id=$1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, error) {
 	if err := validUUID(id); err != nil {
 		return contract.QuestDetail{}, err
