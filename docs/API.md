@@ -306,7 +306,7 @@ The completion body also echoes `character_class` and `character_level` when the
 
 ### `POST /v1/level`
 
-Milestone levels (10, 20, 30, …) are queued as a short embed: content `**Magni** nådde et nytt nivå.`, embed title `Nivå 20`. Other levels only update the character and the adventure log.
+Milestone levels (10, 20, 30, …) are queued as a short embed: content `**Magni** nådde et nytt nivå.`, embed title `Level 20`. Other levels only update the character and the adventure log.
 
 ```json
 {"character_id": "<uuid>", "battletag": "Magnus#2231", "level": 13}

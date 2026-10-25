@@ -447,7 +447,7 @@ func completionDetail(n Completion) string {
 		b.WriteString(escapeMD(race))
 		b.WriteString(" · ")
 		b.WriteString(escapeMD(className))
-		b.WriteString(" · nivå ")
+		b.WriteString(" · Level ")
 		b.WriteString(strconv.Itoa(n.Level))
 	}
 	return clipRunes(b.String(), 4096)
@@ -576,7 +576,7 @@ func levelPayload(n LevelNotice) ([]byte, error) {
 		desc = escapeMD(name) + " · " + escapeMD(className)
 	}
 	embed := dcEmbed{
-		Title:       "Nivå " + strconv.Itoa(n.Level),
+		Title:       "Level " + strconv.Itoa(n.Level),
 		Description: desc,
 		Color:       ColorLevel,
 	}

@@ -48,7 +48,7 @@ func TestPostCompletionEmbed(t *testing.T) {
 	if emb.Timestamp != "" || emb.Footer != nil || len(emb.Fields) != 0 {
 		t.Fatalf("want no stamp/footer/fields %+v", emb)
 	}
-	wantDesc := "✓ Møt opp\n✓ Hold ut\n\nDwarf · Paladin · nivå 12"
+	wantDesc := "✓ Møt opp\n✓ Hold ut\n\nDwarf · Paladin · Level 12"
 	if emb.Description != wantDesc {
 		t.Fatalf("description %q", emb.Description)
 	}
@@ -195,7 +195,7 @@ func TestPostLevelMilestone(t *testing.T) {
 		t.Fatalf("content %s", payload.Content)
 	}
 	emb := payload.Embeds[0]
-	if emb.Color != ColorLevel || emb.Title != "Nivå 20" || emb.Description != "Magni" || emb.Timestamp != "" || emb.Footer != nil {
+	if emb.Color != ColorLevel || emb.Title != "Level 20" || emb.Description != "Magni" || emb.Timestamp != "" || emb.Footer != nil {
 		t.Fatalf("embed %+v", emb)
 	}
 	_, err := (&Client{WebhookURL: "http://example.invalid"}).PostLevel(context.Background(), LevelNotice{Level: 13})

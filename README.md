@@ -282,7 +282,7 @@ Fullføring:
   "content": "**Magni** fullførte en saga!",
   "embeds": [{
     "title": "Første vakt",
-    "description": "✓ Møt opp\n✓ Hold ut\n\nDwarf · Paladin · nivå 12",
+    "description": "✓ Møt opp\n✓ Hold ut\n\nDwarf · Paladin · Level 12",
     "color": 3908957,
     "image": {"url": "attachment://screenshot.png"}
   }],
@@ -331,7 +331,7 @@ Milestolpe:
   "username": "GutSaga",
   "content": "**Magni** nådde et nytt nivå.",
   "embeds": [{
-    "title": "Nivå 20",
+    "title": "Level 20",
     "description": "Magni · Paladin",
     "color": 13666602,
     "timestamp": "2026-10-24T08:00:00Z",
