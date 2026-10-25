@@ -1120,20 +1120,22 @@ end
 
 local function readInstance()
     if not GetInstanceInfo then
-        return world.instanceName or ""
+        return world.instanceName or "", world.instanceType or "none"
     end
     local ok, name, instanceType = pcall(GetInstanceInfo)
     if not ok or secret(name) or secret(instanceType) then
-        return world.instanceName or ""
+        return world.instanceName or "", world.instanceType or "none"
     end
-    local typ = plainString(instanceType)
+    local typ = plainString(instanceType) or "none"
     local label = plainString(name)
-    if not typ or typ == "none" or not label then
+    if typ == "none" or not label then
         world.instanceName = ""
-        return ""
+        world.instanceType = "none"
+        return "", "none"
     end
     world.instanceName = label
-    return label
+    world.instanceType = typ
+    return label, typ
 end
 
 readGroup = function()
@@ -1246,31 +1248,10 @@ local function timeHint(when, done, clocks)
     if type(when) ~= "table" then
         return ""
     end
-    local bits = {}
-    if type(when.start) == "string" and when.start ~= "" and type(when["end"]) == "string" and when["end"] ~= "" then
-        table.insert(bits, when.start .. "–" .. when["end"])
+    if GutSagaObjectives and type(GutSagaObjectives.timeHint) == "function" then
+        return GutSagaObjectives.timeHint(when, clocks, done) or ""
     end
-    if type(when.starts_at) == "string" and when.starts_at ~= "" then
-        table.insert(bits, "fra " .. when.starts_at)
-    end
-    if type(when.ends_at) == "string" and when.ends_at ~= "" then
-        table.insert(bits, "til " .. when.ends_at)
-    end
-    if #bits == 0 then
-        return ""
-    end
-    local clock = when.clock or "local"
-    local name = "lokal tid"
-    if clock == "game" then
-        name = "spilltid"
-    elseif clock == "realm" then
-        name = "realm-tid (UTC)"
-    end
-    local text = " (" .. table.concat(bits, ", ") .. ", " .. name .. ")"
-    if not done and GutSagaObjectives and GutSagaObjectives.timeOpen and not GutSagaObjectives.timeOpen(when, clocks) then
-        return " — venter" .. text
-    end
-    return text
+    return ""
 end
 
 local function objectiveLines(entry)
@@ -1327,7 +1308,7 @@ local function objectiveLines(entry)
                 end
             end
             local groupedKill = obj.type == "kill" and type(obj.group) == "table" and obj.group.level
-            if obj.type == "collect" or obj.type == "item" or (obj.type == "kill" and not groupedKill) then
+            if obj.type == "collect" or obj.type == "item" or (obj.type == "kill" and not groupedKill) or obj.type == "instance_run" then
                 local need = tonumber(obj.count) or 1
                 local have = tonumber(step.count) or 0
                 if obj.type == "collect" or obj.type == "item" then
@@ -1341,13 +1322,17 @@ local function objectiveLines(entry)
                 end
                 label = string.format("%s (%d/%d)", label, have, need)
             end
+            if obj.type == "level" then
+                local need = tonumber(obj.level) or 0
+                local have = tonumber(step.count) or tonumber(player.level) or 0
+                if need > 0 then
+                    label = string.format("%s (%d/%d)", label, have, need)
+                end
+            end
             if obj.type == "all_of" or obj.type == "any_of" then
                 local need = tonumber(step.need) or (type(obj.objectives) == "table" and #obj.objectives or 0)
                 local have = tonumber(step.count) or 0
                 label = string.format("%s (%d/%d)", label, have, need)
-            end
-            if obj.type == "emote" and type(obj.emote) == "string" and obj.emote ~= "" then
-                label = label .. " (/" .. string.lower(obj.emote) .. ")"
             end
             if obj.type == "sequence" and step.failed then
                 label = label .. " (feilet)"
@@ -1717,6 +1702,9 @@ local function objectiveState(entries)
         items = items,
         kill_name = world.killName,
         kill_secret = world.killSecret,
+        level = player.level,
+        instance_name = world.instanceName or "",
+        instance_type = world.instanceType or "none",
         emote = emote,
         emote_target = emoteTarget,
         emote_text = emoteText,
@@ -1739,9 +1727,13 @@ local function checkAll()
         local entries = currentEntries()
         local state = objectiveState(entries)
         local group = readGroup()
+        readInstance()
         state.now = unixNow()
         state.group = group
         state.death_name = world.deathName
+        state.level = player.level
+        state.instance_name = world.instanceName or ""
+        state.instance_type = world.instanceType or "none"
         for _, entry in ipairs(entries) do
             if not isComplete(entry) and not entryLocked(entry, entries) and type(entry.objectives) == "table" and #entry.objectives > 0 then
                 local bucket = savedSteps(entry)
@@ -3403,6 +3395,8 @@ local function inferEmoteToken(msg)
     end
     s = string.lower(s)
     -- English + Norwegian fragments for the emotes we author in sagas.
+    -- Prefer longer phrases first (e.g. "hearty hello" before generic words).
+    -- Do not map bare "greet" → HELLO: /greet is GREET ("…warmly"), /hello is HELLO.
     local hints = {
         { "salute", "SALUTE" }, { "hils", "SALUTE" },
         { "bow", "BOW" }, { "bukk", "BOW" },
@@ -3415,6 +3409,8 @@ local function inferEmoteToken(msg)
         { "rude", "RUDE" }, { "frekk", "RUDE" }, { "ufin", "RUDE" },
         { "flex", "FLEX" },
         { "dance", "DANCE" }, { "dans", "DANCE" },
+        { "hearty hello", "HELLO" }, { "hello", "HELLO" }, { "hei", "HELLO" },
+        { "greetings", "GREET" }, { "warmly", "GREET" },
     }
     for i = 1, #hints do
         if string.find(s, hints[i][1], 1, true) then
@@ -3562,6 +3558,7 @@ events:SetScript("OnEvent", function(_, event, ...)
             cachePlayer()
         end
         emitCharacter()
+        onWorld()
         return
     end
     if event == "GOSSIP_SHOW" or event == "QUEST_DETAIL" or event == "QUEST_PROGRESS"

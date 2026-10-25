@@ -284,4 +284,35 @@ steps, done = M.evaluate(boss, {
 }, { vancleef = { seen_at = 5000 } }, false)
 assertTrue(not steps.vancleef.done and (tonumber(steps.vancleef.seen_at) or 0) == 0, "witness expires")
 
+-- level objective
+steps, done = M.evaluate({
+    { id = "ten", type = "level", text = "Bli 10", level = 10 },
+}, { level = 9 }, {}, false)
+assertTrue(not steps.ten.done and steps.ten.count == 9 and steps.ten.need == 10, "below target")
+steps, done = M.evaluate({
+    { id = "ten", type = "level", text = "Bli 10", level = 10 },
+}, { level = 10 }, {}, false)
+assertTrue(steps.ten.done and done, "at target")
+
+-- instance_run: enter with group, leave → +1
+local runs = { { id = "runs", type = "instance_run", text = "Runs", count = 2, group = { size = 2 } } }
+local duo = { members = { { name = "Magni", level = 12 }, { name = "Mira", level = 12 } } }
+steps, done = M.evaluate(runs, {
+    instance_type = "party", instance_name = "The Deadmines", group = duo,
+}, {}, false)
+assertTrue(steps.runs.inside and steps.runs.count == 0 and not steps.runs.done, "inside first dungeon")
+steps, done = M.evaluate(runs, {
+    instance_type = "none", instance_name = "", group = duo,
+}, { runs = { inside = true, count = 0 } }, false)
+assertTrue(not steps.runs.inside and steps.runs.count == 1 and not steps.runs.done, "left counts once")
+steps, done = M.evaluate(runs, {
+    instance_type = "none", instance_name = "", group = duo,
+}, { runs = { inside = true, count = 1 } }, false)
+assertTrue(steps.runs.count == 2 and steps.runs.done and done, "second leave finishes")
+steps, done = M.evaluate(runs, {
+    instance_type = "party", instance_name = "The Deadmines",
+    group = { members = { { name = "Magni", level = 12 } } },
+}, { runs = { inside = true, count = 0 } }, false)
+assertTrue(not steps.runs.inside and steps.runs.count == 0, "solo cancels stay")
+
 print("objectives ok")

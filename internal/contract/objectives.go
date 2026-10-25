@@ -17,31 +17,35 @@ import (
 // all_of and any_of still evaluate, but new sagas should not use them:
 // the saga itself is the AND, and a timed order is one sequence step.
 //
-//	go:       be at a place. memory visit (default) latches; hold is only while there
-//	talk:     target an NPC or object. Always visit
-//	item:     have N of an item. memory hold (default) clears when the bags do; visit latches
-//	kill:     defeat N creatures by name. Always visit. Optional group gate
-//	emote:    a built-in emote token, optionally at a unit and/or place. Always visit
-//	sequence: ordered beats sharing one within_sec window. Always visit once finished
-//	all_of:   legacy simultaneous AND
-//	any_of:   legacy alternatives
+//	go:            be at a place. memory visit (default) latches; hold is only while there
+//	talk:          target an NPC or object. Always visit
+//	item:          have N of an item. memory hold (default) clears when the bags do; visit latches
+//	kill:          defeat N creatures by name. Always visit. Optional group gate
+//	emote:         a built-in emote token, optionally at a unit and/or place. Always visit
+//	sequence:      ordered beats sharing one within_sec window. Always visit once finished
+//	level:         reach character level N. Always visit. Optional when.ends_at for a deadline
+//	instance_run:  leave N dungeon/raid instances. Optional kinds + soft group.size. Always visit
+//	all_of:        legacy simultaneous AND
+//	any_of:        legacy alternatives
 //
 // Optional when on an objective gates it to a clock window and/or an absolute range.
 // By default goals may be completed in any order (quest.objectives_ordered=false).
 // Order inside one trick belongs on a sequence step, not objectives_ordered.
 const (
-	ObjectiveGo       = "go"
-	ObjectiveTalk     = "talk"
-	ObjectiveItem     = "item"
-	ObjectiveLocation = "location"
-	ObjectiveInteract = "interact"
-	ObjectiveCollect  = "collect"
-	ObjectiveKill     = "kill"
-	ObjectiveEmote    = "emote"
-	ObjectiveSequence = "sequence"
-	ObjectiveAllOf    = "all_of"
-	ObjectiveAnyOf    = "any_of"
-	objectiveLegacy   = "legacy"
+	ObjectiveGo          = "go"
+	ObjectiveTalk        = "talk"
+	ObjectiveItem        = "item"
+	ObjectiveLocation    = "location"
+	ObjectiveInteract    = "interact"
+	ObjectiveCollect     = "collect"
+	ObjectiveKill        = "kill"
+	ObjectiveEmote       = "emote"
+	ObjectiveSequence    = "sequence"
+	ObjectiveLevel       = "level"
+	ObjectiveInstanceRun = "instance_run"
+	ObjectiveAllOf       = "all_of"
+	ObjectiveAnyOf       = "any_of"
+	objectiveLegacy      = "legacy"
 
 	MemoryVisit = "visit"
 	MemoryHold  = "hold"
@@ -141,6 +145,8 @@ type Objective struct {
 	ItemID    *int        `json:"item_id,omitempty"`
 	ItemName  string      `json:"item_name,omitempty"`
 	Count     int         `json:"count,omitempty"`
+	Level     int         `json:"level,omitempty"` // type=level target; not the kill group.level
+	Kinds     []string    `json:"kinds,omitempty"` // type=instance_run: party and/or raid
 	Emote     string      `json:"emote,omitempty"`
 	WithinSec int         `json:"within_sec,omitempty"`
 	When      *TimeWindow `json:"when,omitempty"`
@@ -347,6 +353,41 @@ func normalizeOne(o Objective, allowLegacy bool, seen map[string]bool, depth int
 		if err := finishStep(&o); err != nil {
 			return Objective{}, err
 		}
+	case ObjectiveLevel:
+		if o.Level < 1 || o.Level > 1000 {
+			return Objective{}, fmt.Errorf("objective %s: level must be 1..1000", o.ID)
+		}
+		if o.Count != 0 || o.Group != nil || len(o.Kinds) > 0 {
+			return Objective{}, fmt.Errorf("objective %s: level does not take count, kinds, or group", o.ID)
+		}
+		if err := finishStep(&o); err != nil {
+			return Objective{}, err
+		}
+	case ObjectiveInstanceRun:
+		if o.Count == 0 {
+			o.Count = 1
+		}
+		if o.Count < 1 || o.Count > 100 {
+			return Objective{}, fmt.Errorf("objective %s: count must be 1..100", o.ID)
+		}
+		if o.Level != 0 {
+			return Objective{}, fmt.Errorf("objective %s: instance_run uses count, not level (put size on group)", o.ID)
+		}
+		kinds, err := normalizeKinds(o.ID, o.Kinds)
+		if err != nil {
+			return Objective{}, err
+		}
+		o.Kinds = kinds
+		if o.Group != nil {
+			g, err := normalizeRunGroup(o.ID, o.Group)
+			if err != nil {
+				return Objective{}, err
+			}
+			o.Group = g
+		}
+		if err := finishStep(&o); err != nil {
+			return Objective{}, err
+		}
 	case ObjectiveAllOf, ObjectiveAnyOf:
 		if o.Memory != "" {
 			return Objective{}, fmt.Errorf("objective %s: memory is not used on %s", o.ID, o.Type)
@@ -372,16 +413,16 @@ func normalizeOne(o Objective, allowLegacy bool, seen map[string]bool, depth int
 		o.Children = nil
 		o.Beats = nil
 	default:
-		return Objective{}, fmt.Errorf("objective %s: type must be go, talk, item, kill, emote, or sequence", o.ID)
+		return Objective{}, fmt.Errorf("objective %s: type must be go, talk, item, kill, emote, sequence, level, or instance_run", o.ID)
 	}
 	return o, nil
 }
 
-// finishStep clears nested trees and applies memory. A group gate is only
-// valid on a kill; other steps reject it.
+// finishStep clears nested trees and applies memory. A group gate is valid on
+// kill (exact level) and instance_run (minimum size).
 func finishStep(o *Objective) error {
-	if o.Type != ObjectiveKill && o.Group != nil {
-		return fmt.Errorf("objective %s: group belongs on a kill step", o.ID)
+	if o.Group != nil && o.Type != ObjectiveKill && o.Type != ObjectiveInstanceRun {
+		return fmt.Errorf("objective %s: group belongs on a kill or instance_run step", o.ID)
 	}
 	if o.Type != ObjectiveSequence && (len(o.Beats) > 0 || o.WithinSec != 0) {
 		return fmt.Errorf("objective %s: within_sec and beats belong on a sequence", o.ID)
@@ -418,7 +459,7 @@ func applyMemory(o *Objective) error {
 		if mem != MemoryVisit && mem != MemoryHold {
 			return fmt.Errorf("objective %s: memory must be visit or hold", o.ID)
 		}
-	case ObjectiveTalk, ObjectiveInteract, ObjectiveEmote, ObjectiveKill, ObjectiveSequence:
+	case ObjectiveTalk, ObjectiveInteract, ObjectiveEmote, ObjectiveKill, ObjectiveSequence, ObjectiveLevel, ObjectiveInstanceRun:
 		if mem == "" {
 			mem = MemoryVisit
 		}
@@ -446,6 +487,50 @@ func normalizeStepGroup(id string, g *StepGroup) (*StepGroup, error) {
 		return nil, fmt.Errorf("objective %s: group.instance is longer than 80 characters", id)
 	}
 	return &StepGroup{Level: g.Level, Size: g.Size, Instance: inst}, nil
+}
+
+// normalizeRunGroup is the soft party gate on instance_run: at least size
+// members (default 2). level must be omitted. instance optionally filters the
+// dungeon/raid name.
+func normalizeRunGroup(id string, g *StepGroup) (*StepGroup, error) {
+	if g.Level != 0 {
+		return nil, fmt.Errorf("objective %s: instance_run group uses size, not level", id)
+	}
+	size := g.Size
+	if size == 0 {
+		size = 2
+	}
+	if size < 2 || size > 40 {
+		return nil, fmt.Errorf("objective %s: group.size must be 2..40", id)
+	}
+	inst := strings.TrimSpace(g.Instance)
+	if utf8.RuneCountInString(inst) > 80 {
+		return nil, fmt.Errorf("objective %s: group.instance is longer than 80 characters", id)
+	}
+	return &StepGroup{Size: size, Instance: inst}, nil
+}
+
+func normalizeKinds(id string, in []string) ([]string, error) {
+	if len(in) == 0 {
+		return []string{"party", "raid"}, nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, k := range in {
+		k = strings.ToLower(strings.TrimSpace(k))
+		if k != "party" && k != "raid" {
+			return nil, fmt.Errorf("objective %s: kinds must be party and/or raid", id)
+		}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, k)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("objective %s: kinds must be party and/or raid", id)
+	}
+	return out, nil
 }
 
 func displayID(id string, depth int) string {
