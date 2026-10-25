@@ -16,6 +16,8 @@ GutSagaDB = {
 ["level"] = 2,
 ["completed_at"] = 1792698415,
 ["realm"] = "Celebras",
+["race"] = "Dwarf",
+["class"] = "Hunter",
 ["group_members"] = "Magní/Celebras/18;Mira/Celebras/17",
 ["instance"] = "The Deadmines",
 },
@@ -38,6 +40,9 @@ GutSagaDB = {
 	}
 	if got[0].Character != "Magní" || got[0].Realm != "Celebras" || got[0].QuestVersion != 3 || got[0].Level != 2 {
 		t.Fatalf("%+v", got[0])
+	}
+	if got[0].Race != "Dwarf" || got[0].Class != "Hunter" {
+		t.Fatalf("race/class %+v", got[0])
 	}
 	if !strings.Contains(got[0].QuestID, "4cc34091") {
 		t.Fatalf("%s", got[0].QuestID)

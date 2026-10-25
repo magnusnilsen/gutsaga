@@ -1499,12 +1499,12 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 	}
 	defer tx.Rollback(ctx)
 
-	var name, realm, className, tag string
+	var name, realm, raceName, className, tag string
 	var storedLevel int
 	err = tx.QueryRow(ctx, `
-		SELECT c.name, c.realm, COALESCE(c.class, ''), c.level, COALESCE(p.battletag, '')
+		SELECT c.name, c.realm, COALESCE(c.race, ''), COALESCE(c.class, ''), c.level, COALESCE(p.battletag, '')
 		FROM characters c JOIN players p ON p.id = c.player_id
-		WHERE c.id=$1 AND c.player_id=$2`, in.CharacterID, playerID).Scan(&name, &realm, &className, &storedLevel, &tag)
+		WHERE c.id=$1 AND c.player_id=$2`, in.CharacterID, playerID).Scan(&name, &realm, &raceName, &className, &storedLevel, &tag)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.CompletionResponse{Allowed: false}, ErrForbidden
 	}
@@ -1518,6 +1518,29 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 		if _, err := tx.Exec(ctx, `UPDATE players SET battletag=$2 WHERE id=$1 AND (battletag IS NULL OR battletag='')`, playerID, in.BattleTag); err != nil {
 			return contract.CompletionResponse{}, mapPG(err)
 		}
+	}
+	// Stamp fresh race/class/level from the game onto the character row when present.
+	freshRace := strings.TrimSpace(in.Race)
+	freshClass := strings.TrimSpace(in.Class)
+	if freshRace != "" || freshClass != "" || in.Level > 0 {
+		race := raceName
+		if freshRace != "" {
+			race = freshRace
+		}
+		class := className
+		if freshClass != "" {
+			class = freshClass
+		}
+		level := storedLevel
+		if in.Level > 0 {
+			level = in.Level
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE characters SET race=$2, class=$3, level=$4, updated_at=now() WHERE id=$1`,
+			in.CharacterID, race, class, level); err != nil {
+			return contract.CompletionResponse{}, err
+		}
+		raceName, className, storedLevel = race, class, level
 	}
 	var snapTitle, snapReward, groupRaw string
 	err = tx.QueryRow(ctx, `
@@ -1660,7 +1683,7 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 	}
 	return contract.CompletionResponse{
 		Allowed: true, Completed: true, LogWritten: true, ProgressID: progressID,
-		CharacterName: name, CharacterClass: className, CharacterLevel: levelShown, Reward: snapReward,
+		CharacterName: name, CharacterRace: raceName, CharacterClass: className, CharacterLevel: levelShown, Reward: snapReward,
 		QuestTitle: snapTitle, QuestVersion: in.QuestVersion,
 		GroupCredited: credits,
 	}, nil

@@ -80,30 +80,16 @@ func (s *Server) announceLevel(ctx context.Context, before contract.Character, l
 	s.postDiscord(ctx, func(ctx context.Context, n Notifier) (discord.Message, error) {
 		return n.PostLevel(ctx, discord.LevelNotice{
 			Character: before.Name,
-			Class:     before.Class,
 			Level:     level,
 			When:      time.Now().UTC(),
 		})
 	})
 }
 
-func sagaNotice(ctx context.Context, store *Store, kind string, q contract.Quest, actor string, image []byte, contentType string) discord.SagaNotice {
+func sagaNotice(_ context.Context, _ *Store, kind string, q contract.Quest, actor string, image []byte, contentType string) discord.SagaNotice {
 	lines := make([]discord.ObjectiveLine, 0, len(q.Objectives))
 	for _, o := range q.Objectives {
 		lines = append(lines, discord.ObjectiveLine{Text: o.Text})
-	}
-	var people []discord.Person
-	if kind == discord.KindAnnounced && store != nil {
-		ids := make([]string, 0, len(q.AssignedTo))
-		for _, ref := range q.AssignedTo {
-			ids = append(ids, ref.ID)
-		}
-		got, err := store.sagaPeople(ctx, ids)
-		if err != nil {
-			slog.Error("discord characters", "err", err)
-		} else {
-			people = got
-		}
 	}
 	updatedBy := strings.TrimSpace(actor)
 	if updatedBy == "" {
@@ -115,10 +101,6 @@ func sagaNotice(ctx context.Context, store *Store, kind string, q contract.Quest
 		Description: q.Description,
 		Objectives:  lines,
 		Ordered:     q.ObjectivesOrdered,
-		MinLevel:    q.MinLevel,
-		Reward:      q.Reward,
-		Party:       q.PartyQuest,
-		People:      people,
 		CreatedBy:   q.CreatedBy,
 		UpdatedBy:   updatedBy,
 		Version:     q.Version,
@@ -213,39 +195,6 @@ func decodeCover(b64 string) ([]byte, string, error) {
 		return nil, "", errors.New("image_base64")
 	}
 	return screenshot.NormalizeUpload(raw)
-}
-
-func (s *Store) sagaPeople(ctx context.Context, ids []string) ([]discord.Person, error) {
-	ids = unique(ids)
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, name, COALESCE(class, ''), level
-		FROM characters WHERE id::text = ANY($1::text[])`, ids)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	found := map[string]discord.Person{}
-	for rows.Next() {
-		var id, name, className string
-		var level int
-		if err := rows.Scan(&id, &name, &className, &level); err != nil {
-			return nil, err
-		}
-		found[id] = discord.Person{Name: name, Class: className, Level: level}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	out := make([]discord.Person, 0, len(ids))
-	for _, id := range ids {
-		if p, ok := found[id]; ok && strings.TrimSpace(p.Name) != "" {
-			out = append(out, p)
-		}
-	}
-	return out, nil
 }
 
 // SetQuestCover stores a cover without bumping the saga version.

@@ -229,9 +229,9 @@ Låsen leser `requires` på sagaen slik den er nå, ikke på øyeblikksbildet i 
 
 API-et ligger i `api/`. Eksempelet under bruker Railway; samme binær kjører også med `docker compose` lokalt.
 
-1. Koble GitHub-repoet til et Railway-prosjekt. **Rotmappen til tjenesten skal være repo-roten**, ikke `api/`. `railway.json` peker på `api/Dockerfile`.
+1. Koble GitHub-repoet til et Railway-prosjekt. **Rotmappen til tjenesten skal være repo-roten**, ikke `api/`. `railway.json` peker på `api/Dockerfile`. Railway bruker **ikke** `docker-compose.yml` — de lokale `dev-admin-token`-verdiene der skal aldri settes i Railway.
 2. Legg på Postgres-pluginen. Den setter `DATABASE_URL`.
-3. Sett `DISCORD_WEBHOOK_URL` (innkommende webhook) og `ADMIN_TOKEN` (`openssl rand -hex 32`). Det er ingen flere Discord-variabler. Samme webhook brukes til nye sagaer, versjoner, avslutning, milestolpe-nivå og fullføring. For forsidebilde i chat, sett også `PUBLIC_BASE_URL` til den offentlige originen til API-et (uten trailing slash) og `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` er valgfri og er `1h` hvis den mangler.
+3. Sett `DISCORD_WEBHOOK_URL` (innkommende webhook) og `ADMIN_TOKEN` (`openssl rand -hex 32`). Det er ingen flere Discord-variabler. Samme webhook brukes til nye sagaer, versjoner, avslutning, milestolpe-nivå og fullføring. For forsidebilde i chat, sett også `PUBLIC_BASE_URL` til den offentlige originen til API-et (uten trailing slash) og `IMAGE_URL_SECRET` (`openssl rand -hex 32`). `IMAGE_URL_TTL` er valgfri og er `1h` hvis den mangler. API-et nekter å starte hvis `ADMIN_TOKEN` eller `IMAGE_URL_SECRET` er docker-compose-standardene, med mindre `GUTSAGA_ALLOW_DEV_SECRETS=1` (kun lokalt).
 4. Push til `main` bygger og ruller ut. Migreringene kjører ved oppstart. `/healthz` skal svare `{"ok":true}`.
 5. Spillere logger inn med Smia. API-et sjekker medlemskap i hubben wow og gir en egen økt. `mint` finnes fortsatt for en manuell nøkkel.
 
@@ -241,7 +241,7 @@ Fullføring er idempotent per karakter og oppdrag. Versjonen spilleren hadde las
 
 ### Discord
 
-Brukernavnet er alltid **GutSaga**. Teksten er norsk. Meldingene er embeds med samme fargevalg: gull for ny saga (`13017435`), grønn for fullføring (`3908957`), blå for ny versjon (`4091802`), grå for avslutning (`7037528`), gul for milestolpe-nivå (`13666602`). Tidsstempel og bunntekst `GutSaga` følger med.
+Brukernavnet er alltid **GutSaga**. Teksten er norsk. Meldingene er embeds med samme fargevalg: gull for ny saga (`13017435`), grønn for fullføring (`3908957`), blå for ny versjon (`4091802`), grå for avslutning (`7037528`), gul for milestolpe-nivå (`13666602`). Ingen egen bunntekst eller tidsstempel i embedet — Discord viser avsender og tid selv. Nye sagaer følger samme stabel som Smia `get_saga`: tittel, mål, Beskrivelse, brødtekst, bilde.
 
 Innlegget skjer i bakgrunnen. API-kallet venter ikke, og en feil fra Discord (også HTTP 429) ruller ikke tilbake sagaen eller fullføringen. 429 venter `retry_after` fra JSON-kroppen, ellers `Retry-After`. Nettverksfeil og 5xx prøves på nytt med økende pause. Etter noen forsøk logges feilen.
 

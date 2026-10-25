@@ -4,13 +4,10 @@ package tray
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/getlantern/systray"
 )
-
-const charSlots = 6
 
 type Item struct {
 	Title     string
@@ -20,20 +17,15 @@ type Item struct {
 	OnClick   func()
 }
 
-// Status is the disabled account block at the top of the tray menu.
+// Status is the disabled account line at the top of the tray menu.
 type Status struct {
-	User       string
-	BattleTag  string
-	Characters []string
+	User string
 }
 
-// Menu updates the disabled account lines and the login/logout action.
+// Menu updates the disabled account line and the login/logout action.
 type Menu struct {
 	mu          sync.Mutex
 	user        *systray.MenuItem
-	tag         *systray.MenuItem
-	emptyChars  *systray.MenuItem
-	chars       []*systray.MenuItem
 	auth        *systray.MenuItem
 	authClick   func()
 	updateItem  *systray.MenuItem
@@ -54,14 +46,7 @@ func Run(ctx context.Context, tooltip string, items []Item, onReady func(*Menu))
 		systray.SetTooltip(tooltip)
 
 		m := &Menu{
-			user:       addDisabled("Ikke innlogget", "Smia-konto"),
-			tag:        addDisabled("BattleTag: —", "BattleTag knyttet til spilleren"),
-			emptyChars: addDisabled("Karakterer: ingen", "Karakterer synket fra API-et"),
-		}
-		for i := 0; i < charSlots; i++ {
-			it := addDisabled("—", "Karakter")
-			it.Hide()
-			m.chars = append(m.chars, it)
+			user: addDisabled("Ikke innlogget", "Smia-konto"),
 		}
 		systray.AddSeparator()
 
@@ -200,9 +185,9 @@ func (m *Menu) SetAuthAction(loggedIn bool, onClick func()) {
 	m.auth.SetTooltip("Åpne nettleseren og logg inn")
 }
 
-// SetStatus refreshes the grayed-out account block.
+// SetStatus refreshes the grayed-out Smia account line.
 func (m *Menu) SetStatus(s Status) {
-	if m == nil {
+	if m == nil || m.user == nil {
 		return
 	}
 	m.mu.Lock()
@@ -211,35 +196,6 @@ func (m *Menu) SetStatus(s Status) {
 	user := stringsOr(s.User, "Ikke innlogget")
 	m.user.SetTitle(user)
 	m.user.SetTooltip(user)
-
-	tag := stringsOr(s.BattleTag, "BattleTag: —")
-	m.tag.SetTitle(tag)
-	m.tag.SetTooltip(tag)
-
-	if len(s.Characters) == 0 {
-		m.emptyChars.SetTitle("Karakterer: ingen")
-		m.emptyChars.Show()
-		for _, c := range m.chars {
-			c.Hide()
-		}
-		return
-	}
-
-	m.emptyChars.Hide()
-	shown := s.Characters
-	if len(shown) > charSlots {
-		extra := len(shown) - (charSlots - 1)
-		shown = append(append([]string{}, s.Characters[:charSlots-1]...), fmt.Sprintf("…og %d til", extra))
-	}
-	for i, slot := range m.chars {
-		if i < len(shown) {
-			slot.SetTitle(shown[i])
-			slot.SetTooltip(shown[i])
-			slot.Show()
-		} else {
-			slot.Hide()
-		}
-	}
 }
 
 func stringsOr(s, fallback string) string {

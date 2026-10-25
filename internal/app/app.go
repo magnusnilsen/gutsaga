@@ -6,7 +6,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -93,66 +92,33 @@ func (a *App) notifyAccount() {
 	}
 }
 
-// AccountStatus is what the tray shows as grayed-out identity lines.
-func (a *App) AccountStatus() (user, battleTag string, characters []string) {
+// AccountStatus is the Smia account line the tray shows.
+func (a *App) AccountStatus() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return accountStatus(a.Config.Token() != "", a.player, a.Config, a.sync)
 }
 
-func accountStatus(loggedIn bool, player contract.Player, cfg config.Config, sync contract.SyncResponse) (user, battleTag string, characters []string) {
+func accountStatus(loggedIn bool, player contract.Player, cfg config.Config, sync contract.SyncResponse) string {
 	if !loggedIn {
-		return "Ikke innlogget", "BattleTag: —", nil
+		return "Ikke innlogget"
 	}
-	user = "Konto: innlogget"
 	switch {
 	case strings.TrimSpace(sync.Email) != "":
-		user = "Konto: " + strings.TrimSpace(sync.Email)
+		return "Konto: " + strings.TrimSpace(sync.Email)
 	case strings.TrimSpace(player.Email) != "":
-		user = "Konto: " + strings.TrimSpace(player.Email)
+		return "Konto: " + strings.TrimSpace(player.Email)
 	case strings.TrimSpace(cfg.PlayerEmail) != "":
-		user = "Konto: " + strings.TrimSpace(cfg.PlayerEmail)
+		return "Konto: " + strings.TrimSpace(cfg.PlayerEmail)
 	case strings.TrimSpace(sync.DisplayName) != "":
-		user = "Konto: " + strings.TrimSpace(sync.DisplayName)
+		return "Konto: " + strings.TrimSpace(sync.DisplayName)
 	case strings.TrimSpace(player.DisplayName) != "":
-		user = "Konto: " + strings.TrimSpace(player.DisplayName)
+		return "Konto: " + strings.TrimSpace(player.DisplayName)
 	case strings.TrimSpace(cfg.PlayerName) != "":
-		user = "Konto: " + strings.TrimSpace(cfg.PlayerName)
+		return "Konto: " + strings.TrimSpace(cfg.PlayerName)
+	default:
+		return "Konto: innlogget"
 	}
-	tag := strings.TrimSpace(sync.BattleTag)
-	if tag == "" {
-		tag = strings.TrimSpace(player.BattleTag)
-	}
-	if tag == "" {
-		tag = strings.TrimSpace(cfg.BattleTag)
-	}
-	if tag == "" {
-		battleTag = "BattleTag: (ikke satt)"
-	} else {
-		battleTag = "BattleTag: " + tag
-	}
-	for _, ch := range sync.Characters {
-		characters = append(characters, formatCharacterLine(ch))
-	}
-	return user, battleTag, characters
-}
-
-func formatCharacterLine(ch contract.Character) string {
-	name := strings.TrimSpace(ch.Name)
-	if name == "" {
-		name = "?"
-	}
-	parts := []string{name}
-	if r := strings.TrimSpace(ch.Realm); r != "" {
-		parts = append(parts, r)
-	}
-	if ch.Level > 0 {
-		parts = append(parts, fmt.Sprintf("nivå %d", ch.Level))
-	}
-	if c := strings.TrimSpace(ch.Class); c != "" {
-		parts = append(parts, c)
-	}
-	return strings.Join(parts, " · ")
 }
 
 // applySyncIdentityLocked copies email / name / battletag from sync onto the
@@ -469,7 +435,7 @@ func (a *App) pollSavedVars() {
 		item := queue.Item{
 			Kind: "completion", Key: key,
 			QuestID: c.QuestID, QuestVersion: c.QuestVersion, Character: c.Character, Realm: c.Realm,
-			Level: c.Level, CompletedAt: c.At.UTC().Format(time.RFC3339),
+			Race: c.Race, Class: c.Class, Level: c.Level, CompletedAt: c.At.UTC().Format(time.RFC3339),
 			Instance: c.Instance, GroupMembers: c.GroupMembers,
 		}
 		ok := a.Queue.Enqueue(item)
@@ -633,8 +599,9 @@ func (a *App) send(ctx context.Context, item queue.Item) error {
 	a.Queue.Update(item)
 	_, err := a.Client.Complete(ctx, contract.CompletionRequest{
 		CharacterID: item.CharacterID, QuestID: item.QuestID, QuestVersion: item.QuestVersion,
-		BattleTag: tag, Level: item.Level, CompletedAt: item.CompletedAt,
-		Instance: item.Instance, GroupMembers: item.GroupMembers,
+		BattleTag: tag, Level: item.Level, Race: item.Race, Class: item.Class,
+		CompletedAt: item.CompletedAt,
+		Instance:    item.Instance, GroupMembers: item.GroupMembers,
 	}, nil)
 	if err != nil {
 		return err

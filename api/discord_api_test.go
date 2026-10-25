@@ -70,14 +70,11 @@ func TestAdminDiscordNotices(t *testing.T) {
 	}
 	note := fake.sagas[0]
 	fake.mu.Unlock()
-	if note.Kind != discord.KindAnnounced || note.Title != "Første vakt" || !note.Party || !note.Ordered {
+	if note.Kind != discord.KindAnnounced || note.Title != "Første vakt" || !note.Ordered {
 		t.Fatalf("note %+v", note)
 	}
-	if note.MinLevel == nil || *note.MinLevel != 10 || note.Reward != "Ære" || note.CreatedBy != "Magnus#2231" {
+	if note.CreatedBy != "Magnus#2231" || note.Description == "" {
 		t.Fatalf("meta %+v", note)
-	}
-	if len(note.People) != 1 || note.People[0].Name != "Magni" || note.People[0].Class != "Paladin" || note.People[0].Level != 12 {
-		t.Fatalf("people %+v", note.People)
 	}
 	if len(note.Objectives) != 2 || note.Objectives[0].Text != "Møt opp" || len(note.Image) == 0 {
 		t.Fatalf("objectives/image %+v img %d", note.Objectives, len(note.Image))
@@ -177,7 +174,7 @@ func TestAdminDiscordNotices(t *testing.T) {
 		t.Fatalf("level 20 %+v %v", lvl, err)
 	}
 	fake.mu.Lock()
-	if len(fake.levels) != 1 || fake.levels[0].Level != 20 || fake.levels[0].Character != "Magni" || fake.levels[0].Class != "Paladin" {
+	if len(fake.levels) != 1 || fake.levels[0].Level != 20 || fake.levels[0].Character != "Magni" || fake.levels[0].Class != "" {
 		t.Fatalf("levels %+v", fake.levels)
 	}
 	fake.mu.Unlock()

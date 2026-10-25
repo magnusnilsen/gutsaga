@@ -123,12 +123,18 @@ func (c *Client) Complete(ctx context.Context, req contract.CompletionRequest, i
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 	fields := map[string]string{
-		"character_id":  req.CharacterID,
+		"character_id": req.CharacterID,
 		"saga_id":      req.QuestID,
 		"saga_version": strconv.Itoa(req.QuestVersion),
-		"battletag":     req.BattleTag,
-		"level":         strconv.Itoa(req.Level),
-		"completed_at":  req.CompletedAt,
+		"battletag":    req.BattleTag,
+		"level":        strconv.Itoa(req.Level),
+		"completed_at": req.CompletedAt,
+	}
+	if req.Race != "" {
+		fields["race"] = req.Race
+	}
+	if req.Class != "" {
+		fields["class"] = req.Class
 	}
 	if req.Instance != "" {
 		fields["instance"] = req.Instance

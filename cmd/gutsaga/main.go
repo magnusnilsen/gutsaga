@@ -239,8 +239,7 @@ func run(opts options) int {
 		return 0
 	}
 	refreshTray := func(m *tray.Menu) {
-		user, tag, chars := application.AccountStatus()
-		m.SetStatus(tray.Status{User: user, BattleTag: tag, Characters: chars})
+		m.SetStatus(tray.Status{User: application.AccountStatus()})
 		if application.LoggedIn() {
 			m.SetAuthAction(true, func() {
 				go application.Logout()

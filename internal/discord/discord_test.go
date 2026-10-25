@@ -19,11 +19,10 @@ func TestPostCompletionEmbed(t *testing.T) {
 	payload, file := post(t, func(c *Client) (Message, error) {
 		return c.PostCompletion(context.Background(), Completion{
 			Character:   "Magni",
+			Race:        "Dwarf",
 			Class:       "Paladin",
 			Level:       12,
 			Title:       "Første vakt",
-			Version:     3,
-			Reward:      "Ære",
 			When:        when,
 			Image:       []byte("PNGDATA"),
 			ContentType: "image/png",
@@ -42,15 +41,11 @@ func TestPostCompletionEmbed(t *testing.T) {
 	if emb.Color != ColorDone || emb.Title != "Første vakt" {
 		t.Fatalf("embed %+v", emb)
 	}
-	if emb.Timestamp != "2026-10-24T18:30:00Z" || emb.Footer.Text != "GutSaga" {
-		t.Fatalf("stamp %+v footer %+v", emb.Timestamp, emb.Footer)
+	if emb.Timestamp != "" || emb.Footer != nil || len(emb.Fields) != 0 {
+		t.Fatalf("want no stamp/footer/fields %+v", emb)
 	}
-	if !strings.Contains(emb.Description, "Magni") || !strings.Contains(emb.Description, "Paladin") || !strings.Contains(emb.Description, "12") {
+	if emb.Description != "Dwarf · Paladin · nivå 12" {
 		t.Fatalf("description %s", emb.Description)
-	}
-	got := fieldMap(emb.Fields)
-	if got["Karakter"] != "Magni" || got["Klasse"] != "Paladin" || got["Nivå"] != "12" || got["Versjon"] != "3" || got["Belønning"] != "Ære" {
-		t.Fatalf("fields %+v", got)
 	}
 	if emb.Image == nil || emb.Image.URL != "attachment://screenshot.png" {
 		t.Fatalf("image %+v", emb.Image)
@@ -60,23 +55,32 @@ func TestPostCompletionEmbed(t *testing.T) {
 	}
 }
 
+func TestPostCompletionOmitsStaleCharacterDetail(t *testing.T) {
+	payload, _ := post(t, func(c *Client) (Message, error) {
+		return c.PostCompletion(context.Background(), Completion{
+			Character: "Magni",
+			Class:     "Paladin",
+			Title:     "Første vakt",
+		})
+	})
+	emb := payload.Embeds[0]
+	if emb.Description != "" || len(emb.Fields) != 0 {
+		t.Fatalf("stale detail should be omitted: %+v", emb)
+	}
+}
+
 func TestPostSagaAnnounced(t *testing.T) {
 	when := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
-	min := 10
 	payload, file := post(t, func(c *Client) (Message, error) {
 		return c.PostSaga(context.Background(), SagaNotice{
 			Kind:        KindAnnounced,
 			Title:       "Første vakt",
-			Description: "Stå vakt ved porten.\n\nDette avsnittet skal ikke med.",
+			Description: "Stå vakt ved porten.\n\nLengre detalj.",
 			Objectives: []ObjectiveLine{
 				{Text: "Møt opp"},
 				{Text: "Hold ut"},
 			},
 			Ordered:     true,
-			MinLevel:    &min,
-			Reward:      "Ære",
-			Party:       true,
-			People:      []Person{{Name: "Magni", Class: "Paladin", Level: 12}},
 			CreatedBy:   "Magnus#2231",
 			Version:     1,
 			When:        when,
@@ -91,24 +95,15 @@ func TestPostSagaAnnounced(t *testing.T) {
 	if emb.Color != ColorSaga || emb.Title != "Første vakt" {
 		t.Fatalf("embed %+v", emb)
 	}
-	if strings.Contains(emb.Description, "avsnittet") || !strings.Contains(emb.Description, "Stå vakt ved porten.") {
-		t.Fatalf("description %s", emb.Description)
+	if emb.Timestamp != "" || emb.Footer != nil || len(emb.Fields) != 0 {
+		t.Fatalf("want no stamp/footer/fields %+v", emb)
 	}
-	got := fieldMap(emb.Fields)
-	if got["Mål"] != "1. Møt opp\n2. Hold ut" {
-		t.Fatalf("mål %q", got["Mål"])
-	}
-	if got["Minste nivå"] != "10" || got["Belønning"] != "Ære" || got["Laget av"] != "Magnus#2231" {
-		t.Fatalf("fields %+v", got)
-	}
-	if !strings.Contains(got["Hvem"], "Parti") || !strings.Contains(got["Hvem"], "Magni (Paladin, nivå 12)") {
-		t.Fatalf("hvem %q", got["Hvem"])
+	want := "1. Møt opp\n2. Hold ut\n\n**Beskrivelse**\nStå vakt ved porten.\n\nLengre detalj."
+	if emb.Description != want {
+		t.Fatalf("description %q", emb.Description)
 	}
 	if emb.Image == nil || emb.Image.URL != "attachment://cover.png" || file.name != "cover.png" || file.body != "COVER" {
 		t.Fatalf("image %+v file %s %q", emb.Image, file.name, file.body)
-	}
-	if emb.Timestamp != "2026-10-24T12:00:00Z" {
-		t.Fatalf("stamp %s", emb.Timestamp)
 	}
 }
 
@@ -160,13 +155,13 @@ func TestPostLevelMilestone(t *testing.T) {
 	}
 	when := time.Date(2026, 10, 24, 8, 0, 0, 0, time.UTC)
 	payload, _ := post(t, func(c *Client) (Message, error) {
-		return c.PostLevel(context.Background(), LevelNotice{Character: "Magni", Class: "Paladin", Level: 20, When: when})
+		return c.PostLevel(context.Background(), LevelNotice{Character: "Magni", Level: 20, When: when})
 	})
 	if payload.Content != "**Magni** nådde et nytt nivå." {
 		t.Fatalf("content %s", payload.Content)
 	}
 	emb := payload.Embeds[0]
-	if emb.Color != ColorLevel || emb.Title != "Nivå 20" || emb.Description != "Magni · Paladin" || emb.Timestamp != "2026-10-24T08:00:00Z" {
+	if emb.Color != ColorLevel || emb.Title != "Nivå 20" || emb.Description != "Magni" || emb.Timestamp != "" || emb.Footer != nil {
 		t.Fatalf("embed %+v", emb)
 	}
 	_, err := (&Client{WebhookURL: "http://example.invalid"}).PostLevel(context.Background(), LevelNotice{Level: 13})
