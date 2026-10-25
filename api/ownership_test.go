@@ -38,7 +38,7 @@ func TestAdminPatchRequiresMatchingUpdatedBy(t *testing.T) {
 
 	var ok contract.Quest
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"title": "Oppdatert", "updated_by": "magnus#2231",
+		"title": "Oppdatert", "updated_by": "magnus#2231", "changes": []string{"Nytt navn"},
 	}, &ok)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("author patch %d %v", statusOf(resp), err)
@@ -49,7 +49,7 @@ func TestAdminPatchRequiresMatchingUpdatedBy(t *testing.T) {
 
 	// Omitting updated_by keeps full admin power (ops / scripts).
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"title": "Admin override",
+		"title": "Admin override", "changes": []string{"Admin"},
 	}, &ok)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin without updated_by %d %v", statusOf(resp), err)
@@ -88,7 +88,7 @@ func TestAdminPatchRequiresMatchingEditorEmail(t *testing.T) {
 
 	var ok contract.Quest
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"title": "Oppdatert", "editor_email": "Magnus@Sparkel.io",
+		"title": "Oppdatert", "editor_email": "Magnus@Sparkel.io", "changes": []string{"Nytt navn"},
 	}, &ok)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("author email patch %d %v", statusOf(resp), err)

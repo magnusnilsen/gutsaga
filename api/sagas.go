@@ -93,7 +93,7 @@ func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
 				actor = v
 			}
 		}
-		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor)
+		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor, patch.Changes)
 	}
 	writeJSON(w, http.StatusOK, withSagaImageURL(out))
 }

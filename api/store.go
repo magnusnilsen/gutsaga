@@ -467,7 +467,6 @@ type QuestInput struct {
 	ObjectivesOrdered    *bool
 	When                 *contract.TimeWindow
 	Group                *contract.GroupRule
-	Reward               string
 	MinLevel             *int
 	PartyQuest           bool
 	Active               *bool
@@ -486,7 +485,7 @@ type QuestPatch struct {
 	WhenSet              bool
 	Group                *contract.GroupRule
 	GroupSet             bool
-	Reward               *string
+	Changes              []string
 	MinLevel             *int
 	MinLevelSet          bool
 	PartyQuest           *bool
@@ -559,7 +558,7 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 		return contract.Quest{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
 	}
 	in.Group = group
-	if err := validateQuestText(in.Title, in.Description, in.Reward, in.CreatedBy); err != nil {
+	if err := validateQuestText(in.Title, in.Description, in.CreatedBy); err != nil {
 		return contract.Quest{}, err
 	}
 	if in.MinLevel != nil && (*in.MinLevel < 1 || *in.MinLevel > 1000) {
@@ -626,10 +625,10 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	}
 	var id string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO quests (title, description, objectives, reward, min_level, party, active, version, created_by, created_by_player_id, objectives_ordered, time_window, group_rule, requires, chain_id, chain_name, chain_order)
-		VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,1,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16)
+		INSERT INTO quests (title, description, objectives, min_level, party, active, version, created_by, created_by_player_id, objectives_ordered, time_window, group_rule, requires, chain_id, chain_name, chain_order)
+		VALUES ($1,$2,$3::jsonb,$4,$5,$6,1,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15)
 		RETURNING id::text`,
-		strings.TrimSpace(in.Title), in.Description, objJSON, in.Reward, nullableInt(in.MinLevel), in.PartyQuest, active, creatorTag, creatorID, ordered, whenJSON, groupJSON,
+		strings.TrimSpace(in.Title), in.Description, objJSON, nullableInt(in.MinLevel), in.PartyQuest, active, creatorTag, creatorID, ordered, whenJSON, groupJSON,
 		reqJSON, chainID, chainName, chainOrder,
 	).Scan(&id)
 	if err != nil {
@@ -640,7 +639,7 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	}
 	q := contract.Quest{
 		ID: id, Title: strings.TrimSpace(in.Title), Description: in.Description, Objectives: in.Objectives,
-		ObjectivesOrdered: ordered, When: in.When, Group: in.Group, Reward: in.Reward, MinLevel: in.MinLevel, PartyQuest: in.PartyQuest, Active: active, Version: 1,
+		ObjectivesOrdered: ordered, When: in.When, Group: in.Group, MinLevel: in.MinLevel, PartyQuest: in.PartyQuest, Active: active, Version: 1,
 		CreatedBy: creatorTag, AssignedTo: refs(in.AssignedCharacterIDs), Requires: in.Requires, Chain: in.Chain,
 	}
 	if q.Requires == nil {
@@ -649,7 +648,7 @@ func (s *Store) CreateQuest(ctx context.Context, in QuestInput) (contract.Quest,
 	if err := replaceAssignments(ctx, tx, id, in.AssignedCharacterIDs); err != nil {
 		return contract.Quest{}, err
 	}
-	if err := insertSnapshot(ctx, tx, q); err != nil {
+	if err := insertSnapshot(ctx, tx, q, nil); err != nil {
 		return contract.Quest{}, err
 	}
 	one := []contract.Quest{q}
@@ -673,6 +672,10 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 	}
 	defer tx.Rollback(ctx)
 	q, err := loadQuest(ctx, tx, id)
+	if err != nil {
+		return contract.Quest{}, err
+	}
+	changes, err := normalizeChanges(p.Changes)
 	if err != nil {
 		return contract.Quest{}, err
 	}
@@ -705,9 +708,6 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 			return contract.Quest{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
 		}
 		q.Group = group
-	}
-	if p.Reward != nil {
-		q.Reward = *p.Reward
 	}
 	var creatorID any
 	if p.CreatedBy != nil {
@@ -763,7 +763,7 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 	if err := ensureQuests(ctx, tx, q.Requires); err != nil {
 		return contract.Quest{}, err
 	}
-	if err := validateQuestText(q.Title, q.Description, q.Reward, q.CreatedBy); err != nil {
+	if err := validateQuestText(q.Title, q.Description, q.CreatedBy); err != nil {
 		return contract.Quest{}, err
 	}
 	if q.MinLevel != nil && (*q.MinLevel < 1 || *q.MinLevel > 1000) {
@@ -791,9 +791,9 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 	}
 	_, err = tx.Exec(ctx, `
 		UPDATE quests
-		SET title=$2, description=$3, objectives=$4::jsonb, reward=$5, min_level=$6, party=$7, active=$8, version=$9, created_by=$10, created_by_player_id=$11, objectives_ordered=$12, time_window=$13::jsonb, group_rule=$14::jsonb, requires=$15::jsonb, chain_id=$16, chain_name=$17, chain_order=$18, updated_at=now()
+		SET title=$2, description=$3, objectives=$4::jsonb, min_level=$5, party=$6, active=$7, version=$8, created_by=$9, created_by_player_id=$10, objectives_ordered=$11, time_window=$12::jsonb, group_rule=$13::jsonb, requires=$14::jsonb, chain_id=$15, chain_name=$16, chain_order=$17, updated_at=now()
 		WHERE id=$1`,
-		id, q.Title, q.Description, objJSON, q.Reward, nullableInt(q.MinLevel), q.PartyQuest, q.Active, q.Version, q.CreatedBy, creatorID, q.ObjectivesOrdered, whenJSON, groupJSON,
+		id, q.Title, q.Description, objJSON, nullableInt(q.MinLevel), q.PartyQuest, q.Active, q.Version, q.CreatedBy, creatorID, q.ObjectivesOrdered, whenJSON, groupJSON,
 		reqJSON, chainID, chainName, chainOrder)
 	if err != nil {
 		return contract.Quest{}, mapChainWrite(err)
@@ -806,7 +806,7 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 			return contract.Quest{}, err
 		}
 	}
-	if err := insertSnapshot(ctx, tx, q); err != nil {
+	if err := insertSnapshot(ctx, tx, q, changes); err != nil {
 		return contract.Quest{}, err
 	}
 	one := []contract.Quest{q}
@@ -842,20 +842,38 @@ func nullableJSON(v any) (any, error) {
 	return string(raw), nil
 }
 
-func validateQuestText(title, description, reward, createdBy string) error {
+func validateQuestText(title, description, createdBy string) error {
 	if err := validateTitle(title); err != nil {
 		return err
 	}
 	if err := clip(description, 8000); err != nil {
 		return err
 	}
-	if err := clip(reward, 2000); err != nil {
-		return err
-	}
 	if err := clip(createdBy, 200); err != nil {
 		return err
 	}
 	return nil
+}
+
+func normalizeChanges(in []string) ([]string, error) {
+	var out []string
+	for _, line := range in {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if err := clip(line, 200); err != nil {
+			return nil, fmt.Errorf("%w: changes", ErrInvalid)
+		}
+		out = append(out, line)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%w: changes required", ErrInvalid)
+	}
+	if len(out) > 20 {
+		return nil, fmt.Errorf("%w: too many changes", ErrInvalid)
+	}
+	return out, nil
 }
 
 func refs(ids []string) []contract.IDRef {
@@ -911,7 +929,7 @@ func replaceAssignments(ctx context.Context, q querier, questID string, ids []st
 	return nil
 }
 
-func insertSnapshot(ctx context.Context, q querier, quest contract.Quest) error {
+func insertSnapshot(ctx context.Context, q querier, quest contract.Quest, changes []string) error {
 	ids := make([]string, 0, len(quest.AssignedTo))
 	for _, a := range quest.AssignedTo {
 		ids = append(ids, a.ID)
@@ -936,12 +954,19 @@ func insertSnapshot(ctx context.Context, q querier, quest contract.Quest) error 
 	if err != nil {
 		return err
 	}
+	changeJSON, err := json.Marshal(changes)
+	if err != nil {
+		return err
+	}
+	if changes == nil {
+		changeJSON = []byte("[]")
+	}
 	_, err = q.Exec(ctx, `
-		INSERT INTO quest_versions (quest_id, version, title, description, objectives, reward, min_level, party, active, assigned_to, created_by, objectives_ordered, time_window, group_rule, requires, chain_id, chain_name, chain_order)
-		VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10::jsonb,$11,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17,$18)`,
-		quest.ID, quest.Version, quest.Title, quest.Description, objJSON, quest.Reward,
+		INSERT INTO quest_versions (quest_id, version, title, description, objectives, min_level, party, active, assigned_to, created_by, objectives_ordered, time_window, group_rule, requires, chain_id, chain_name, chain_order, changes)
+		VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9::jsonb,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18::jsonb)`,
+		quest.ID, quest.Version, quest.Title, quest.Description, objJSON,
 		nullableInt(quest.MinLevel), quest.PartyQuest, quest.Active, string(raw), quest.CreatedBy, quest.ObjectivesOrdered, whenJSON, groupJSON,
-		reqJSON, chainID, chainName, chainOrder)
+		reqJSON, chainID, chainName, chainOrder, string(changeJSON))
 	return err
 }
 
@@ -950,7 +975,7 @@ func scanQuest(scan func(dest ...any) error) (contract.Quest, error) {
 	var ml sql.NullInt32
 	var obj, whenRaw, groupRaw, reqRaw, chainID, chainName string
 	var chainOrder sql.NullInt32
-	err := scan(&q.ID, &q.Title, &q.Description, &obj, &q.Reward, &ml, &q.PartyQuest, &q.Active, &q.Version, &q.CreatedBy, &q.ObjectivesOrdered, &q.HasImage, &whenRaw, &groupRaw, &reqRaw, &chainID, &chainName, &chainOrder)
+	err := scan(&q.ID, &q.Title, &q.Description, &obj, &ml, &q.PartyQuest, &q.Active, &q.Version, &q.CreatedBy, &q.ObjectivesOrdered, &q.HasImage, &whenRaw, &groupRaw, &reqRaw, &chainID, &chainName, &chainOrder)
 	if err != nil {
 		return q, err
 	}
@@ -979,7 +1004,7 @@ func scanQuest(scan func(dest ...any) error) (contract.Quest, error) {
 }
 
 const questSelect = `
-		SELECT q.id::text, q.title, q.description, q.objectives::text, q.reward, q.min_level, q.party, q.active, q.version,
+		SELECT q.id::text, q.title, q.description, q.objectives::text, q.min_level, q.party, q.active, q.version,
 			COALESCE(NULLIF(p.battletag, ''), q.created_by),
 			q.objectives_ordered,
 			(q.image_bytes IS NOT NULL AND octet_length(q.image_bytes) > 0),
@@ -1041,7 +1066,7 @@ func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, 
 		return contract.QuestDetail{}, err
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT version, title, description, objectives::text, reward, min_level, party, active, assigned_to::text, created_by, created_at,
+		SELECT version, title, description, objectives::text, min_level, party, active, assigned_to::text, created_by, created_at, COALESCE(changes::text, '[]'),
 			COALESCE(time_window::text, ''), COALESCE(group_rule::text, ''),
 			requires::text, chain_id, chain_name, chain_order
 		FROM quest_versions WHERE quest_id=$1 ORDER BY version`, id)
@@ -1053,15 +1078,23 @@ func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, 
 	for rows.Next() {
 		var v contract.QuestVersion
 		var ml sql.NullInt32
-		var assigned, obj, whenRaw, groupRaw, reqRaw, chainID, chainName string
+		var assigned, obj, whenRaw, groupRaw, reqRaw, chainID, chainName, changesRaw string
 		var chainOrder sql.NullInt32
 		var created time.Time
-		if err := rows.Scan(&v.Version, &v.Title, &v.Description, &obj, &v.Reward, &ml, &v.PartyQuest, &v.Active, &assigned, &v.CreatedBy, &created, &whenRaw, &groupRaw, &reqRaw, &chainID, &chainName, &chainOrder); err != nil {
+		if err := rows.Scan(&v.Version, &v.Title, &v.Description, &obj, &ml, &v.PartyQuest, &v.Active, &assigned, &v.CreatedBy, &created, &changesRaw, &whenRaw, &groupRaw, &reqRaw, &chainID, &chainName, &chainOrder); err != nil {
 			return contract.QuestDetail{}, err
 		}
 		v.Objectives, err = contract.DecodeObjectives(obj)
 		if err != nil {
 			return contract.QuestDetail{}, err
+		}
+		if changesRaw != "" && changesRaw != "null" {
+			if err := json.Unmarshal([]byte(changesRaw), &v.Changes); err != nil {
+				return contract.QuestDetail{}, err
+			}
+		}
+		if v.Changes == nil {
+			v.Changes = []string{}
 		}
 		v.When, err = contract.DecodeTimeWindow(whenRaw)
 		if err != nil {
@@ -1542,10 +1575,10 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 		}
 		raceName, className, storedLevel = race, class, level
 	}
-	var snapTitle, snapReward, groupRaw string
+	var snapTitle, groupRaw string
 	err = tx.QueryRow(ctx, `
-		SELECT title, COALESCE(reward, ''), COALESCE(group_rule::text, '')
-		FROM quest_versions WHERE quest_id=$1 AND version=$2`, in.QuestID, in.QuestVersion).Scan(&snapTitle, &snapReward, &groupRaw)
+		SELECT title, COALESCE(group_rule::text, '')
+		FROM quest_versions WHERE quest_id=$1 AND version=$2`, in.QuestID, in.QuestVersion).Scan(&snapTitle, &groupRaw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.CompletionResponse{}, fmt.Errorf("%w: unknown quest version", ErrInvalid)
 	}
@@ -1683,7 +1716,7 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 	}
 	return contract.CompletionResponse{
 		Allowed: true, Completed: true, LogWritten: true, ProgressID: progressID,
-		CharacterName: name, CharacterRace: raceName, CharacterClass: className, CharacterLevel: levelShown, Reward: snapReward,
+		CharacterName: name, CharacterRace: raceName, CharacterClass: className, CharacterLevel: levelShown,
 		QuestTitle: snapTitle, QuestVersion: in.QuestVersion,
 		GroupCredited: credits,
 	}, nil

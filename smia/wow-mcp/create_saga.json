@@ -36,12 +36,6 @@
           "description": "true = every eligible character can take it; false = only assigned_character_ids."
         },
         {
-          "name": "reward",
-          "type": "string",
-          "required": false,
-          "description": "Reward flavour line (shown in-game; not a real item grant)."
-        },
-        {
           "name": "min_level",
           "type": "number",
           "required": false,
@@ -74,13 +68,6 @@
       ]
     },
     {
-      "id": "reward_s",
-      "type": "util.convert",
-      "config": {
-        "toType": "string"
-      }
-    },
-    {
       "id": "ids",
       "type": "util.convert",
       "config": {
@@ -95,7 +82,6 @@
           "title",
           "description",
           "objectives",
-          "reward",
           "min_level",
           "party",
           "ids",
@@ -103,7 +89,7 @@
           "active",
           "created_by"
         ],
-        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party\": {{party}}, \"assigned_character_ids\": {{ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"created_by\": {{created_by}}}"
+        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"min_level\": {{min_level}}, \"party\": {{party}}, \"assigned_character_ids\": {{ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"created_by\": {{created_by}}"
       }
     },
     {
@@ -153,20 +139,6 @@
       "target": "body",
       "sourceHandle": "objectives",
       "targetHandle": "objectives"
-    },
-    {
-      "id": "e4",
-      "source": "input",
-      "target": "reward_s",
-      "sourceHandle": "reward",
-      "targetHandle": "value"
-    },
-    {
-      "id": "e5",
-      "source": "reward_s",
-      "target": "body",
-      "sourceHandle": "out",
-      "targetHandle": "reward"
     },
     {
       "id": "e6",

@@ -92,7 +92,6 @@ components:
         when: {$ref: "#/components/schemas/TimeWindow"}
         group: {$ref: "#/components/schemas/GroupRule"}
         min_level: {type: integer, nullable: true}
-        reward: {type: string}
         party: {type: boolean}
         assigned_to:
           type: array

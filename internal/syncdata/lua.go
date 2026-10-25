@@ -45,7 +45,6 @@ func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, notice
 		}
 		writeLuaWhen(&b, e.When, "      ")
 		writeLuaGroup(&b, e.Group, "      ")
-		fmt.Fprintf(&b, "      reward = %s,\n", luaString(e.Reward))
 		if e.MinLevel == nil {
 			b.WriteString("      min_level = nil,\n")
 		} else {

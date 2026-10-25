@@ -99,6 +99,7 @@ type SagaNotice struct {
 	// UpdatedBy is who changed the saga (display name). Used for update/retire lines.
 	UpdatedBy   string
 	CreatedBy   string
+	Changes     []string
 	Version     int
 	When        time.Time
 	Image       []byte
@@ -467,7 +468,7 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 		}
 		embed = dcEmbed{
 			Title:       clipRunes(title, 256),
-			Description: "Ny versjon " + strconv.Itoa(version) + ".",
+			Description: updateDescription(version, n.Changes),
 			Color:       ColorUpdate,
 		}
 	case KindRetired:
@@ -491,6 +492,20 @@ func sagaPayload(n SagaNotice) ([]byte, *attach, error) {
 	}
 	raw, err := marshalPayload(content, embed)
 	return raw, file, err
+}
+
+func updateDescription(version int, changes []string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Ny versjon %d.", version)
+	for _, line := range changes {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		b.WriteString("\n• ")
+		b.WriteString(escapeMD(clipRunes(line, 200)))
+	}
+	return clipRunes(b.String(), 4096)
 }
 
 // announcedDescription matches the Smia get_saga stack: goals, Beskrivelse, body.

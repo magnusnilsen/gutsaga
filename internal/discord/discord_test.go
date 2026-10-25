@@ -113,13 +113,14 @@ func TestPostSagaUpdateAndRetireAreMinimal(t *testing.T) {
 		return c.PostSaga(context.Background(), SagaNotice{
 			Kind: KindUpdated, Title: "Første vakt", Version: 2, When: when,
 			UpdatedBy: "Magnus",
-			Image: []byte("SHOULD-NOT-ATTACH"), ContentType: "image/png",
+			Changes:   []string{"Nytt mål", "  "},
+			Image:     []byte("SHOULD-NOT-ATTACH"), ContentType: "image/png",
 		})
 	})
 	if updated.Content != "Magnus oppdaterte en saga" {
 		t.Fatalf("content %s", updated.Content)
 	}
-	if updated.Embeds[0].Color != ColorUpdate || updated.Embeds[0].Description != "Ny versjon 2." || len(updated.Embeds[0].Fields) != 0 {
+	if updated.Embeds[0].Color != ColorUpdate || updated.Embeds[0].Description != "Ny versjon 2.\n• Nytt mål" || len(updated.Embeds[0].Fields) != 0 {
 		t.Fatalf("embed %+v", updated.Embeds[0])
 	}
 	if file.name != "" || updated.Embeds[0].Image != nil {

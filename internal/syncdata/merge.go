@@ -20,7 +20,6 @@ type Entry struct {
 	ObjectivesOrdered bool                 `json:"objectives_ordered"`
 	When              *contract.TimeWindow `json:"when,omitempty"`
 	Group             *contract.GroupRule  `json:"group,omitempty"`
-	Reward            string               `json:"reward"`
 	MinLevel          *int                 `json:"min_level"`
 	Status            string               `json:"status"`
 	CompletedAt       string               `json:"completed_at"`
@@ -87,7 +86,7 @@ func Merge(sync contract.SyncResponse) []Entry {
 				Character: ch.Name, CharacterID: ch.ID, Realm: ch.Realm,
 				QuestID: q.ID, QuestVersion: q.Version, Title: q.Title,
 				Description: q.Description, Objectives: q.Objectives,
-				ObjectivesOrdered: q.ObjectivesOrdered, When: q.When, Group: q.Group, Reward: q.Reward,
+				ObjectivesOrdered: q.ObjectivesOrdered, When: q.When, Group: q.Group,
 				MinLevel: q.MinLevel, PartyQuest: q.PartyQuest,
 				CreatedBy: q.CreatedBy, CompletedBy: completers[q.ID],
 				Requires: requireRefs(q.Requires, titles), Locked: locked,

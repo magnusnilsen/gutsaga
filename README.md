@@ -191,7 +191,6 @@ Admin (`POST`/`PATCH /v1/admin/sagas`) og spiller-API-et (`/v1/sagas`) tar samme
   "objectives": [
     {"id": "road", "type": "location", "text": "Stå på veien", "map_id": 37, "x": 0.456, "y": 0.477}
   ],
-  "reward": "",
   "min_level": 1,
   "party": true,
   "active": true,
@@ -264,7 +263,6 @@ Ny saga:
     "fields": [
       {"name": "Mål", "value": "1. Møt opp\n2. Hold ut"},
       {"name": "Minste nivå", "value": "10", "inline": true},
-      {"name": "Belønning", "value": "Ære", "inline": true},
       {"name": "Laget av", "value": "Magnus#2231", "inline": true},
       {"name": "Hvem", "value": "Parti — Magni (Paladin, nivå 12)"}
     ],
@@ -290,8 +288,7 @@ Fullføring:
       {"name": "Karakter", "value": "Magni", "inline": true},
       {"name": "Klasse", "value": "Paladin", "inline": true},
       {"name": "Nivå", "value": "12", "inline": true},
-      {"name": "Versjon", "value": "3", "inline": true},
-      {"name": "Belønning", "value": "Ære", "inline": true}
+      {"name": "Versjon", "value": "3", "inline": true}
     ],
     "timestamp": "2026-10-24T18:30:00Z",
     "image": {"url": "attachment://screenshot.png"},

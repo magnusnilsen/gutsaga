@@ -190,7 +190,7 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 			{"id": "meet", "type": "interact", "text": "Møt opp", "npc": "Vakt"},
 			{"id": "stay", "type": "location", "text": "Hold ut", "zone": "Elwynn Forest"},
 		},
-		"reward": "Ære", "min_level": 10, "party": false, "created_by": "Magnus#2231",
+		"min_level": 10, "party": false, "created_by": "Magnus#2231",
 		"assigned_character_ids": []string{magni.ID},
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated {
@@ -260,7 +260,7 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 
 	var updated contract.Quest
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"title": "Første vakt, igjen",
+		"title": "Første vakt, igjen", "changes": []string{"Nytt navn"},
 	}, &updated)
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatalf("patch %d %v", resp.StatusCode, err)

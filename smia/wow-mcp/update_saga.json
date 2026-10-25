@@ -30,9 +30,10 @@
           "description": "Full replacement step list (same contract as create_saga). Always send the complete list. Types: go, talk, item, kill, emote, sequence. memory visit|hold (go defaults visit, item defaults hold; talk/emote/kill/sequence are visit). sequence is one step with within_sec and 2-6 beats. A together-kill puts group {level, instance, optional size} on that kill: level is exact for every member. Do not use all_of, any_of, or objectives_ordered."
         },
         {
-          "name": "reward",
-          "type": "string",
-          "required": false
+          "name": "changes",
+          "type": "array",
+          "required": true,
+          "description": "What changed, one short line per item. Required. Bumps the saga version and is posted to the group webhook."
         },
         {
           "name": "min_level",
@@ -90,7 +91,7 @@
           "title",
           "description",
           "objectives",
-          "reward",
+          "changes",
           "min_level",
           "party",
           "assigned_character_ids",
@@ -98,7 +99,7 @@
           "active",
           "editor_email"
         ],
-        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"reward\": {{reward}}, \"min_level\": {{min_level}}, \"party\": {{party}}, \"assigned_character_ids\": {{assigned_character_ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"editor_email\": {{editor_email}}}"
+        "template": "{\"title\": {{title}}, \"description\": {{description}}, \"objectives\": {{objectives}}, \"changes\": {{changes}}, \"min_level\": {{min_level}}, \"party\": {{party}}, \"assigned_character_ids\": {{assigned_character_ids}}, \"objectives_ordered\": {{objectives_ordered}}, \"active\": {{active}}, \"editor_email\": {{editor_email}}}"
       }
     },
     {
@@ -159,8 +160,8 @@
       "id": "e5",
       "source": "input",
       "target": "body",
-      "sourceHandle": "reward",
-      "targetHandle": "reward"
+      "sourceHandle": "changes",
+      "targetHandle": "changes"
     },
     {
       "id": "e6",

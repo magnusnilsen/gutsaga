@@ -79,7 +79,7 @@ func TestRealtimeTwoInstances(t *testing.T) {
 	resp, err = admin.do(http.MethodPost, "/v1/admin/sagas", map[string]any{
 		"title": "Første vakt", "description": "Stå vakt.",
 		"objectives": []map[string]any{{"id": "stay", "type": "location", "text": "Hold ut", "zone": "Elwynn Forest"}},
-		"reward":     "Ære", "party": true, "created_by": "Magnus#2231",
+		"party":      true, "created_by": "Magnus#2231",
 		"assigned_character_ids": []string{magni.ID},
 	}, &quest)
 	if err != nil || resp.StatusCode != http.StatusCreated || quest.Version != 1 {
@@ -107,7 +107,7 @@ func TestRealtimeTwoInstances(t *testing.T) {
 
 	var updated contract.Quest
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"title": "Første vakt, igjen",
+		"title": "Første vakt, igjen", "changes": []string{"Nytt navn"},
 	}, &updated)
 	if err != nil || updated.Version != 2 {
 		t.Fatalf("patch %+v %v", updated, err)
@@ -116,7 +116,7 @@ func TestRealtimeTwoInstances(t *testing.T) {
 
 	var retired contract.Quest
 	resp, err = admin.do(http.MethodPatch, "/v1/admin/sagas/"+quest.ID, map[string]any{
-		"active": false,
+		"active": false, "changes": []string{"Lagt bort"},
 	}, &retired)
 	if err != nil || retired.Version != 3 || retired.Active {
 		t.Fatalf("retire %+v %v", retired, err)
