@@ -26,15 +26,20 @@ local reloaded = db
 assertTrue(Invite.snoozed(reloaded, id, now + 12 * 3600 - 1), "snooze survives reload")
 assertTrue(not Invite.snoozed(reloaded, id, now + 12 * 3600 + 1), "snooze expires")
 
+local id2 = "22222222-2222-2222-2222-222222222222"
 local data = {
     invites = {
         { id = id, name = "Magni", realm = "Everlook", group_name = "Tutorial", kind = "join" },
+        { id = id2, name = "Magni", realm = "Everlook", group_name = "Gutar", kind = "include" },
     },
 }
 local character = { name = "Magni", realm = "Everlook" }
 local prompt = Invite.prompt({}, character, data, now)
 assertTrue(prompt and prompt.key == "invite.join" and prompt.group == "Tutorial", "join prompt")
-Invite.snooze(db, id, now)
+Invite.markAnswered(db, id)
+prompt = Invite.prompt(db, character, data, now)
+assertTrue(prompt and prompt.key == "invite.include" and prompt.group == "Gutar", "next invite after answer")
+Invite.snooze(db, id2, now)
 assertTrue(Invite.prompt(db, character, data, now + 5) == nil, "snooze hides the dialog")
 
 OurSagasLanguage = "nb"

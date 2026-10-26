@@ -45,6 +45,15 @@ func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, notice
 		}
 		writeLuaWhen(&b, e.When, "      ")
 		writeLuaGroup(&b, e.Group, "      ")
+		if e.GroupID != "" {
+			fmt.Fprintf(&b, "      group_id = %s,\n", luaString(e.GroupID))
+		}
+		if e.GroupSlug != "" {
+			fmt.Fprintf(&b, "      group_slug = %s,\n", luaString(e.GroupSlug))
+		}
+		if e.GroupName != "" {
+			fmt.Fprintf(&b, "      group_name = %s,\n", luaString(e.GroupName))
+		}
 		if e.MinLevel == nil {
 			b.WriteString("      min_level = nil,\n")
 		} else {

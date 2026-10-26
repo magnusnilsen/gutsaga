@@ -841,7 +841,19 @@ end
 
 local statusFilter = { open = true, locked = true, done = true }
 local creatorHidden = {}
+local groupHidden = {}
 local filtersLoaded = false
+
+local function entryGroupName(entry)
+    if type(entry) ~= "table" then
+        return ""
+    end
+    local name = entry.group_name
+    if type(name) == "string" and name ~= "" then
+        return name
+    end
+    return ""
+end
 
 local function loadFilters()
     if filtersLoaded then
@@ -871,6 +883,13 @@ local function loadFilters()
             end
         end
     end
+    if type(saved.hiddenGroups) == "table" then
+        for name, hidden in pairs(saved.hiddenGroups) do
+            if type(name) == "string" and hidden then
+                groupHidden[name] = true
+            end
+        end
+    end
 end
 
 local function saveFilters()
@@ -881,6 +900,12 @@ local function saveFilters()
             hidden[name] = true
         end
     end
+    local hiddenGroups = {}
+    for name, on in pairs(groupHidden) do
+        if on then
+            hiddenGroups[name] = true
+        end
+    end
     OurSagasDB.filters = {
         status = {
             open = statusFilter.open ~= false,
@@ -888,6 +913,7 @@ local function saveFilters()
             done = statusFilter.done ~= false,
         },
         hiddenCreators = hidden,
+        hiddenGroups = hiddenGroups,
     }
 end
 
@@ -937,6 +963,10 @@ local function passesFilters(entry, entries)
     if creatorHidden[creatorName(entry)] then
         return false
     end
+    local group = entryGroupName(entry)
+    if group ~= "" and groupHidden[group] then
+        return false
+    end
     local needle = searchQuery
     if needle ~= "" then
         local rank = searchRank(entry, needle)
@@ -968,6 +998,7 @@ local function sortBySearch(list)
 end
 
 local statusDrop
+local groupDrop
 local creatorDrop
 local searchBox
 local scrollSelectIntoView = false
@@ -1027,6 +1058,37 @@ local function setupListFilters()
         end)
     end)
     UIDropDownMenu_SetText(statusDrop, L("ui.status"))
+    if groupDrop then
+        UIDropDownMenu_Initialize(groupDrop, function()
+            local seen, names = {}, {}
+            local entries = currentEntries()
+            for i = 1, #entries do
+                local name = entryGroupName(entries[i])
+                if name ~= "" and not seen[name] then
+                    seen[name] = true
+                    names[#names + 1] = name
+                end
+            end
+            table.sort(names)
+            if #names == 0 then
+                filterCheck(L("ui.none"), false, function() end)
+                return
+            end
+            for i = 1, #names do
+                local name = names[i]
+                filterCheck(name, not groupHidden[name], function(on)
+                    if on then
+                        groupHidden[name] = nil
+                    else
+                        groupHidden[name] = true
+                    end
+                    saveFilters()
+                    refresh()
+                end)
+            end
+        end)
+        UIDropDownMenu_SetText(groupDrop, L("ui.group"))
+    end
     UIDropDownMenu_Initialize(creatorDrop, function()
         local seen, names = {}, {}
         local entries = currentEntries()
@@ -1060,6 +1122,10 @@ end
 
 local function listSubtitle(entry, entries)
     local fallback = creatorName(entry)
+    local group = entryGroupName(entry)
+    if group ~= "" then
+        fallback = string.format(L("ui.group_by"), group, fallback)
+    end
     if type(OurSagasChains) ~= "table" or type(OurSagasChains.listSub) ~= "function" then
         return fallback
     end
@@ -2956,11 +3022,15 @@ local function build()
     if UIDropDownMenu_Initialize then
         statusDrop = CreateFrame("Frame", "OurSagasStatusFilter", frame, "UIDropDownMenuTemplate")
         statusDrop:SetPoint("BOTTOMLEFT", listPanel, "TOPLEFT", -14, -4)
-        UIDropDownMenu_SetWidth(statusDrop, 96)
+        UIDropDownMenu_SetWidth(statusDrop, 78)
         UIDropDownMenu_JustifyText(statusDrop, "LEFT")
+        groupDrop = CreateFrame("Frame", "OurSagasGroupFilter", frame, "UIDropDownMenuTemplate")
+        groupDrop:SetPoint("LEFT", statusDrop, "RIGHT", -20, 0)
+        UIDropDownMenu_SetWidth(groupDrop, 78)
+        UIDropDownMenu_JustifyText(groupDrop, "LEFT")
         creatorDrop = CreateFrame("Frame", "OurSagasCreatorFilter", frame, "UIDropDownMenuTemplate")
-        creatorDrop:SetPoint("LEFT", statusDrop, "RIGHT", -20, 0)
-        UIDropDownMenu_SetWidth(creatorDrop, 110)
+        creatorDrop:SetPoint("LEFT", groupDrop, "RIGHT", -20, 0)
+        UIDropDownMenu_SetWidth(creatorDrop, 96)
         UIDropDownMenu_JustifyText(creatorDrop, "LEFT")
         setupListFilters()
     end
@@ -3484,6 +3554,8 @@ end
 
 local inviteFrame
 local shownInvite
+local showInviteDialog
+local maybeInvite
 
 local function emitInvite(action, id)
     if type(OurSagasInvite) ~= "table" or type(OurSagasInvite.line) ~= "function" then
@@ -3500,32 +3572,38 @@ local function emitInvite(action, id)
     table.insert(OurSagasDB.pending_invites, { action = action, id = id, at = unixNow() })
 end
 
-local function showInviteDialog(prompt)
+local function finishInviteDialog(f)
+    f:Hide()
+    shownInvite = nil
+    maybeInvite()
+end
+
+showInviteDialog = function(prompt)
     if not prompt or type(prompt.id) ~= "string" then
         return
     end
     if not inviteFrame then
-        local f = CreateFrame("Frame", "OurSagasInvite", UIParent)
-        f:SetSize(360, 140)
+        -- Must not use global name OurSagasInvite — that is the invite module table.
+        local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
+        local f = CreateFrame("Frame", "OurSagasInviteDialog", UIParent, backdropTemplate)
+        f:SetSize(360, 92)
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
         f:EnableMouse(true)
-        if f.SetBackdrop then
-            f:SetBackdrop({
-                bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-                edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-                tile = true, tileSize = 32, edgeSize = 32,
-                insets = { left = 11, right = 12, top = 12, bottom = 11 },
-            })
-        end
+        useBackdrop(f, {
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true, tileSize = 32, edgeSize = 32,
+            insets = { left = 11, right = 12, top = 12, bottom = 11 },
+        })
         f.text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        f.text:SetPoint("TOP", 0, -24)
+        f.text:SetPoint("TOP", 0, -16)
         f.text:SetWidth(320)
         f.text:SetJustifyH("CENTER")
         local function button(label, x)
             local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-            b:SetSize(100, 24)
-            b:SetPoint("BOTTOM", x, 18)
+            b:SetSize(100, 22)
+            b:SetPoint("BOTTOM", x, 14)
             b:SetText(label)
             return b
         end
@@ -3535,21 +3613,29 @@ local function showInviteDialog(prompt)
         f.accept:SetScript("OnClick", function()
             if f.inviteID then
                 emitInvite("accept", f.inviteID)
+                if type(OurSagasInvite) == "table" and type(OurSagasInvite.markAnswered) == "function" then
+                    initDB()
+                    OurSagasInvite.markAnswered(OurSagasDB, f.inviteID)
+                end
             end
-            f:Hide()
+            finishInviteDialog(f)
         end)
         f.decline:SetScript("OnClick", function()
             if f.inviteID then
                 emitInvite("decline", f.inviteID)
+                if type(OurSagasInvite) == "table" and type(OurSagasInvite.markAnswered) == "function" then
+                    initDB()
+                    OurSagasInvite.markAnswered(OurSagasDB, f.inviteID)
+                end
             end
-            f:Hide()
+            finishInviteDialog(f)
         end)
         f.later:SetScript("OnClick", function()
             if f.inviteID and type(OurSagasInvite) == "table" then
                 initDB()
                 OurSagasInvite.snooze(OurSagasDB, f.inviteID, unixNow())
             end
-            f:Hide()
+            finishInviteDialog(f)
         end)
         inviteFrame = f
     end
@@ -3560,6 +3646,8 @@ local function showInviteDialog(prompt)
         text = string.format(L("invite.join"), prompt.group or "")
     end
     inviteFrame.text:SetText(text)
+    local textH = inviteFrame.text:GetStringHeight() or 16
+    inviteFrame:SetHeight(math.max(84, math.floor(textH + 52)))
     inviteFrame.accept:SetText(L("invite.accept"))
     inviteFrame.decline:SetText(L("invite.decline"))
     inviteFrame.later:SetText(L("invite.later"))
@@ -3568,7 +3656,7 @@ local function showInviteDialog(prompt)
     inviteFrame:Show()
 end
 
-local function maybeInvite()
+maybeInvite = function()
     if type(OurSagasInvite) ~= "table" or InCombatLockdown and InCombatLockdown() then
         return
     end

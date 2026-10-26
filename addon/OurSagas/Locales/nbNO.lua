@@ -8,6 +8,8 @@ OurSagasLocale.nb = {
     ["invite.later"] = "Ikke nå",
 
     ["ui.status"] = "Status",
+    ["ui.group"] = "Gruppe",
+    ["ui.group_by"] = "%s · %s",
     ["ui.created_by"] = "Laget av",
     ["ui.not_started"] = "Ikke startet",
     ["ui.requires_previous"] = "Krever forrige",
