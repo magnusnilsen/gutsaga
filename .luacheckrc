@@ -81,6 +81,7 @@ read_globals = {
     "QuestFont",
     "hooksecurefunc",
     "DoEmote",
+    "IsMouseButtonDown",
     "GetGameTime",
     "GetNumGroupMembers",
     "GetNumPartyMembers",

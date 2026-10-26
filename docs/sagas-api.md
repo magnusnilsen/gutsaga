@@ -24,6 +24,8 @@ The party-size rule is a different field with the same name when the value is an
 
 Saga titles and objective text are author content. They are not translated. Chrome around them uses the English or Norwegian catalog.
 
+A `talk` step (older name `interact`) completes when the player opens that NPC's dialogue or uses the object. Targeting the NPC is not enough. If the NPC has no gossip window, the step also completes when the player right-clicks them, or targets them and uses `/talk`. The tracker does not append the player's current zone or subzone to a goal line.
+
 A new saga starts at version 1. Text edits require `changes` and bump the version. Completions keep the version the character had loaded.
 
 `GET /v1/sync` is what the companion writes into `OurSagasData.lua`. The addon reads it on `/reload`.

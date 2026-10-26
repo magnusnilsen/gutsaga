@@ -18,7 +18,7 @@ import (
 // the saga itself is the AND, and a timed order is one sequence step.
 //
 //	go:            be at a place. memory visit (default) latches; hold is only while there
-//	talk:          target an NPC or object. Always visit
+//	talk:          dialogue, object use, or /talk on that unit (right-click counts). Always visit
 //	item:          have N of an item. memory hold (default) clears when the bags do; visit latches
 //	kill:          defeat N creatures by name. Always visit. Optional group gate
 //	emote:         a built-in emote token, optionally at a unit and/or place. Always visit
