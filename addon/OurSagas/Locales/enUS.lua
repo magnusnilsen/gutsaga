@@ -8,6 +8,8 @@ OurSagasLocale.en = {
     ["invite.later"] = "Not now",
 
     ["ui.status"] = "Status",
+    ["ui.group"] = "Group",
+    ["ui.group_by"] = "%s · %s",
     ["ui.created_by"] = "Created by",
     ["ui.not_started"] = "Not started",
     ["ui.requires_previous"] = "Requires previous",

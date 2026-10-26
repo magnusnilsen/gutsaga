@@ -41,6 +41,25 @@ function M.snoozed(db, id, now)
     return untilAt ~= nil and untilAt > at
 end
 
+-- markAnswered hides an invite locally after Accept/Decline so the next one can show
+-- before the companion rewrites OurSagasData.
+function M.markAnswered(db, id)
+    if type(db) ~= "table" or type(id) ~= "string" or id == "" then
+        return
+    end
+    if type(db.answered_invites) ~= "table" then
+        db.answered_invites = {}
+    end
+    db.answered_invites[id] = true
+end
+
+function M.answered(db, id)
+    if type(db) ~= "table" or type(db.answered_invites) ~= "table" then
+        return false
+    end
+    return db.answered_invites[id] == true
+end
+
 -- prompt returns nil or { id, key, group, character }.
 -- key is invite.join or invite.include.
 function M.prompt(db, character, data, now)
@@ -55,7 +74,8 @@ function M.prompt(db, character, data, now)
     for i = 1, #data.invites do
         local inv = data.invites[i]
         if type(inv) == "table" and type(inv.id) == "string" and inv.id ~= "" then
-            if not M.snoozed(db, inv.id, now) and same(inv.name, name) and same(inv.realm or "", realm) then
+            if not M.answered(db, inv.id) and not M.snoozed(db, inv.id, now)
+                and same(inv.name, name) and same(inv.realm or "", realm) then
                 local key = "invite.join"
                 if inv.kind == "include" then
                     key = "invite.include"

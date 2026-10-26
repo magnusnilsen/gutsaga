@@ -949,7 +949,7 @@ func scanQuest(scan func(dest ...any) error) (contract.Quest, error) {
 	var ml sql.NullInt32
 	var obj, whenRaw, groupRaw, reqRaw, chainID, chainName string
 	var chainOrder sql.NullInt32
-	err := scan(&q.ID, &q.Title, &q.Description, &obj, &ml, &q.PartyQuest, &q.Active, &q.Version, &q.CreatedBy, &q.ObjectivesOrdered, &q.HasImage, &whenRaw, &groupRaw, &reqRaw, &chainID, &chainName, &chainOrder)
+	err := scan(&q.ID, &q.Title, &q.Description, &obj, &ml, &q.PartyQuest, &q.Active, &q.Version, &q.CreatedBy, &q.ObjectivesOrdered, &q.HasImage, &whenRaw, &groupRaw, &reqRaw, &chainID, &chainName, &chainOrder, &q.GroupID, &q.GroupSlug, &q.GroupName)
 	if err != nil {
 		return q, err
 	}
@@ -984,9 +984,11 @@ const questSelect = `
 			(q.image_bytes IS NOT NULL AND octet_length(q.image_bytes) > 0),
 			COALESCE(q.time_window::text, ''),
 			COALESCE(q.group_rule::text, ''),
-			q.requires::text, q.chain_id, q.chain_name, q.chain_order
+			q.requires::text, q.chain_id, q.chain_name, q.chain_order,
+			COALESCE(g.id::text, ''), COALESCE(g.slug, ''), COALESCE(g.name, '')
 		FROM quests q
-		LEFT JOIN players p ON p.id = q.created_by_player_id`
+		LEFT JOIN players p ON p.id = q.created_by_player_id
+		LEFT JOIN groups g ON g.id = q.group_id`
 
 func loadQuest(ctx context.Context, q querier, id string) (contract.Quest, error) {
 	quest, err := scanQuest(q.QueryRow(ctx, questSelect+` WHERE q.id=$1`, id).Scan)

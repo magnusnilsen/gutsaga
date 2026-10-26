@@ -426,12 +426,13 @@ func (a *App) pollChat() {
 
 // pollSavedVars enqueues completions the addon wrote locally. On Classic Era,
 // AddMessage lines never reach WoWChatLog.txt, so this is the reliable path.
-// It also applies /oursagas reset requests queued in OurSagasDB.pending_resets.
+// It also applies /oursagas reset requests and invite answers from SavedVariables.
 func (a *App) pollSavedVars() {
 	if a.WowDir == "" {
 		return
 	}
 	a.pollPendingResets()
+	a.pollPendingInvites()
 	list, err := savedvars.ReadCompletions(a.WowDir)
 	if err != nil {
 		return
@@ -509,6 +510,23 @@ func (a *App) pollPendingResets() {
 	}
 }
 
+// pollPendingInvites enqueues accept/decline from OurSagasDB.pending_invites.
+func (a *App) pollPendingInvites() {
+	list, err := savedvars.ReadPendingInvites(a.WowDir)
+	if err != nil || len(list) == 0 {
+		return
+	}
+	for _, inv := range list {
+		ok := a.Queue.Enqueue(queue.Item{
+			Kind: "invite", Key: "invite\n" + inv.Action + "\n" + inv.ID,
+			Action: inv.Action, InviteID: inv.ID,
+		})
+		if ok {
+			a.Log.Info("lest invite fra SavedVariables", "action", inv.Action, "id", inv.ID)
+		}
+	}
+}
+
 func (a *App) serverHasCompletion(questID, character, realm string) bool {
 	for _, c := range a.sync.Completions {
 		if c.QuestID != questID {
@@ -570,10 +588,16 @@ func (a *App) Flush(ctx context.Context) {
 
 func (a *App) send(ctx context.Context, item queue.Item) error {
 	if item.Kind == "invite" {
+		var err error
 		if item.Action == "decline" {
-			return a.Client.DeclineInvite(ctx, item.InviteID)
+			err = a.Client.DeclineInvite(ctx, item.InviteID)
+		} else {
+			err = a.Client.AcceptInvite(ctx, item.InviteID)
 		}
-		return a.Client.AcceptInvite(ctx, item.InviteID)
+		if err != nil {
+			return err
+		}
+		return a.pullSync(ctx)
 	}
 	if item.Kind == "character" {
 		level := item.Level

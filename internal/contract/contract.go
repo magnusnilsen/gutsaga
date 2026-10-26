@@ -60,6 +60,10 @@ type Quest struct {
 	ObjectivesOrdered bool        `json:"objectives_ordered"`
 	When              *TimeWindow `json:"when,omitempty"`
 	Group             *GroupRule  `json:"group,omitempty"`
+	// Tenant group (Forever / Gutar). Distinct from Group, the party-size rule.
+	GroupID           string      `json:"group_id,omitempty"`
+	GroupSlug         string      `json:"group_slug,omitempty"`
+	GroupName         string      `json:"group_name,omitempty"`
 	MinLevel          *int        `json:"min_level"`
 	PartyQuest        bool        `json:"party"`
 	AssignedTo        []IDRef     `json:"assigned_to"`
