@@ -1368,18 +1368,6 @@ local function objectiveLines(entry)
             label = pad .. (obj.text or "Mål") .. " (Fullført)"
         else
             label = pad .. applyItemLink(obj.text or "Mål", obj)
-            if obj.type == "location" or obj.type == "go" then
-                local where = world.minimap
-                if where == "" then
-                    where = world.subzone
-                end
-                if where == "" then
-                    where = world.zone
-                end
-                if where ~= "" then
-                    label = label .. " (" .. where .. ")"
-                end
-            end
             local groupedKill = obj.type == "kill" and type(obj.group) == "table" and obj.group.level
             if obj.type == "collect" or obj.type == "item" or (obj.type == "kill" and not groupedKill) or obj.type == "instance_run" then
                 local need = tonumber(obj.count) or 1
@@ -1673,6 +1661,16 @@ local function readLocation()
     end
 end
 
+-- Keep the name briefly so a visit talk can latch even if the panel closes
+-- before the next full check. Gossip-less interacts use the same latch.
+local function noteTalkName(name)
+    local s = plainString(name)
+    if not s then
+        return
+    end
+    world.pendingTalk = { name = s, untilAt = unixNow() + 5 }
+end
+
 local function readNPC()
     if not UnitName then
         return
@@ -1681,9 +1679,7 @@ local function readNPC()
     local s = ok and plainString(name) or nil
     if s then
         world.npc = s
-        -- Keep the name briefly so a visit talk can latch even if the panel closes
-        -- before the next full check.
-        world.pendingTalk = { name = s, untilAt = unixNow() + 5 }
+        noteTalkName(s)
     end
 end
 
@@ -3474,6 +3470,10 @@ local function inferEmoteToken(msg)
         { "greetings", "GREET" }, { "warmly", "GREET" },
         { "slap", "SLAP" }, { "klask", "SLAP" },
         { "point", "POINT" }, { "pek", "POINT" },
+        -- /talk is TALK. Specific phrases so a different emote is not stolen.
+        { "you talk to", "TALK" }, { "you talk.", "TALK" }, { "you talk!", "TALK" },
+        { "du snakker med", "TALK" }, { "du snakker.", "TALK" },
+        { "du prater med", "TALK" }, { "du prater.", "TALK" },
     }
     for i = 1, #hints do
         if string.find(s, hints[i][1], 1, true) then
@@ -3534,6 +3534,51 @@ local function noteEmote(token, unit, msg)
         y = world.y,
         untilAt = unixNow() + 5,
     }
+end
+
+-- Unit name for a gossip-less interact. Players are not talk targets.
+local function npcName(unit)
+    if type(unit) ~= "string" or unit == "" or unit == "none" or unit == "player" or not UnitName then
+        return nil
+    end
+    if UnitIsPlayer then
+        local ok, isPlayer = pcall(UnitIsPlayer, unit)
+        if ok and isPlayer == true and not secret(isPlayer) then
+            return nil
+        end
+    end
+    local ok, name = pcall(UnitName, unit)
+    return ok and plainString(name) or nil
+end
+
+local function noteInteractUnit(unit)
+    local name = npcName(unit)
+    if not name then
+        name = npcName("mouseover")
+    end
+    if not name then
+        name = npcName("target")
+    end
+    noteTalkName(name)
+end
+
+-- Right-click / the interact key calls InteractUnit. Classic does not emit a
+-- gossip event when the NPC has no dialogue, so latch the unit the same way
+-- an open panel does. /talk remains the fallback when this hook does not run.
+local interactHooked = false
+local function installInteractHook()
+    if interactHooked or type(hooksecurefunc) ~= "function" then
+        return
+    end
+    local ok = pcall(function()
+        hooksecurefunc("InteractUnit", function(unit)
+            noteInteractUnit(unit)
+            onWorld()
+        end)
+    end)
+    if ok then
+        interactHooked = true
+    end
 end
 
 local emoteHooked = false
@@ -3713,11 +3758,13 @@ events:SetScript("OnEvent", function(_, event, ...)
         initDB()
         registerPrefix(PREFIX)
         installEmoteHook()
+        installInteractHook()
         return
     end
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         initDB()
         installEmoteHook()
+        installInteractHook()
         showFreshNotice()
         cachePlayer()
         build()
@@ -3757,6 +3804,17 @@ events:SetScript("OnEvent", function(_, event, ...)
     end
     if event == "PLAYER_TARGET_CHANGED" then
         readObject()
+        -- Right-click on a gossip-less NPC only retargets. Require the cursor
+        -- to still be on that unit so a camera-button tab-target does not count.
+        if IsMouseButtonDown then
+            local downOK, down = pcall(IsMouseButtonDown, "RightButton")
+            if downOK and down then
+                local hovered = npcName("mouseover")
+                if same(hovered, npcName("target")) then
+                    noteTalkName(hovered)
+                end
+            end
+        end
         onWorld()
         return
     end

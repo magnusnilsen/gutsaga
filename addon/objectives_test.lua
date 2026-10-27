@@ -70,6 +70,49 @@ steps, done = M.evaluate({
 }, { talk_name = "Innkeeper Farley" }, {}, false)
 assertTrue(steps.farley.done, "pending talk_name latches visit")
 
+steps, done = M.evaluate({
+    { id = "farley", type = "talk", text = "Snakk", npc = "Innkeeper Farley" },
+}, { emote = "TALK", emote_target = "Innkeeper Farley" }, {}, false)
+assertTrue(steps.farley.done and done, "/talk on the targeted NPC completes a talk")
+steps, done = M.evaluate({
+    { id = "farley", type = "interact", text = "Snakk", npc = "Innkeeper Farley" },
+}, { emote = "/talk", emote_target = "Innkeeper Farley" }, {}, false)
+assertTrue(steps.farley.done, "/talk slash token matches the interact alias")
+steps, done = M.evaluate({
+    { id = "farley", type = "talk", text = "Snakk", npc = "Farley" },
+}, { emote = "TALK", emote_target = "Innkeeper Farley" }, {}, false)
+assertTrue(steps.farley.done, "/talk matches a listed NPC name")
+steps, done = M.evaluate({
+    { id = "farley", type = "talk", text = "Snakk", npc = "Innkeeper Farley" },
+}, { emote = "TALK", emote_target = "", emote_text = "You talk to Innkeeper Farley." }, {}, false)
+assertTrue(steps.farley.done, "/talk chat line names the NPC")
+steps, done = M.evaluate({
+    { id = "farley", type = "talk", text = "Snakk", npc = "Innkeeper Farley" },
+}, { emote = "TALK", emote_target = "Stormwind Guard" }, {}, false)
+assertTrue(not steps.farley.done, "/talk on the wrong NPC does not count")
+steps, done = M.evaluate({
+    { id = "farley", type = "talk", text = "Snakk", npc = "Innkeeper Farley" },
+}, { emote = "TALK" }, {}, false)
+assertTrue(not steps.farley.done, "/talk with no target does not count")
+steps, done = M.evaluate({
+    { id = "farley", type = "talk", text = "Snakk", npc = "Innkeeper Farley" },
+}, { emote = "SALUTE", emote_target = "Innkeeper Farley" }, {}, false)
+assertTrue(not steps.farley.done, "a different emote is not a talk")
+steps, done = M.evaluate({
+    { id = "box", type = "talk", text = "Post", object = "Mailbox" },
+}, { emote = "TALK", emote_target = "Mailbox" }, {}, false)
+assertTrue(steps.box.done, "/talk on a named object completes the step")
+steps, done = M.evaluate({
+    { id = "greet", type = "sequence", text = "Snakk, så hils", within_sec = 30, beats = {
+        { id = "hi", type = "talk", text = "Snakk", npc = "Innkeeper Farley" },
+        { id = "salute", type = "emote", text = "Hils", emote = "SALUTE", npc = "Innkeeper Farley" },
+    } },
+}, {
+    emote = "TALK", emote_target = "Innkeeper Farley",
+    time = { ["local"] = { unix = 2000 } },
+}, {}, false)
+assertTrue(not steps.greet.done and steps.greet.beat == 2 and steps.greet.consumed_emote, "/talk advances a talk beat")
+
 -- Any-order: later goals can complete without earlier ones.
 steps, done = M.evaluate(objectives, { npc = "Innkeeper Farley", items = { [159] = 1 } }, {}, false)
 assertTrue(not steps.place.done, "location still open")

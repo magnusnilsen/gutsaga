@@ -1,11 +1,14 @@
 -- Pure objective checks. No WoW API calls, so lua5.1 can test this file.
 -- By default goals may complete in any order (ordered=false).
 -- When ordered=true, step n is checked only after 1..n-1 are done.
--- state = { zone, subzone, map_id, x, y, npc, object, items = { [id] = count },
+-- state = { zone, subzone, map_id, x, y, npc, object, talk_name, items = { [id] = count },
 --           kill_name, kill_secret,
---           emote, emote_target, emote_zone, emote_subzone, emote_minimap,
+--           emote, emote_target, emote_text, emote_zone, emote_subzone, emote_minimap,
 --           emote_map_id, emote_x, emote_y,
 --           time = { game = {hour, min}, ["local"] = {hour, min, unix}, realm = {hour, min, unix} } }
+-- A talk completes on an open dialogue (npc / talk_name), a gossip-less interact
+-- latched into talk_name, or emote TALK aimed at that npc (/talk). The current
+-- target alone (object) is not a talk. Object steps still complete on target.
 -- saved = { [objective_id] = { done = bool, count = number } }
 --
 -- all_of / any_of children are checked live (together), except kill counts which
@@ -207,6 +210,35 @@ local function locationOK(obj, state)
     return false
 end
 
+local function emoteToken(s)
+    s = norm(s)
+    if s:sub(1, 1) == "/" then
+        s = s:sub(2)
+    end
+    s = (s:gsub("%s+", "_"):upper())
+    -- Classic /clap is CLAP; sagas usually ask for APPLAUD.
+    if s == "CLAP" then
+        return "APPLAUD"
+    end
+    return s
+end
+
+-- Same target match as an emote step: the unit name, or the name in the chat line.
+local function emoteAimedAt(want, state)
+    if norm(want) == "" then
+        return false
+    end
+    return same(want, state.emote_target) or listed(want, state.emote_target) or listed(want, state.emote_text)
+end
+
+-- /talk while the named unit is targeted. Gossip-less NPCs never open a frame.
+local function talkEmoteOK(obj, state)
+    if emoteToken(state.emote) ~= "TALK" then
+        return false
+    end
+    return emoteAimedAt(obj.npc, state) or emoteAimedAt(obj.object, state)
+end
+
 local function interactOK(obj, state)
     local wantNPC = norm(obj.npc) ~= ""
     local wantObject = norm(obj.object) ~= ""
@@ -214,7 +246,13 @@ local function interactOK(obj, state)
         return false
     end
     -- state.npc is the open dialogue unit (gossip / quest / merchant / trainer).
-    -- Targeting alone is not a talk. state.object is the current target (world objects).
+    -- talk_name is that dialogue, or a gossip-less interact (right-click /
+    -- InteractUnit) latched by the addon. Targeting alone is not a talk.
+    -- state.object is the current target and completes object steps only.
+    -- /talk reuses the emote token and target (CHAT_MSG_TEXT_EMOTE / DoEmote).
+    if talkEmoteOK(obj, state) then
+        return true
+    end
     local talked = wantNPC and (same(obj.npc, state.npc) or listed(obj.npc, state.npc)
         or same(obj.npc, state.talk_name) or listed(obj.npc, state.talk_name))
     local object = wantObject and (same(obj.object, state.object) or same(obj.object, state.npc)
@@ -239,19 +277,6 @@ local function itemHave(state, id)
     return tonumber(n) or 0
 end
 
-local function emoteToken(s)
-    s = norm(s)
-    if s:sub(1, 1) == "/" then
-        s = s:sub(2)
-    end
-    s = (s:gsub("%s+", "_"):upper())
-    -- Classic /clap is CLAP; sagas usually ask for APPLAUD.
-    if s == "CLAP" then
-        return "APPLAUD"
-    end
-    return s
-end
-
 local function hasPlace(obj)
     return norm(obj.zone) ~= "" or norm(obj.subzone) ~= "" or obj.map_id ~= nil or obj.x ~= nil or obj.y ~= nil
 end
@@ -262,7 +287,7 @@ local function emoteOK(obj, state)
     if want == "" or got == "" or want ~= got then
         return false
     end
-    if norm(obj.npc) ~= "" and not (same(obj.npc, state.emote_target) or listed(obj.npc, state.emote_target) or listed(obj.npc, state.emote_text)) then
+    if norm(obj.npc) ~= "" and not emoteAimedAt(obj.npc, state) then
         return false
     end
     if not hasPlace(obj) then
