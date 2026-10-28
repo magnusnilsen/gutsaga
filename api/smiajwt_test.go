@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -8,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -95,6 +97,60 @@ func TestSmiaCallerJWT(t *testing.T) {
 	}
 }
 
+func TestSmiaToolsIssuerAndNullClaims(t *testing.T) {
+	if smiaDefaultISS != "https://smia.tools" {
+		t.Fatal(smiaDefaultISS)
+	}
+	def := NewSmiaCallerVerifier("  ", "https://sagalore.example")
+	if len(def.Issuers) != 1 || def.Issuers[0] != "https://smia.tools" {
+		t.Fatalf("default issuers %+v", def.Issuers)
+	}
+	key := p256Key(t)
+	now := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
+	aud := "https://sagalore.example"
+	body, err := json.Marshal(map[string]any{"keys": []any{ecJWK("smia-key", &key.PublicKey)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fetches atomic.Int32
+	var last atomic.Value
+	v := NewSmiaCallerVerifier(" https://smia.tools/, https://legacy.example ", aud)
+	v.Now = func() time.Time { return now }
+	v.Client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		fetches.Add(1)
+		last.Store(r.URL.String())
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(body)),
+			Request:    r,
+		}, nil
+	})}
+
+	direct := baseClaims("https://smia.tools", aud, "jti-direct", now)
+	direct["listing_id"] = nil
+	direct["tool"] = nil
+	delete(direct, "hub")
+	id, err := v.Verify(callerReq(signES256(t, key, "smia-key", direct), ""))
+	if err != nil || id.Subject != "user-1" || id.Email != "user@example.com" || fetches.Load() != 1 || last.Load() != "https://smia.tools/.well-known/smia-caller-jwks.json" {
+		t.Fatalf("direct id=%+v err=%v fetches=%d url=%v", id, err, fetches.Load(), last.Load())
+	}
+
+	legacy := baseClaims("https://legacy.example", aud, "jti-legacy", now)
+	delete(legacy, "listing_id")
+	delete(legacy, "tool")
+	delete(legacy, "hub")
+	if _, err := v.Verify(callerReq(signES256(t, key, "smia-key", legacy), "")); err != nil || fetches.Load() != 2 || last.Load() != "https://legacy.example/.well-known/smia-caller-jwks.json" {
+		t.Fatalf("second issuer err=%v fetches=%d url=%v", err, fetches.Load(), last.Load())
+	}
+
+	before := fetches.Load()
+	rejected := baseClaims("https://evil.example", aud, "jti-evil", now)
+	if _, err := v.Verify(callerReq(signES256(t, key, "smia-key", rejected), "")); err == nil || fetches.Load() != before {
+		t.Fatalf("unknown issuer err=%v fetches %d→%d", err, before, fetches.Load())
+	}
+}
+
 func TestMCPCallerJWTPrecedence(t *testing.T) {
 	key := p256Key(t)
 	var fetches atomic.Int32
@@ -145,6 +201,10 @@ func TestMCPCallerJWTPrecedence(t *testing.T) {
 		t.Fatalf("missing secret err=%v fetches %d→%d", err, before, fetches.Load())
 	}
 }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func callerReq(token, email string) *http.Request {
 	r := httptest.NewRequest(http.MethodGet, "https://sagalore.example/v1/groups", nil)

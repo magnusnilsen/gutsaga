@@ -25,7 +25,7 @@ The API listens on port 8080. Compose is for local development and a single host
 | `DISCORD_WEBHOOK_URL` | no | Copied once onto the bootstrap group when its webhook is empty. After that the group row is the source of truth. New groups stay quiet until the owner sets a webhook. |
 | `SAGALORE_DEV_TOKEN` | dev and CI only | Login bypass. It is not a stand-in for Battle.net. |
 | `SAGALORE_MCP_SERVICE_SECRET` | for the public MCP | Shared secret Smia sends as `Authorization: Bearer`. Also send `X-Smia-Caller` (signed JWT) or `X-Sagalore-Caller-Subject` (Smia user id) and optional `X-Sagalore-Caller-Email`. `OURSAGAS_MCP_SERVICE_SECRET` is the fallback. Without the secret, those headers are rejected. |
-| `SAGALORE_SMIA_ISSUER` | no | Smia origin for caller JWTs. Default `https://app.smia.io`. JWKS is `{issuer}/.well-known/smia-caller-jwks.json`. `OURSAGAS_SMIA_ISSUER` is the fallback. |
+| `SAGALORE_SMIA_ISSUER` | no | Allowed caller JWT `iss`. One origin, or several separated by commas. Default `https://smia.tools`. JWKS for each is `{issuer}/.well-known/smia-caller-jwks.json`. `OURSAGAS_SMIA_ISSUER` is the fallback. |
 | `SAGALORE_REQUIRE_SMIA_JWT` | no | Set to `1` to reject `X-Sagalore-Caller-*` when `X-Smia-Caller` is absent. Default off. `OURSAGAS_REQUIRE_SMIA_JWT` is the fallback. |
 
 ## MCP

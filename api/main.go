@@ -59,7 +59,7 @@ Environment:
   PORT                         listen port (default 8080)
   SAGALORE_DEV_TOKEN            dev/CI login bypass. Not a stand-in for Battle.net.
   SAGALORE_MCP_SERVICE_SECRET   shared secret for the Smia MCP. Required with caller identity.
-  SAGALORE_SMIA_ISSUER          Smia origin for caller JWTs (default https://app.smia.io)
+  SAGALORE_SMIA_ISSUER          Smia JWT iss, or a comma-separated list (default https://smia.tools)
   SAGALORE_REQUIRE_SMIA_JWT     set to 1 to reject X-Sagalore-Caller-* without X-Smia-Caller
   SAGALORE_BOOTSTRAP_GROUP      slug:Name, required only when sagas have no group yet
   SAGALORE_OWNER_BATTLETAG      owner of the bootstrap group (else the oldest BattleTag)

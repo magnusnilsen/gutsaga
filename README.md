@@ -73,7 +73,7 @@ Set `SAGALORE_MCP_SERVICE_SECRET` on the API (`OURSAGAS_MCP_SERVICE_SECRET` stil
 
 The caller headers and the JWT do nothing unless the bearer is that secret. A personal token cannot impersonate a subject. A bad JWT does not fall back to the caller headers.
 
-`SAGALORE_SMIA_ISSUER` is the Smia origin (default `https://app.smia.io`). Keys come from `{issuer}/.well-known/smia-caller-jwks.json`. `aud` must be this API's `PUBLIC_BASE_URL` origin. `SAGALORE_REQUIRE_SMIA_JWT=1` rejects header-only identity. The default is off. The `OURSAGAS_*` names still work.
+`SAGALORE_SMIA_ISSUER` is the Smia origin, or several separated by commas (default `https://smia.tools`). Keys for each issuer come from `{issuer}/.well-known/smia-caller-jwks.json`. `aud` must be this API's `PUBLIC_BASE_URL` origin. `hub`, `listing_id`, and `tool` may be omitted or null. `SAGALORE_REQUIRE_SMIA_JWT=1` rejects header-only identity. The default is off. The `OURSAGAS_*` names still work.
 
 A Smia user who has not linked Battle.net gets `403` `identity_not_linked`, with `link_url` (the Battle.net authorize URL) and `attempt`. `POST /v1/auth/link` returns the same URL. The player opens it, signs in, and the existing `/v1/auth/bnet/callback` binds that Battle.net account to the Smia subject. Later calls are that player: owner in groups they own, member where they were invited. The JWT `sub` is the Smia user id. `email` is stored on the link.
 

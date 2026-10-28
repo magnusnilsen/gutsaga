@@ -20,7 +20,7 @@ import (
 const (
 	headerSmiaCaller = "X-Smia-Caller"
 	smiaJWKSPath     = "/.well-known/smia-caller-jwks.json"
-	smiaDefaultISS   = "https://app.smia.io"
+	smiaDefaultISS   = "https://smia.tools"
 	smiaMaxLife      = 5 * time.Minute
 	smiaClockSkew    = 30 * time.Second
 	smiaTokenMax     = 8 << 10
@@ -36,33 +36,51 @@ var (
 
 // SmiaCallerVerifier checks an X-Smia-Caller JWT (ES256, P-256).
 // sub is the Smia user id. email is stored on the identity link.
-// JWKS is {issuer}/.well-known/smia-caller-jwks.json, cached until an unknown kid.
+// Issuers is the allowed iss list. Each issuer's keys are
+// {issuer}/.well-known/smia-caller-jwks.json, cached until an unknown kid.
 type SmiaCallerVerifier struct {
-	Issuer   string
+	Issuers  []string
 	Audience string
-	JWKSURL  string
 	Client   *http.Client
 	Now      func() time.Time
 	Skew     time.Duration
 	MaxLife  time.Duration
 
 	mu   sync.Mutex
-	keys map[string]*ecdsa.PublicKey
+	keys map[string]map[string]*ecdsa.PublicKey
 	seen map[string]time.Time
 }
 
-func NewSmiaCallerVerifier(issuer, audience string) *SmiaCallerVerifier {
-	issuer = strings.TrimRight(strings.TrimSpace(issuer), "/")
+// NewSmiaCallerVerifier allows one issuer, or several separated by commas.
+// An empty list uses https://smia.tools.
+func NewSmiaCallerVerifier(issuers, audience string) *SmiaCallerVerifier {
+	list := splitIssuers(issuers)
+	if len(list) == 0 {
+		list = []string{smiaDefaultISS}
+	}
 	return &SmiaCallerVerifier{
-		Issuer:   issuer,
+		Issuers:  list,
 		Audience: publicOrigin(audience),
-		JWKSURL:  issuer + smiaJWKSPath,
 		Client:   &http.Client{Timeout: 10 * time.Second},
 		Skew:     smiaClockSkew,
 		MaxLife:  smiaMaxLife,
-		keys:     map[string]*ecdsa.PublicKey{},
+		keys:     map[string]map[string]*ecdsa.PublicKey{},
 		seen:     map[string]time.Time{},
 	}
+}
+
+func splitIssuers(raw string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		iss := strings.TrimRight(strings.TrimSpace(part), "/")
+		if iss == "" || seen[iss] {
+			continue
+		}
+		seen[iss] = true
+		out = append(out, iss)
+	}
+	return out
 }
 
 func (v *SmiaCallerVerifier) now() time.Time {
@@ -73,7 +91,7 @@ func (v *SmiaCallerVerifier) now() time.Time {
 }
 
 func (v *SmiaCallerVerifier) Verify(r *http.Request) (CallerIdentity, error) {
-	if v == nil || strings.TrimSpace(v.Issuer) == "" || strings.TrimSpace(v.Audience) == "" || strings.TrimSpace(v.JWKSURL) == "" {
+	if v == nil || len(v.Issuers) == 0 || strings.TrimSpace(v.Audience) == "" {
 		return CallerIdentity{}, errCallerAuth
 	}
 	raw := strings.TrimSpace(r.Header.Get(headerSmiaCaller))
@@ -95,20 +113,21 @@ func (v *SmiaCallerVerifier) Verify(r *http.Request) (CallerIdentity, error) {
 	if len(hdr.Kid) > 128 {
 		return CallerIdentity{}, errCallerAuth
 	}
-	key, err := v.publicKey(r.Context(), hdr.Kid)
+	claims, err := parseSmiaClaims(payload)
+	if err != nil {
+		return CallerIdentity{}, err
+	}
+	issuer, ok := v.matchIssuer(claims.Iss)
+	if !ok {
+		return CallerIdentity{}, errCallerAuth
+	}
+	key, err := v.publicKey(r.Context(), issuer, hdr.Kid)
 	if err != nil {
 		return CallerIdentity{}, err
 	}
 	sum := sha256.Sum256(signing)
 	if !verifyES256(key, sum[:], sig) {
 		return CallerIdentity{}, fmt.Errorf("%w: %w", errCallerAuth, errSmiaSig)
-	}
-	claims, err := parseSmiaClaims(payload)
-	if err != nil {
-		return CallerIdentity{}, err
-	}
-	if strings.TrimRight(claims.Iss, "/") != v.Issuer {
-		return CallerIdentity{}, errCallerAuth
 	}
 	if !audienceMatches(claims.Aud, v.Audience) {
 		return CallerIdentity{}, fmt.Errorf("%w: %w", errCallerAuth, errSmiaAud)
@@ -136,32 +155,46 @@ func (v *SmiaCallerVerifier) Verify(r *http.Request) (CallerIdentity, error) {
 	return CallerIdentity{Provider: smiaProvider, Subject: claims.Sub, Email: claims.Email}, nil
 }
 
-func (v *SmiaCallerVerifier) publicKey(ctx context.Context, kid string) (*ecdsa.PublicKey, error) {
-	if key, ok := v.lookup(kid); ok {
+func (v *SmiaCallerVerifier) matchIssuer(iss string) (string, bool) {
+	iss = strings.TrimRight(strings.TrimSpace(iss), "/")
+	for _, allowed := range v.Issuers {
+		if iss == allowed {
+			return allowed, true
+		}
+	}
+	return "", false
+}
+
+func (v *SmiaCallerVerifier) publicKey(ctx context.Context, issuer, kid string) (*ecdsa.PublicKey, error) {
+	if key, ok := v.lookup(issuer, kid); ok {
 		return key, nil
 	}
-	if err := v.refresh(ctx); err != nil {
+	if err := v.refresh(ctx, issuer); err != nil {
 		return nil, err
 	}
-	if key, ok := v.lookup(kid); ok {
+	if key, ok := v.lookup(issuer, kid); ok {
 		return key, nil
 	}
 	return nil, fmt.Errorf("%w: %w", errCallerAuth, errSmiaKid)
 }
 
-func (v *SmiaCallerVerifier) lookup(kid string) (*ecdsa.PublicKey, bool) {
+func (v *SmiaCallerVerifier) lookup(issuer, kid string) (*ecdsa.PublicKey, bool) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	key, ok := v.keys[kid]
+	key, ok := v.keys[issuer][kid]
 	return key, ok
 }
 
-func (v *SmiaCallerVerifier) refresh(ctx context.Context) error {
+func (v *SmiaCallerVerifier) refresh(ctx context.Context, issuer string) error {
+	jwksURL, err := issuerJWKS(issuer)
+	if err != nil {
+		return err
+	}
 	client := v.Client
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.JWKSURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
 	if err != nil {
 		return errCallerAuth
 	}
@@ -183,9 +216,19 @@ func (v *SmiaCallerVerifier) refresh(ctx context.Context) error {
 		return errCallerAuth
 	}
 	v.mu.Lock()
-	v.keys = keys
+	if v.keys == nil {
+		v.keys = map[string]map[string]*ecdsa.PublicKey{}
+	}
+	v.keys[issuer] = keys
 	v.mu.Unlock()
 	return nil
+}
+
+func issuerJWKS(issuer string) (string, error) {
+	if !strings.HasPrefix(issuer, "https://") && !strings.HasPrefix(issuer, "http://") {
+		return "", errCallerAuth
+	}
+	return strings.TrimRight(issuer, "/") + smiaJWKSPath, nil
 }
 
 func (v *SmiaCallerVerifier) consumeJTI(jti string, exp time.Time) error {
@@ -229,7 +272,7 @@ func parseSmiaClaims(payload []byte) (smiaClaims, error) {
 	if err := json.Unmarshal(payload, &raw); err != nil {
 		return smiaClaims{}, errCallerAuth
 	}
-	for _, key := range []string{"iss", "sub", "email", "hub", "listing_id", "tool", "aud", "iat", "exp", "jti"} {
+	for _, key := range []string{"iss", "sub", "aud", "iat", "exp", "jti"} {
 		if _, ok := raw[key]; !ok {
 			return smiaClaims{}, errCallerAuth
 		}
@@ -241,19 +284,21 @@ func parseSmiaClaims(payload []byte) (smiaClaims, error) {
 	if err := jsonString(raw["sub"], &c.Sub); err != nil || c.Sub == "" || len(c.Sub) > 200 || strings.ContainsAny(c.Sub, "\r\n") {
 		return smiaClaims{}, errCallerAuth
 	}
-	if err := jsonString(raw["email"], &c.Email); err != nil || len(c.Email) > 320 || strings.ContainsAny(c.Email, "\r\n") {
+	email, err := optionalClaim(raw, "email")
+	if err != nil || len(email) > 320 || strings.ContainsAny(email, "\r\n") {
 		return smiaClaims{}, errCallerAuth
 	}
-	if c.Email != "" && !strings.Contains(c.Email, "@") {
+	if email != "" && !strings.Contains(email, "@") {
 		return smiaClaims{}, errCallerAuth
 	}
-	if err := jsonString(raw["hub"], &c.Hub); err != nil || strings.TrimSpace(c.Hub) == "" || len(c.Hub) > 200 {
+	c.Email = email
+	if c.Hub, err = optionalClaim(raw, "hub"); err != nil {
 		return smiaClaims{}, errCallerAuth
 	}
-	if err := jsonString(raw["listing_id"], &c.ListingID); err != nil || strings.TrimSpace(c.ListingID) == "" || len(c.ListingID) > 200 {
+	if c.ListingID, err = optionalClaim(raw, "listing_id"); err != nil {
 		return smiaClaims{}, errCallerAuth
 	}
-	if err := jsonString(raw["tool"], &c.Tool); err != nil || strings.TrimSpace(c.Tool) == "" || len(c.Tool) > 200 {
+	if c.Tool, err = optionalClaim(raw, "tool"); err != nil {
 		return smiaClaims{}, errCallerAuth
 	}
 	aud, err := jsonAudience(raw["aud"])
@@ -271,6 +316,22 @@ func parseSmiaClaims(payload []byte) (smiaClaims, error) {
 		return smiaClaims{}, errCallerAuth
 	}
 	return c, nil
+}
+
+// optionalClaim accepts a missing field, JSON null, or a string.
+func optionalClaim(raw map[string]json.RawMessage, key string) (string, error) {
+	val, ok := raw[key]
+	if !ok || len(val) == 0 || string(val) == "null" {
+		return "", nil
+	}
+	var s string
+	if err := jsonString(val, &s); err != nil {
+		return "", err
+	}
+	if len(s) > 200 || strings.ContainsAny(s, "\r\n") {
+		return "", errCallerAuth
+	}
+	return s, nil
 }
 
 func jsonString(raw json.RawMessage, dst *string) error {
