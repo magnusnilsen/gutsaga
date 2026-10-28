@@ -616,16 +616,28 @@ func (s *Store) RevokePersonalToken(ctx context.Context, playerID, tokenID strin
 	if err := validUUID(tokenID); err != nil {
 		return err
 	}
-	tag, err := s.pool.Exec(ctx, `
-		UPDATE personal_tokens SET revoked_at=now()
-		WHERE id=$1 AND player_id=$2 AND revoked_at IS NULL`, tokenID, playerID)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	defer tx.Rollback(ctx)
+	var family string
+	err = tx.QueryRow(ctx, `
+		UPDATE personal_tokens SET revoked_at=now()
+		WHERE id=$1 AND player_id=$2 AND revoked_at IS NULL
+		RETURNING COALESCE(oauth_family_id::text, '')`, tokenID, playerID).Scan(&family)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
-	return nil
+	if err != nil {
+		return err
+	}
+	// An OAuth access token and its refresh tokens are one family. Revoking
+	// the access token from the account should stop the client refreshing it.
+	if err := revokeOAuthFamily(ctx, tx, family); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // MergeBattleNet finds a player by Battle.net account id, else by BattleTag, else inserts one.
@@ -917,7 +929,18 @@ func (s *Server) patchCharacterParticipating(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, out)
 }
 
+func rejectOAuthCredential(w http.ResponseWriter, r *http.Request) bool {
+	if strings.TrimSpace(playerFrom(r).OAuthClientID) == "" {
+		return false
+	}
+	writeErr(w, http.StatusForbidden, "oauth_token", "an OAuth access token cannot manage tokens")
+	return true
+}
+
 func (s *Server) mintToken(w http.ResponseWriter, r *http.Request) {
+	if rejectOAuthCredential(w, r) {
+		return
+	}
 	var body struct {
 		Label string `json:"label"`
 	}
@@ -936,6 +959,9 @@ func (s *Server) mintToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) revokeToken(w http.ResponseWriter, r *http.Request) {
+	if rejectOAuthCredential(w, r) {
+		return
+	}
 	if err := s.store.RevokePersonalToken(r.Context(), playerFrom(r).ID, r.PathValue("id")); err != nil {
 		s.fail(w, err)
 		return

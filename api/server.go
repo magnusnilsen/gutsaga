@@ -46,6 +46,20 @@ const playerCtx ctxKey = 1
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
+	mux.HandleFunc("GET /.well-known/oauth-authorization-server", s.oauthASMetadata)
+	mux.HandleFunc("OPTIONS /.well-known/oauth-authorization-server", s.oauthOptions)
+	mux.HandleFunc("GET /.well-known/oauth-protected-resource", s.oauthResourceMetadata)
+	mux.HandleFunc("OPTIONS /.well-known/oauth-protected-resource", s.oauthOptions)
+	mux.HandleFunc("GET /.well-known/oauth-protected-resource/{rest...}", s.oauthResourceMetadata)
+	mux.HandleFunc("OPTIONS /.well-known/oauth-protected-resource/{rest...}", s.oauthOptions)
+	mux.HandleFunc("POST /oauth/register", s.oauthRegister)
+	mux.HandleFunc("OPTIONS /oauth/register", s.oauthOptions)
+	mux.HandleFunc("GET /oauth/authorize", s.oauthAuthorize)
+	mux.HandleFunc("POST /oauth/authorize", s.oauthAuthorizeDecision)
+	mux.HandleFunc("POST /oauth/token", s.oauthToken)
+	mux.HandleFunc("OPTIONS /oauth/token", s.oauthOptions)
+	mux.HandleFunc("POST /oauth/revoke", s.oauthRevoke)
+	mux.HandleFunc("OPTIONS /oauth/revoke", s.oauthOptions)
 	mux.HandleFunc("GET /v1/auth/bnet/start", s.bnetStart)
 	mux.HandleFunc("GET /v1/auth/bnet/callback", s.bnetCallback)
 	mux.HandleFunc("GET /v1/auth/bnet/poll", s.bnetPoll)
@@ -112,16 +126,39 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+func (s *Server) writePlayerUnauthorized(w http.ResponseWriter, msg string, invalidToken bool) {
+	var challenge strings.Builder
+	challenge.WriteString("Bearer")
+	wrote := false
+	if invalidToken {
+		challenge.WriteString(` error="invalid_token"`)
+		wrote = true
+	}
+	if meta := s.resourceMetadataURL(); meta != "" && !strings.ContainsAny(meta, "\"\\") {
+		if wrote {
+			challenge.WriteString(",")
+		}
+		challenge.WriteString(` resource_metadata="`)
+		challenge.WriteString(meta)
+		challenge.WriteString(`"`)
+		wrote = true
+	}
+	if wrote {
+		w.Header().Set("WWW-Authenticate", challenge.String())
+	}
+	writeErr(w, http.StatusUnauthorized, "unauthorized", msg)
+}
+
 func (s *Server) withPlayer(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := bearer(r)
 		if key == "" {
-			writeErr(w, http.StatusUnauthorized, "unauthorized", "missing API key")
+			s.writePlayerUnauthorized(w, "missing API key", false)
 			return
 		}
 		p, err := s.store.PlayerByKey(r.Context(), key)
 		if errors.Is(err, ErrForbidden) {
-			writeErr(w, http.StatusUnauthorized, "unauthorized", "invalid API key")
+			s.writePlayerUnauthorized(w, "invalid API key", true)
 			return
 		}
 		if err != nil {

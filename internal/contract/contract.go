@@ -61,20 +61,20 @@ type Quest struct {
 	When              *TimeWindow `json:"when,omitempty"`
 	Group             *GroupRule  `json:"group,omitempty"`
 	// Tenant group (Forever / Gutar). Distinct from Group, the party-size rule.
-	GroupID           string      `json:"group_id,omitempty"`
-	GroupSlug         string      `json:"group_slug,omitempty"`
-	GroupName         string      `json:"group_name,omitempty"`
-	MinLevel          *int        `json:"min_level"`
-	PartyQuest        bool        `json:"party"`
-	AssignedTo        []IDRef     `json:"assigned_to"`
-	CreatedBy         string      `json:"created_by"`
-	Active            bool        `json:"active"`
-	Version           int         `json:"version"`
-	HasImage          bool        `json:"has_image"`
-	ImageURL          string      `json:"image_url,omitempty"`
-	ImageSignedURL    string      `json:"image_signed_url,omitempty"`
-	Requires          []string    `json:"requires"`
-	Chain             *Chain      `json:"chain,omitempty"`
+	GroupID        string   `json:"group_id,omitempty"`
+	GroupSlug      string   `json:"group_slug,omitempty"`
+	GroupName      string   `json:"group_name,omitempty"`
+	MinLevel       *int     `json:"min_level"`
+	PartyQuest     bool     `json:"party"`
+	AssignedTo     []IDRef  `json:"assigned_to"`
+	CreatedBy      string   `json:"created_by"`
+	Active         bool     `json:"active"`
+	Version        int      `json:"version"`
+	HasImage       bool     `json:"has_image"`
+	ImageURL       string   `json:"image_url,omitempty"`
+	ImageSignedURL string   `json:"image_signed_url,omitempty"`
+	Requires       []string `json:"requires"`
+	Chain          *Chain   `json:"chain,omitempty"`
 }
 
 type Progress struct {
@@ -138,6 +138,9 @@ type Player struct {
 	DisplayName   string `json:"display_name"`
 	BnetAccountID string `json:"bnet_account_id,omitempty"`
 	CreatedAt     string `json:"created_at"`
+	// OAuthClientID is set by PlayerByKey when the bearer is an OAuth access token.
+	// It is not part of the JSON API.
+	OAuthClientID string `json:"-"`
 }
 
 // GroupSummary is a tenant the signed-in account belongs to.
@@ -153,11 +156,11 @@ type GroupSummary struct {
 
 // GroupMemberRow is one account in a tenant group (not a party roster line).
 type GroupMemberRow struct {
-	PlayerID      string `json:"player_id"`
-	BattleTag     string `json:"battletag,omitempty"`
-	DisplayName   string `json:"display_name,omitempty"`
-	Role          string `json:"role"`
-	JoinedAt      string `json:"joined_at,omitempty"`
+	PlayerID    string `json:"player_id"`
+	BattleTag   string `json:"battletag,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+	Role        string `json:"role"`
+	JoinedAt    string `json:"joined_at,omitempty"`
 }
 
 // Invite is addressed to a character. kind is join (new member) or include (alt already on a member account).
