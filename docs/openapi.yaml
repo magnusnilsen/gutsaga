@@ -4,8 +4,6 @@ info:
   version: "0.3.0"
   description: |
     Battle.net login, groups, and sagas. Sessions are gss_. Personal tokens are gst_.
-    The Smia MCP sends SAGALORE_MCP_SERVICE_SECRET plus X-Smia-Caller (ES256 JWT)
-    or X-Sagalore-Caller-Subject.
     ADMIN_TOKEN cannot author sagas. See docs/API.md.
 servers:
   - url: https://sagalore.example.com
@@ -46,24 +44,6 @@ paths:
           description: Session
         "202":
           description: Pending
-  /v1/auth/link:
-    post:
-      summary: Start a Smia-to-Battle.net link. Returns the Battle.net authorize URL.
-      parameters:
-        - in: header
-          name: X-Sagalore-Caller-Subject
-          required: true
-          schema: {type: string}
-        - in: header
-          name: X-Sagalore-Caller-Email
-          schema: {type: string}
-      responses:
-        "200":
-          description: attempt, url, poll_url
-        "401":
-          description: Service secret or caller subject missing
-        "503":
-          description: Battle.net login is not configured
   /v1/auth/dev:
     post:
       summary: Dev token bypass. Does not call Blizzard.

@@ -4,7 +4,7 @@ Features that exist or are sketched, but are not in the current “make the basi
 
 ## Saga chains (`requires` + `chain`)
 
-**Status:** Implemented in API, sync, addon lock UI, and MCP fields. Premature to lean on for playtests.
+**Status:** Implemented in API, sync, and addon lock UI. Premature to lean on for playtests.
 
 **Why parked:** Onboarding, emotes, Discord, character opt-in, and Classic reliability matter more. Chains add authoring and QA surface before the happy path is boring.
 
@@ -16,7 +16,7 @@ See README section *Saga-kjeder* and [API.md](API.md).
 
 **Status:** Design only — [character-opt-in.md](character-opt-in.md).
 
-Discover ≠ enroll; addon prompt; MCP toggles. Do this before inventing more placeholder characters in local DB.
+Discover ≠ enroll; addon prompt. Do this before inventing more placeholder characters in local DB.
 
 ## Timed sequences between objectives
 

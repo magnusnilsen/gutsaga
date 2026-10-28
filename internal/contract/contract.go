@@ -181,14 +181,6 @@ type PersonalToken struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// IdentityLinkStart is POST /v1/auth/link.
-// URL is the Battle.net authorize URL. PollURL is GET /v1/auth/bnet/poll.
-type IdentityLinkStart struct {
-	Attempt string `json:"attempt"`
-	URL     string `json:"url"`
-	PollURL string `json:"poll_url"`
-}
-
 // SessionResponse is what the API returns after Battle.net login.
 // The session token is a Sagalore credential (gss_). It is not a Battle.net token.
 type SessionResponse struct {
@@ -300,8 +292,6 @@ type LogEntry struct {
 type ErrorBody struct {
 	Error   string `json:"error"`
 	Message string `json:"message"`
-	LinkURL string `json:"link_url,omitempty"`
-	Attempt string `json:"attempt,omitempty"`
 }
 
 // Eligible reports whether a character should see a quest.
