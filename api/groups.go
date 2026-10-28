@@ -978,7 +978,7 @@ func rejectActorOverride(w http.ResponseWriter, r *http.Request, createdBy bool)
 
 func (s *Server) withMember(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !s.serviceCallerPresented(r) && s.adminToken != "" && subtleConstantTimeString(bearer(r), s.adminToken) == 1 {
+		if s.adminToken != "" && subtleConstantTimeString(bearer(r), s.adminToken) == 1 {
 			writeErr(w, http.StatusForbidden, "admin_cannot_author", "ADMIN_TOKEN cannot author sagas or change groups")
 			return
 		}
