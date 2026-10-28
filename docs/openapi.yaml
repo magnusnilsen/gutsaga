@@ -1,9 +1,10 @@
 openapi: 3.0.3
 info:
   title: Sagalore API
-  version: "0.2.0"
+  version: "0.3.0"
   description: |
     Battle.net login, groups, and sagas. Sessions are gss_. Personal tokens are gst_.
+    The Smia MCP sends SAGALORE_MCP_SERVICE_SECRET plus X-Sagalore-Caller-Subject.
     ADMIN_TOKEN cannot author sagas. See docs/API.md.
 servers:
   - url: https://sagalore.example.com
@@ -44,6 +45,24 @@ paths:
           description: Session
         "202":
           description: Pending
+  /v1/auth/link:
+    post:
+      summary: Start a Smia-to-Battle.net link. Returns the Battle.net authorize URL.
+      parameters:
+        - in: header
+          name: X-Sagalore-Caller-Subject
+          required: true
+          schema: {type: string}
+        - in: header
+          name: X-Sagalore-Caller-Email
+          schema: {type: string}
+      responses:
+        "200":
+          description: attempt, url, poll_url
+        "401":
+          description: Service secret or caller subject missing
+        "503":
+          description: Battle.net login is not configured
   /v1/auth/dev:
     post:
       summary: Dev token bypass. Does not call Blizzard.
@@ -64,6 +83,21 @@ paths:
         "201":
           description: created
   /v1/groups/{id}/invites:
+    get:
+      summary: Pending outgoing invites for an owner or member
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+        - in: query
+          name: status
+          schema: {type: string, enum: [pending]}
+      responses:
+        "200":
+          description: invites with name, realm, invited_at
+        "403":
+          description: not a member
     post:
       summary: Owner invites a character
       parameters:
@@ -74,6 +108,31 @@ paths:
       responses:
         "201":
           description: pending invite
+  /v1/groups/{id}/invites/{inviteId}:
+    delete:
+      summary: Owner revokes a pending invite
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+        - in: path
+          name: inviteId
+          required: true
+          schema: {type: string}
+      responses:
+        "204":
+          description: revoked
+        "403":
+          description: not the owner
+        "409":
+          description: invite is not pending
+  /v1/me/invites:
+    get:
+      summary: Pending invites addressed to the caller
+      responses:
+        "200":
+          description: invites
   /v1/invites/{id}/accept:
     post:
       summary: Accept. Joins the account and marks the character participating.

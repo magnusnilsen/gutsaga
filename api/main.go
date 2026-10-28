@@ -58,6 +58,7 @@ Environment:
   IMAGE_URL_TTL                signed URL lifetime (Go duration, default 1h)
   PORT                         listen port (default 8080)
   SAGALORE_DEV_TOKEN            dev/CI login bypass. Not a stand-in for Battle.net.
+  SAGALORE_MCP_SERVICE_SECRET   shared secret for the Smia MCP. Callers also send X-Sagalore-Caller-Subject.
   SAGALORE_BOOTSTRAP_GROUP      slug:Name, required only when sagas have no group yet
   SAGALORE_OWNER_BATTLETAG      owner of the bootstrap group (else the oldest BattleTag)
   DISCORD_WEBHOOK_URL          copied once onto the bootstrap group when its webhook is empty
@@ -155,6 +156,7 @@ func serve(args []string) int {
 	if (publicBase == "") != (imageSecret == "") {
 		slog.Warn("signed saga image URLs need both PUBLIC_BASE_URL and IMAGE_URL_SECRET")
 	}
+	mcpSecret := envcompat.Get("SAGALORE_MCP_SERVICE_SECRET")
 	srv := &Server{
 		store:            store,
 		adminToken:       os.Getenv("ADMIN_TOKEN"),
@@ -167,6 +169,8 @@ func serve(args []string) int {
 		bnetClientID:     strings.TrimSpace(os.Getenv("BNET_CLIENT_ID")),
 		bnetClientSecret: strings.TrimSpace(os.Getenv("BNET_CLIENT_SECRET")),
 		bnet:             newBnetFlow(),
+		mcpServiceSecret: mcpSecret,
+		callerVerifier:   SharedSecretVerifier{Secret: mcpSecret, Provider: smiaProvider},
 	}
 	listen := *addr
 	if listen == "" {

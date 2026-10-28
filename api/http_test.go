@@ -61,7 +61,7 @@ func TestMain(m *testing.M) {
 func resetDB(t *testing.T) {
 	t.Helper()
 	_, err := testPool.Exec(context.Background(), `
-		TRUNCATE adventure_log, progress, screenshots, quest_versions, quest_assignments, quests, group_invites, group_members, characters, personal_tokens, sessions, groups, players CASCADE`)
+		TRUNCATE adventure_log, progress, screenshots, quest_versions, quest_assignments, quests, group_invites, group_members, characters, personal_tokens, sessions, identity_links, groups, players CASCADE`)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,6 +30,7 @@ services:
       SAGALORE_ALLOW_DEV_SECRETS: "1"
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
       SAGALORE_DEV_TOKEN: ${SAGALORE_DEV_TOKEN:-${OURSAGAS_DEV_TOKEN:-}}
+      SAGALORE_MCP_SERVICE_SECRET: ${SAGALORE_MCP_SERVICE_SECRET:-${OURSAGAS_MCP_SERVICE_SECRET:-}}
       BNET_CLIENT_ID: ${BNET_CLIENT_ID:-}
       BNET_CLIENT_SECRET: ${BNET_CLIENT_SECRET:-}
       # slug:Name for the local tutorial group. A fresh database does nothing until seed creates sagas.

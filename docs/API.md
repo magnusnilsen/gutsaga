@@ -18,6 +18,34 @@ The redirect URI is `{PUBLIC_BASE_URL}/v1/auth/bnet/callback`. Each host registe
 
 Login merges an existing player by `bnet_account_id`, else by BattleTag. No other key.
 
+## MCP identity
+
+Smia calls the API with a service credential and the caller's own identity. Set `SAGALORE_MCP_SERVICE_SECRET` (`OURSAGAS_MCP_SERVICE_SECRET` is the fallback).
+
+| Header | |
+| --- | --- |
+| `Authorization` | `Bearer $SAGALORE_MCP_SERVICE_SECRET` |
+| `X-Sagalore-Caller-Subject` | Smia user id. Required. |
+| `X-Sagalore-Caller-Email` | Optional. Stored on the link. Not a lookup key. |
+
+The headers are not an identity by themselves. A request that sends them without the service secret is `401`, including when it also sends a `gst_` or `gss_` token. The API does not fall through to that token.
+
+| Method | Path | |
+| --- | --- | --- |
+| `POST` | `/v1/auth/link` | Service credential plus caller headers. Returns `{attempt, url, poll_url}`. `url` is `https://oauth.battle.net/authorize` from the same PKCE flow as `/v1/auth/bnet/start`. |
+| `GET` | `/v1/auth/bnet/callback` | Existing callback. When the attempt was a link, it binds provider `smia` and the subject to the Battle.net player. |
+| `GET` | `/v1/auth/bnet/poll` | Existing poll for that attempt. |
+
+An authenticated caller with no link gets `403`:
+
+```json
+{"error":"identity_not_linked","message":"...","link_url":"https://oauth.battle.net/authorize?...","attempt":"..."}
+```
+
+`link_url` is the same authorize URL. After the player finishes Battle.net login, the same headers act as that player.
+
+The service-secret comparison runs before `CallerVerifier.Verify`. The built-in verifier reads the caller headers and sets provider `smia`. A Smia-signed JWT verifier can replace or wrap that step later. It still cannot skip the service secret.
+
 ## Tokens
 
 | Method | Path | |
@@ -25,11 +53,11 @@ Login merges an existing player by `bnet_account_id`, else by BattleTag. No othe
 | `POST` | `/v1/me/tokens` | Mint `gst_`. The raw token is in the response once. |
 | `DELETE` | `/v1/me/tokens/{id}` | Revoke. |
 
-Saga and group writes reject `ADMIN_TOKEN`, `created_by`, and user-identity headers. The signed-in account is the author.
+Saga and group writes reject `ADMIN_TOKEN`, `created_by`, and user-identity headers. The signed-in account is the author. An MCP call is that linked player, and only when the service secret matches.
 
 ## Groups
 
-Session or `gst_`:
+Session, `gst_`, or a linked MCP caller:
 
 | Method | Path | |
 | --- | --- | --- |
@@ -37,6 +65,9 @@ Session or `gst_`:
 | `GET` | `/v1/groups` | Groups the account belongs to. |
 | `GET` | `/v1/groups/{id}/members` | Members of a group you belong to. |
 | `POST` | `/v1/groups/{id}/invites` | Owner. Body `{name, realm, battletag?}`. |
+| `GET` | `/v1/groups/{id}/invites?status=pending` | Owner or member. Pending outgoing invites: character `name`, `realm`, `invited_at`. Other `status` values are `400`. |
+| `DELETE` | `/v1/groups/{id}/invites/{inviteId}` | Owner revokes a pending invite. A member or outsider gets `403`. An accepted or declined invite is `409`. |
+| `GET` | `/v1/me/invites` | Pending invites addressed to the caller (character or BattleTag). This does not create include-invites. `GET /v1/sync` still does, for alts that are not participating. |
 | `POST` | `/v1/invites/{id}/accept` | Join the account. Marks that character participating. |
 | `POST` | `/v1/invites/{id}/decline` | Permanent for that invite. |
 | `POST` | `/v1/groups/{id}/leave` | Leave. If the owner leaves, the oldest remaining member becomes owner. |

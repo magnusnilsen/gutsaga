@@ -228,10 +228,10 @@ func (s *Store) CreateInvite(ctx context.Context, playerID, groupID, name, realm
 	if err != nil {
 		return contract.Invite{}, err
 	}
-	_ = created
 	return contract.Invite{
 		ID: id, GroupID: groupID, GroupName: groupName, Name: strings.TrimSpace(name),
 		Realm: strings.TrimSpace(realm), BattleTag: battletag, Status: "pending", Kind: "join",
+		InvitedAt: contract.FormatTime(created),
 	}, nil
 }
 
@@ -251,9 +251,17 @@ func (s *Store) SyncInvites(ctx context.Context, playerID string) ([]contract.In
 		)`, playerID); err != nil {
 		return nil, err
 	}
+	return s.ListMyInvites(ctx, playerID)
+}
+
+// ListMyInvites returns pending invites addressed to this account.
+func (s *Store) ListMyInvites(ctx context.Context, playerID string) ([]contract.Invite, error) {
+	if err := validUUID(playerID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT i.id::text, i.group_id::text, g.name, i.character_name, i.realm, COALESCE(i.battletag, ''), i.status,
-			CASE WHEN gm.player_id IS NULL THEN 'join' ELSE 'include' END
+			CASE WHEN gm.player_id IS NULL THEN 'join' ELSE 'include' END, i.created_at
 		FROM group_invites i
 		JOIN groups g ON g.id = i.group_id
 		JOIN players p ON p.id=$1
@@ -276,12 +284,85 @@ func (s *Store) SyncInvites(ctx context.Context, playerID string) ([]contract.In
 	var out []contract.Invite
 	for rows.Next() {
 		var inv contract.Invite
-		if err := rows.Scan(&inv.ID, &inv.GroupID, &inv.GroupName, &inv.Name, &inv.Realm, &inv.BattleTag, &inv.Status, &inv.Kind); err != nil {
+		var invited time.Time
+		if err := rows.Scan(&inv.ID, &inv.GroupID, &inv.GroupName, &inv.Name, &inv.Realm, &inv.BattleTag, &inv.Status, &inv.Kind, &invited); err != nil {
 			return nil, err
 		}
+		inv.InvitedAt = contract.FormatTime(invited)
 		out = append(out, inv)
 	}
 	return out, rows.Err()
+}
+
+// ListGroupInvites returns pending outgoing invites for a group the caller belongs to.
+func (s *Store) ListGroupInvites(ctx context.Context, playerID, groupID, status string) ([]contract.Invite, error) {
+	if err := validUUID(groupID); err != nil {
+		return nil, err
+	}
+	if _, err := s.memberRole(ctx, groupID, playerID); err != nil {
+		return nil, err
+	}
+	if status != "pending" {
+		return nil, fmt.Errorf("%w: status", ErrInvalid)
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT i.id::text, i.group_id::text, g.name, i.character_name, i.realm, COALESCE(i.battletag, ''), i.status,
+			CASE WHEN EXISTS (
+				SELECT 1 FROM characters c
+				JOIN group_members gm ON gm.player_id = c.player_id AND gm.group_id = i.group_id
+				WHERE lower(c.name)=lower(i.character_name) AND lower(c.realm)=lower(i.realm)
+			) THEN 'include' ELSE 'join' END,
+			i.created_at
+		FROM group_invites i
+		JOIN groups g ON g.id = i.group_id
+		WHERE i.group_id=$1 AND i.status=$2
+		ORDER BY i.created_at`, groupID, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []contract.Invite
+	for rows.Next() {
+		var inv contract.Invite
+		var invited time.Time
+		if err := rows.Scan(&inv.ID, &inv.GroupID, &inv.GroupName, &inv.Name, &inv.Realm, &inv.BattleTag, &inv.Status, &inv.Kind, &invited); err != nil {
+			return nil, err
+		}
+		inv.InvitedAt = contract.FormatTime(invited)
+		out = append(out, inv)
+	}
+	return out, rows.Err()
+}
+
+// RevokeInvite deletes a pending invite. Only the group owner may revoke.
+func (s *Store) RevokeInvite(ctx context.Context, actorID, groupID, inviteID string) error {
+	if err := validUUID(inviteID); err != nil {
+		return err
+	}
+	if err := s.requireOwner(ctx, actorID, groupID); err != nil {
+		return err
+	}
+	var status string
+	err := s.pool.QueryRow(ctx, `
+		SELECT status FROM group_invites WHERE id=$1 AND group_id=$2`, inviteID, groupID).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if status != "pending" {
+		return fmt.Errorf("%w: invite is %s", ErrConflict, status)
+	}
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM group_invites WHERE id=$1 AND group_id=$2 AND status='pending'`, inviteID, groupID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) AcceptInvite(ctx context.Context, playerID, inviteID string) (contract.Invite, error) {
@@ -712,6 +793,46 @@ func (s *Server) createInvite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, out)
 }
 
+func (s *Server) listGroupInvites(w http.ResponseWriter, r *http.Request) {
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	if status == "" {
+		status = "pending"
+	}
+	if status != "pending" {
+		writeErr(w, http.StatusBadRequest, "invalid", "status must be pending")
+		return
+	}
+	out, err := s.store.ListGroupInvites(r.Context(), playerFrom(r).ID, r.PathValue("id"), status)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if out == nil {
+		out = []contract.Invite{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"invites": out})
+}
+
+func (s *Server) revokeInvite(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.RevokeInvite(r.Context(), playerFrom(r).ID, r.PathValue("id"), r.PathValue("inviteId")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) listMyInvites(w http.ResponseWriter, r *http.Request) {
+	out, err := s.store.ListMyInvites(r.Context(), playerFrom(r).ID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if out == nil {
+		out = []contract.Invite{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"invites": out})
+}
+
 func (s *Server) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	out, err := s.store.AcceptInvite(r.Context(), playerFrom(r).ID, r.PathValue("id"))
 	if err != nil {
@@ -857,7 +978,7 @@ func rejectActorOverride(w http.ResponseWriter, r *http.Request, createdBy bool)
 
 func (s *Server) withMember(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.adminToken != "" && subtleConstantTimeString(bearer(r), s.adminToken) == 1 {
+		if !s.serviceCallerPresented(r) && s.adminToken != "" && subtleConstantTimeString(bearer(r), s.adminToken) == 1 {
 			writeErr(w, http.StatusForbidden, "admin_cannot_author", "ADMIN_TOKEN cannot author sagas or change groups")
 			return
 		}
