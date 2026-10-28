@@ -444,7 +444,7 @@ local function ensureReadMap()
 
     local flat = flattenReadMap(SagaloreDB.read)
     -- First run: seed every saga already in the log as read so an upgrade is
-    -- not a wall of blue. /sagalore wipe|unread clears this for playtesting.
+    -- not a wall of blue. /sagalore wipe|unread (or /sl) clears this for playtesting.
     local entries = currentEntries()
     for i = 1, #entries do
         local id = entries[i].saga_id
@@ -3376,8 +3376,7 @@ local function build()
 end
 
 SLASH_SAGALORE1 = "/sagalore"
-SLASH_SAGALORE2 = "/os"
-SLASH_SAGALORE3 = "/oursagas"
+SLASH_SAGALORE2 = "/sl"
 SlashCmdList.SAGALORE = function(msg)
     msg = string.lower(string.gsub(msg or "", "^%s+", ""))
     if msg == "hide" then

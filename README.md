@@ -13,7 +13,7 @@ Existing WoW Classic characters keep their progress:
 - The companion copies `WTF/.../SavedVariables/OurSagas.lua` to `Sagalore.lua` and renames the `OurSagasDB` global. A `Sagalore.lua` that already has progress is left as-is. On the first addon load, if `OurSagasDB` is still in memory and `SagaloreDB` has no progress, the addon copies it.
 - The companion copies `Interface/AddOns/OurSagas/OurSagasData.lua` and `media/*.tga` into `Interface/AddOns/Sagalore`, then removes the old addon folder (or renames it to `OurSagas.disabled` if the folder is locked) so the client does not load two addons.
 - Settings move from the OurSagas config folder to Sagalore when the new folder is empty. Older GutSaga and SagaBoard folders are still picked up.
-- `/sagalore` and `/os` open the log. `/oursagas` still works.
+- `/sagalore` and `/sl` open the log.
 - Chat lines use `[Sagalore]`. The companion still reads `[OurSagas]` lines already in the chat log. Addon messages sent with the old prefix are still accepted.
 - `SAGALORE_*` environment variables replace `OURSAGAS_*`. The old names are still read when the new one is unset. Official builds read the GitHub Actions variable `SAGALORE_API_URL`, and fall back to `OURSAGAS_API_URL`.
 - Release files are `sagalore-*` and `Sagalore-addon.zip`. The same bytes are also uploaded as `oursagas-*` and `OurSagas-addon.zip` so an already-installed companion can update once.
@@ -35,7 +35,7 @@ SAGALORE_DEV_TOKEN=dev-token SAGALORE_ADDON_SRC=addon/Sagalore \
 
 The API container must have the same `SAGALORE_DEV_TOKEN`. `make dev` sets `dev-token` for local use only.
 
-The companion installs `Interface/AddOns/Sagalore`. In game, `/reload`, then `/sagalore`, `/os`, or `/oursagas`.
+The companion installs `Interface/AddOns/Sagalore`. In game, `/reload`, then `/sagalore` or `/sl`.
 
 If the database already has sagas and no group, set `SAGALORE_BOOTSTRAP_GROUP=slug:Name` before the API starts. See [docs/self-hosting.md](docs/self-hosting.md).
 

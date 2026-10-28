@@ -32,7 +32,7 @@ SagaloreLocale.nb = {
     ["ui.wipe"] = "Alle lokale fullføringer er slettet (ulest). Skriv /reload så companion rydder API-progress.",
     ["ui.unread_all"] = "Alle åpne sagaer er ulest.",
     ["ui.reset_one"] = "«%s» er tilbakestilt. Skriv /reload så companion rydder API-progress.",
-    ["ui.none_selected"] = "Ingen saga er valgt. Åpne loggen og velg en, eller bruk /sagalore wipe.",
+    ["ui.none_selected"] = "Ingen saga er valgt. Åpne loggen og velg en, eller bruk /sagalore wipe (eller /sl wipe).",
 
     ["chain.chapter"] = "Kapittel %d av %d",
     ["chain.locked"] = "Låst: fullfør %s først",

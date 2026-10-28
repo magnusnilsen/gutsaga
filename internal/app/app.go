@@ -426,7 +426,7 @@ func (a *App) pollChat() {
 
 // pollSavedVars enqueues completions the addon wrote locally. On Classic Era,
 // AddMessage lines never reach WoWChatLog.txt, so this is the reliable path.
-// It also applies /sagalore reset requests and invite answers from SavedVariables.
+// It also applies /sagalore and /sl reset requests and invite answers from SavedVariables.
 func (a *App) pollSavedVars() {
 	if a.WowDir == "" {
 		return

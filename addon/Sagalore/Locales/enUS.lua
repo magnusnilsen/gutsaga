@@ -32,7 +32,7 @@ SagaloreLocale.en = {
     ["ui.wipe"] = "All local completions were cleared (unread). Type /reload so the companion clears API progress.",
     ["ui.unread_all"] = "All open sagas are unread.",
     ["ui.reset_one"] = "\"%s\" was reset. Type /reload so the companion clears API progress.",
-    ["ui.none_selected"] = "No saga is selected. Open the log and pick one, or use /sagalore wipe.",
+    ["ui.none_selected"] = "No saga is selected. Open the log and pick one, or use /sagalore wipe (or /sl wipe).",
 
     ["chain.chapter"] = "Chapter %d of %d",
     ["chain.locked"] = "Locked: finish %s first",

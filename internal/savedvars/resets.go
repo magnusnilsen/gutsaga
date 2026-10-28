@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// ResetRequest is one /sagalore reset the addon queued for the companion.
+// ResetRequest is one /sagalore (or /sl) reset the addon queued for the companion.
 // QuestID empty (or All) means wipe every progress row for the player.
 type ResetRequest struct {
 	QuestID string

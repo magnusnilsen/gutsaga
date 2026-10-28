@@ -13,7 +13,6 @@ globals = {
     "SagaloreMigrate",
     "SLASH_SAGALORE1",
     "SLASH_SAGALORE2",
-    "SLASH_SAGALORE3",
     "SlashCmdList",
     "GetLocale",
     "itemCount",
