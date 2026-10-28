@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,13 @@ const (
 	bnetUserInfoURL  = "https://oauth.battle.net/userinfo"
 )
 
+// linkIntent binds the Battle.net account from this attempt to an external subject.
+type linkIntent struct {
+	Provider string
+	Subject  string
+	Email    string
+}
+
 type bnetAttempt struct {
 	verifier string
 	state    string
@@ -28,7 +36,10 @@ type bnetAttempt struct {
 	errCode  string
 	errMsg   string
 	created  time.Time
+	link     *linkIntent
 }
+
+var errBnetNotConfigured = errors.New("bnet not configured")
 
 type sessionWire struct {
 	TokenType    string `json:"token_type"`
@@ -57,30 +68,11 @@ func (f *bnetFlow) prune() {
 	}
 }
 
-func (s *Server) bnetStart(w http.ResponseWriter, r *http.Request) {
-	if strings.TrimSpace(s.bnetClientID) == "" || strings.TrimSpace(s.publicBaseURL) == "" {
-		writeErr(w, http.StatusServiceUnavailable, "bnet_not_configured", "BNET_CLIENT_ID and PUBLIC_BASE_URL are required")
-		return
-	}
-	attempt := strings.TrimSpace(r.URL.Query().Get("attempt"))
-	if attempt == "" || len(attempt) > 80 {
-		writeErr(w, http.StatusBadRequest, "invalid", "attempt is required")
-		return
-	}
-	verifier, challenge, err := pkcePair()
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	state, err := randomToken(16)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	s.bnet.mu.Lock()
-	s.bnet.prune()
-	s.bnet.attempts[attempt] = &bnetAttempt{verifier: verifier, state: state, created: s.bnet.now()}
-	s.bnet.mu.Unlock()
+func (s *Server) bnetConfigured() bool {
+	return strings.TrimSpace(s.bnetClientID) != "" && strings.TrimSpace(s.publicBaseURL) != "" && s.bnet != nil
+}
+
+func (s *Server) battleNetAuthorizeURL(state, challenge string) string {
 	q := url.Values{}
 	q.Set("client_id", s.bnetClientID)
 	q.Set("redirect_uri", s.bnetRedirect())
@@ -89,7 +81,74 @@ func (s *Server) bnetStart(w http.ResponseWriter, r *http.Request) {
 	q.Set("state", state)
 	q.Set("code_challenge", challenge)
 	q.Set("code_challenge_method", "S256")
-	http.Redirect(w, r, bnetAuthorizeURL+"?"+q.Encode(), http.StatusFound)
+	return bnetAuthorizeURL + "?" + q.Encode()
+}
+
+func (s *Server) bnetPollURL(attempt string) string {
+	path := "/v1/auth/bnet/poll?attempt=" + url.QueryEscape(attempt)
+	base := strings.TrimRight(strings.TrimSpace(s.publicBaseURL), "/")
+	if base == "" {
+		return path
+	}
+	return base + path
+}
+
+// registerBnetAttempt stores a PKCE attempt and returns the Battle.net authorize URL.
+// An empty id is generated. A non-nil link is bound to the player when the callback finishes.
+func (s *Server) registerBnetAttempt(id string, link *linkIntent) (string, string, error) {
+	if !s.bnetConfigured() {
+		return "", "", errBnetNotConfigured
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		var err error
+		id, err = randomToken(16)
+		if err != nil {
+			return "", "", err
+		}
+	}
+	if len(id) > 80 {
+		return "", "", fmt.Errorf("%w: attempt", ErrInvalid)
+	}
+	s.bnet.mu.Lock()
+	s.bnet.prune()
+	if prev := s.bnet.attempts[id]; prev != nil && prev.link != nil && link == nil && prev.session == nil && prev.errCode == "" {
+		verifier, state := prev.verifier, prev.state
+		s.bnet.mu.Unlock()
+		sum := sha256.Sum256([]byte(verifier))
+		return id, s.battleNetAuthorizeURL(state, base64.RawURLEncoding.EncodeToString(sum[:])), nil
+	}
+	s.bnet.mu.Unlock()
+	verifier, challenge, err := pkcePair()
+	if err != nil {
+		return "", "", err
+	}
+	state, err := randomToken(16)
+	if err != nil {
+		return "", "", err
+	}
+	s.bnet.mu.Lock()
+	s.bnet.attempts[id] = &bnetAttempt{verifier: verifier, state: state, link: link, created: s.bnet.now()}
+	s.bnet.mu.Unlock()
+	return id, s.battleNetAuthorizeURL(state, challenge), nil
+}
+
+func (s *Server) bnetStart(w http.ResponseWriter, r *http.Request) {
+	attempt := strings.TrimSpace(r.URL.Query().Get("attempt"))
+	if attempt == "" || len(attempt) > 80 {
+		writeErr(w, http.StatusBadRequest, "invalid", "attempt is required")
+		return
+	}
+	_, authURL, err := s.registerBnetAttempt(attempt, nil)
+	if err != nil {
+		if errors.Is(err, errBnetNotConfigured) {
+			writeErr(w, http.StatusServiceUnavailable, "bnet_not_configured", "BNET_CLIENT_ID and PUBLIC_BASE_URL are required")
+			return
+		}
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
 func (s *Server) bnetRedirect() string {
@@ -102,19 +161,25 @@ func (s *Server) bnetCallback(w http.ResponseWriter, r *http.Request) {
 	s.bnet.mu.Lock()
 	var attempt string
 	var row *bnetAttempt
+	var link *linkIntent
 	for id, a := range s.bnet.attempts {
 		if a.state == state {
 			attempt = id
 			row = a
+			link = a.link
 			break
 		}
+	}
+	verifier := ""
+	if row != nil {
+		verifier = row.verifier
 	}
 	s.bnet.mu.Unlock()
 	if row == nil || code == "" {
 		writeErr(w, http.StatusBadRequest, "invalid", "unknown Battle.net login attempt")
 		return
 	}
-	info, err := s.exchangeBnet(r.Context(), code, row.verifier)
+	info, err := s.exchangeBnet(r.Context(), code, verifier)
 	if err != nil {
 		s.bnet.mu.Lock()
 		row.errCode = "bnet_unavailable"
@@ -127,6 +192,16 @@ func (s *Server) bnetCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, err)
 		return
+	}
+	if link != nil {
+		if err := s.store.BindIdentity(r.Context(), link.Provider, link.Subject, link.Email, player.ID); err != nil {
+			s.bnet.mu.Lock()
+			row.errCode = "identity_link_failed"
+			row.errMsg = "could not link this Battle.net account"
+			s.bnet.mu.Unlock()
+			s.fail(w, err)
+			return
+		}
 	}
 	sess, err := s.store.IssueSessionFor(r.Context(), player.ID)
 	if err != nil {

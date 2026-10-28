@@ -1,5 +1,11 @@
 # Changelog
 
+## MCP identity and invites
+
+The API can serve a public Smia MCP where each caller is their own player. Set `SAGALORE_MCP_SERVICE_SECRET` (`OURSAGAS_MCP_SERVICE_SECRET` still works). Smia sends that secret plus `X-Smia-Caller` (ES256 JWT) or, until `SAGALORE_REQUIRE_SMIA_JWT=1`, `X-Sagalore-Caller-Subject` and optional `X-Sagalore-Caller-Email`. The JWT's `sub` is the Smia user id. Keys come from `{SAGALORE_SMIA_ISSUER}/.well-known/smia-caller-jwks.json` (default issuer `https://app.smia.io`). The player links Battle.net once through `POST /v1/auth/link` and the existing Battle.net callback. Unlinked callers get `identity_not_linked` and a Battle.net `link_url`. Identity is rejected without the service secret.
+
+Groups gained `GET /v1/groups/{id}/invites?status=pending` (owner or member), `DELETE /v1/groups/{id}/invites/{inviteId}` (owner), and `GET /v1/me/invites`.
+
 ## Rename: OurSagas is now Sagalore
 
 The addon, companion, and docs use the name Sagalore. The git repository stays `gutsaga`, and the Go module stays `github.com/magnusnilsen/gutsaga`.

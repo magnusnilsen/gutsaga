@@ -37,6 +37,8 @@ type Server struct {
 	bnetClientID     string
 	bnetClientSecret string
 	bnet             *bnetFlow
+	mcpServiceSecret string
+	callerVerifier   CallerVerifier
 }
 
 type ctxKey int
@@ -49,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/auth/bnet/start", s.bnetStart)
 	mux.HandleFunc("GET /v1/auth/bnet/callback", s.bnetCallback)
 	mux.HandleFunc("GET /v1/auth/bnet/poll", s.bnetPoll)
+	mux.HandleFunc("POST /v1/auth/link", s.startIdentityLink)
 	mux.HandleFunc("POST /v1/auth/dev", s.devLogin)
 	mux.HandleFunc("PUT /v1/characters", s.withPlayer(s.upsertCharacter))
 	mux.HandleFunc("PATCH /v1/characters/{id}", s.withPlayer(s.patchCharacterParticipating))
@@ -70,7 +73,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/groups", s.withMember(s.createGroup))
 	mux.HandleFunc("GET /v1/groups", s.withPlayer(s.listGroups))
 	mux.HandleFunc("GET /v1/groups/{id}/members", s.withPlayer(s.listGroupMembers))
+	mux.HandleFunc("GET /v1/groups/{id}/invites", s.withPlayer(s.listGroupInvites))
 	mux.HandleFunc("POST /v1/groups/{id}/invites", s.withMember(s.createInvite))
+	mux.HandleFunc("DELETE /v1/groups/{id}/invites/{inviteId}", s.withMember(s.revokeInvite))
+	mux.HandleFunc("GET /v1/me/invites", s.withPlayer(s.listMyInvites))
 	mux.HandleFunc("POST /v1/invites/{id}/accept", s.withPlayer(s.acceptInvite))
 	mux.HandleFunc("POST /v1/invites/{id}/decline", s.withPlayer(s.declineInvite))
 	mux.HandleFunc("POST /v1/groups/{id}/leave", s.withPlayer(s.leaveGroup))
@@ -111,6 +117,14 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) withPlayer(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if s.serviceCallerPresented(r) {
+			p, ok := s.playerFromCaller(w, r)
+			if !ok {
+				return
+			}
+			next(w, r.WithContext(context.WithValue(r.Context(), playerCtx, p)))
+			return
+		}
 		key := bearer(r)
 		if key == "" {
 			writeErr(w, http.StatusUnauthorized, "unauthorized", "missing API key")
