@@ -117,7 +117,7 @@ func TestDetectClassicFlavors(t *testing.T) {
 
 func TestAddonPaths(t *testing.T) {
 	base := filepath.Join("Wow", "forever")
-	if !strings.HasSuffix(AddonDir(base), filepath.Join("Interface", "AddOns", "OurSagas")) {
+	if !strings.HasSuffix(AddonDir(base), filepath.Join("Interface", "AddOns", "Sagalore")) {
 		t.Fatal(AddonDir(base))
 	}
 	if filepath.Base(ChatLog(base)) != "WoWChatLog.txt" {

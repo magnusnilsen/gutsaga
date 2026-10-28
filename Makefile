@@ -9,7 +9,7 @@ dev:
 	@echo ""
 	@echo "API is up at $(API_URL)"
 	@echo "Start the companion against Classic Era:"
-	@echo "  OURSAGAS_DEV_TOKEN=dev-token OURSAGAS_ADDON_SRC=addon/OurSagas go run ./cmd/oursagas --api-url $(API_URL) --client classic_era"
+	@echo "  SAGALORE_DEV_TOKEN=dev-token SAGALORE_ADDON_SRC=addon/Sagalore go run ./cmd/sagalore --api-url $(API_URL) --client classic_era"
 
 wait:
 	@i=0; until curl -sf $(API_URL)/healthz >/dev/null; do \
@@ -19,7 +19,7 @@ wait:
 	done
 
 seed:
-	OURSAGAS_BOOTSTRAP_GROUP=tutorial:Tutorial DATABASE_URL="$(DATABASE_URL)" go run ./api seed
+	SAGALORE_BOOTSTRAP_GROUP=tutorial:Tutorial DATABASE_URL="$(DATABASE_URL)" go run ./api seed
 
 down:
 	docker compose down
@@ -29,3 +29,4 @@ test:
 	lua5.1 addon/objectives_test.lua
 	lua5.1 addon/chains_test.lua
 	lua5.1 addon/invite_test.lua
+	lua5.1 addon/migrate_test.lua

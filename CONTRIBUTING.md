@@ -1,6 +1,6 @@
 # Contributing
 
-OurSagas is MIT licensed. Anyone may run it and anyone may fork it.
+Sagalore is MIT licensed. Anyone may run it and anyone may fork it.
 
 Pull requests on this repository stay limited to collaborators. If you are not a collaborator, use your fork.
 

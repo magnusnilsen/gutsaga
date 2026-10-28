@@ -16,6 +16,7 @@ import (
 
 	"github.com/magnusnilsen/gutsaga/internal/config"
 	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/magnusnilsen/gutsaga/internal/envcompat"
 	"github.com/magnusnilsen/gutsaga/internal/install"
 )
 
@@ -41,22 +42,23 @@ func (a *App) ConfigLanguage() string {
 	return a.Config.Language
 }
 
-// LoggedIn reports whether the companion has a OurSagas API credential.
+// LoggedIn reports whether the companion has a Sagalore API credential.
 func (a *App) LoggedIn() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.Config.Token() != ""
 }
 
-// Login uses OURSAGAS_DEV_TOKEN when it is set. Otherwise it opens the browser
-// on the API Battle.net start URL and polls until the API stores a session.
+// Login uses SAGALORE_DEV_TOKEN when it is set (OURSAGAS_DEV_TOKEN still works).
+// Otherwise it opens the browser on the API Battle.net start URL and polls
+// until the API stores a session.
 func (a *App) Login(ctx context.Context) error {
 	a.loginMu.Lock()
 	defer a.loginMu.Unlock()
 	a.mu.Lock()
 	a.signedOut = false
 	a.mu.Unlock()
-	if dev := strings.TrimSpace(os.Getenv("OURSAGAS_DEV_TOKEN")); dev != "" {
+	if dev := envcompat.Get("SAGALORE_DEV_TOKEN"); dev != "" {
 		out, err := a.Client.DevLogin(ctx, dev)
 		if err != nil {
 			return err
@@ -151,7 +153,7 @@ func (a *App) clearSession() {
 	a.notifyAccount()
 }
 
-// Logout clears the OurSagas session. Sync will not open the browser again
+// Logout clears the Sagalore session. Sync will not open the browser again
 // until the user chooses Log in.
 func (a *App) Logout() {
 	a.mu.Lock()

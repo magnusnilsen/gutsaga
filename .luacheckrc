@@ -2,22 +2,25 @@ std = "lua51"
 max_line_length = 160
 codes = true
 globals = {
-    "OurSagasDB",
-    "OurSagasData",
-    "OurSagasObjectives",
-    "OurSagasChains",
-    "OurSagasInvite",
-    "OurSagasLocale",
-    "OurSagasLanguage",
-    "OurSagas_L",
-    "SLASH_OURSAGAS1",
-    "SLASH_OURSAGAS2",
+    "SagaloreDB",
+    "SagaloreData",
+    "SagaloreObjectives",
+    "SagaloreChains",
+    "SagaloreInvite",
+    "SagaloreLocale",
+    "SagaloreLanguage",
+    "Sagalore_L",
+    "SagaloreMigrate",
+    "SLASH_SAGALORE1",
+    "SLASH_SAGALORE2",
+    "SLASH_SAGALORE3",
     "SlashCmdList",
     "GetLocale",
     "itemCount",
     "refresh",
 }
 read_globals = {
+    "OurSagasDB",
     "CreateFrame",
     "C_ChatInfo",
     "C_CVar",
@@ -100,9 +103,10 @@ read_globals = {
     "UIDropDownMenu_JustifyText",
 }
 exclude_files = {
-    "addon/OurSagas/OurSagasData.lua",
-    "addon/OurSagas/OurSagasLanguage.lua",
+    "addon/Sagalore/SagaloreData.lua",
+    "addon/Sagalore/SagaloreLanguage.lua",
     "addon/invite_test.lua",
     "addon/objectives_test.lua",
     "addon/chains_test.lua",
+    "addon/migrate_test.lua",
 }

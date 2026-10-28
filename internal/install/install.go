@@ -1,6 +1,8 @@
 package install
 
 import (
+	"bytes"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -8,38 +10,56 @@ import (
 	"strings"
 
 	"github.com/magnusnilsen/gutsaga/addon"
+	"github.com/magnusnilsen/gutsaga/internal/envcompat"
+	"github.com/magnusnilsen/gutsaga/internal/savedvars"
 	"github.com/magnusnilsen/gutsaga/internal/wowpath"
 )
 
-// Install copies the addon into Interface/AddOns/OurSagas.
-// When OURSAGAS_ADDON_SRC is set to an OurSagas folder (or its parent that
-// contains OurSagas/), that tree is used instead of the embedded copy — so
+// Install copies the addon into Interface/AddOns/Sagalore.
+// When SAGALORE_ADDON_SRC is set to a Sagalore folder (or its parent that
+// contains Sagalore/), that tree is used instead of the embedded copy — so
 // local go run picks up lua edits without rebuilding the binary.
-// Each flavor TOC keeps its own interface number. OurSagas.toc is the fallback
+// OURSAGAS_ADDON_SRC is still accepted.
+// Each flavor TOC keeps its own interface number. Sagalore.toc is the fallback
 // and matches mode. mode "forever" rewrites every TOC, because that client may
-// load the Mainline file. An existing OurSagasData.lua is kept.
+// load the Mainline file. An existing SagaloreData.lua is kept.
+// A previous Interface/AddOns/OurSagas folder is migrated (data file and cover
+// TGAs) and then removed so the client does not load two addons. SavedVariables
+// are copied from OurSagas.lua to Sagalore.lua.
 func Install(wowDir, mode string) error {
 	dest := wowpath.AddonDir(wowDir)
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
 	}
-	mode = wowpath.NormalizeClient(mode)
-	if src := addonSrc(); src != "" {
-		return installFromDir(src, dest, mode)
+	if err := importLegacyAddon(wowDir, dest); err != nil {
+		return err
 	}
-	return installEmbedded(dest, mode)
+	mode = wowpath.NormalizeClient(mode)
+	var err error
+	if src := addonSrc(); src != "" {
+		err = installFromDir(src, dest, mode)
+	} else {
+		err = installEmbedded(dest, mode)
+	}
+	if err != nil {
+		return err
+	}
+	if err := savedvars.MigrateOurSagas(wowDir); err != nil {
+		return err
+	}
+	return retireLegacyAddon(wowDir)
 }
 
 func addonSrc() string {
-	src := strings.TrimSpace(os.Getenv("OURSAGAS_ADDON_SRC"))
+	src := envcompat.Get("SAGALORE_ADDON_SRC")
 	if src == "" {
 		return ""
 	}
-	if st, err := os.Stat(filepath.Join(src, "OurSagas.lua")); err == nil && !st.IsDir() {
+	if st, err := os.Stat(filepath.Join(src, "Sagalore.lua")); err == nil && !st.IsDir() {
 		return src
 	}
-	nested := filepath.Join(src, "OurSagas")
-	if st, err := os.Stat(filepath.Join(nested, "OurSagas.lua")); err == nil && !st.IsDir() {
+	nested := filepath.Join(src, "Sagalore")
+	if st, err := os.Stat(filepath.Join(nested, "Sagalore.lua")); err == nil && !st.IsDir() {
 		return nested
 	}
 	return ""
@@ -47,16 +67,16 @@ func addonSrc() string {
 
 func installEmbedded(dest, mode string) error {
 	bodies, err := readTOCBodies(func(name string) ([]byte, error) {
-		return addon.Files.ReadFile("OurSagas/" + name)
+		return addon.Files.ReadFile("Sagalore/" + name)
 	})
 	if err != nil {
 		return err
 	}
-	return fs.WalkDir(addon.Files, "OurSagas", func(path string, d fs.DirEntry, err error) error {
+	return fs.WalkDir(addon.Files, "Sagalore", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		rel := strings.TrimPrefix(path, "OurSagas")
+		rel := strings.TrimPrefix(path, "Sagalore")
 		rel = strings.TrimPrefix(rel, "/")
 		if rel == "" {
 			return nil
@@ -65,7 +85,7 @@ func installEmbedded(dest, mode string) error {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		if filepath.Base(rel) == "OurSagasData.lua" {
+		if filepath.Base(rel) == "SagaloreData.lua" {
 			if _, err := os.Stat(target); err == nil {
 				return nil
 			}
@@ -103,7 +123,7 @@ func installFromDir(src, dest, mode string) error {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		if d.Name() == "OurSagasData.lua" {
+		if d.Name() == "SagaloreData.lua" {
 			if _, err := os.Stat(target); err == nil {
 				return nil
 			}
@@ -122,11 +142,11 @@ func installFromDir(src, dest, mode string) error {
 func readTOCBodies(read func(string) ([]byte, error)) (map[string][]byte, error) {
 	bodies := map[string][]byte{}
 	for _, name := range []string{
-		"OurSagas_Forever.toc",
-		"OurSagas_Mainline.toc",
-		"OurSagas_Vanilla.toc",
-		"OurSagas_Mists.toc",
-		"OurSagas_TBC.toc",
+		"Sagalore_Forever.toc",
+		"Sagalore_Mainline.toc",
+		"Sagalore_Vanilla.toc",
+		"Sagalore_Mists.toc",
+		"Sagalore_TBC.toc",
 	} {
 		body, err := read(name)
 		if err != nil {
@@ -142,11 +162,11 @@ func isTOC(name string) bool {
 }
 
 func tocBody(mode, name string, bodies map[string][]byte, original []byte) []byte {
-	forever := bodies["OurSagas_Forever.toc"]
+	forever := bodies["Sagalore_Forever.toc"]
 	if mode == "forever" {
 		return forever
 	}
-	if name != "OurSagas.toc" {
+	if name != "Sagalore.toc" {
 		if body, ok := bodies[name]; ok {
 			return body
 		}
@@ -154,13 +174,13 @@ func tocBody(mode, name string, bodies map[string][]byte, original []byte) []byt
 	}
 	switch mode {
 	case "retail":
-		return bodies["OurSagas_Mainline.toc"]
+		return bodies["Sagalore_Mainline.toc"]
 	case "classic_era":
-		return bodies["OurSagas_Vanilla.toc"]
+		return bodies["Sagalore_Vanilla.toc"]
 	case "classic":
-		return bodies["OurSagas_Mists.toc"]
+		return bodies["Sagalore_Mists.toc"]
 	case "anniversary":
-		return bodies["OurSagas_TBC.toc"]
+		return bodies["Sagalore_TBC.toc"]
 	default:
 		return forever
 	}
@@ -169,13 +189,119 @@ func tocBody(mode, name string, bodies map[string][]byte, original []byte) []byt
 // WriteLanguage records the companion language for the addon. Empty means the
 // addon uses GetLocale() when that catalog exists.
 func WriteLanguage(wowDir, lang string) error {
-	path := filepath.Join(wowpath.AddonDir(wowDir), "OurSagasLanguage.lua")
-	body := []byte("OurSagasLanguage = nil\n")
+	path := filepath.Join(wowpath.AddonDir(wowDir), "SagaloreLanguage.lua")
+	body := []byte("SagaloreLanguage = nil\n")
 	switch strings.ToLower(strings.TrimSpace(lang)) {
 	case "en", "nb":
-		body = []byte("OurSagasLanguage = \"" + strings.ToLower(strings.TrimSpace(lang)) + "\"\n")
+		body = []byte("SagaloreLanguage = \"" + strings.ToLower(strings.TrimSpace(lang)) + "\"\n")
 	}
 	return writeFile(path, body)
+}
+
+func legacyAddonDir(wowDir string) string {
+	return filepath.Join(wowDir, "Interface", "AddOns", "OurSagas")
+}
+
+func sameDir(a, b string) bool {
+	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
+}
+
+// importLegacyAddon copies the generated data file and cover TGAs out of
+// Interface/AddOns/OurSagas before that folder is removed. Code and textures
+// come from the new embed. An existing Sagalore file is kept.
+func importLegacyAddon(wowDir, dest string) error {
+	legacy := legacyAddonDir(wowDir)
+	if sameDir(legacy, dest) {
+		return nil
+	}
+	st, err := os.Stat(legacy)
+	if err != nil || !st.IsDir() {
+		return nil
+	}
+	if err := importLegacyData(legacy, dest); err != nil {
+		return err
+	}
+	return importLegacyMedia(legacy, dest)
+}
+
+func importLegacyData(legacy, dest string) error {
+	target := filepath.Join(dest, "SagaloreData.lua")
+	if _, err := os.Stat(target); err == nil {
+		return nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	body, err := os.ReadFile(filepath.Join(legacy, "OurSagasData.lua"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	// Rename the global and the generated header only. Saga text in the file
+	// can contain the old product name and must stay as the player wrote it.
+	body = bytes.ReplaceAll(body, []byte("OurSagasData"), []byte("SagaloreData"))
+	body = bytes.ReplaceAll(body, []byte("OurSagas companion"), []byte("Sagalore companion"))
+	return writeFile(target, body)
+}
+
+func importLegacyMedia(legacy, dest string) error {
+	src := filepath.Join(legacy, "media")
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	media := filepath.Join(dest, "media")
+	if err := os.MkdirAll(media, 0o755); err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasSuffix(strings.ToLower(name), ".tga") {
+			continue
+		}
+		target := filepath.Join(media, name)
+		if _, err := os.Stat(target); err == nil {
+			continue
+		} else if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		body, err := os.ReadFile(filepath.Join(src, name))
+		if err != nil {
+			return err
+		}
+		if err := writeFile(target, body); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// retireLegacyAddon removes Interface/AddOns/OurSagas so the client does not
+// load the old addon beside Sagalore. If the folder is locked, it is renamed
+// to OurSagas.disabled, which WoW will not load.
+func retireLegacyAddon(wowDir string) error {
+	legacy := legacyAddonDir(wowDir)
+	if sameDir(legacy, wowpath.AddonDir(wowDir)) {
+		return nil
+	}
+	if _, err := os.Stat(legacy); err != nil {
+		return nil
+	}
+	if err := os.RemoveAll(legacy); err != nil {
+		disabled := legacy + ".disabled"
+		_ = os.RemoveAll(disabled)
+		if renErr := os.Rename(legacy, disabled); renErr != nil {
+			return fmt.Errorf("remove Interface/AddOns/OurSagas: %w", err)
+		}
+	}
+	return nil
 }
 
 func writeFile(path string, body []byte) error {

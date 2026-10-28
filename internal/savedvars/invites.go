@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// PendingInvite is one accept/decline the addon queued under OurSagasDB.pending_invites.
+// PendingInvite is one accept/decline the addon queued under SagaloreDB.pending_invites.
 // Classic Era chat logging does not capture AddMessage, so the companion polls these.
 type PendingInvite struct {
 	Action string
@@ -23,7 +23,7 @@ var (
 	inviteAt     = regexp.MustCompile(`\["at"\]\s*=\s*(-?\d+)`)
 )
 
-// ParsePendingInvites extracts OurSagasDB.pending_invites from one SavedVariables file.
+// ParsePendingInvites extracts SagaloreDB.pending_invites from one SavedVariables file.
 func ParsePendingInvites(path, body string) []PendingInvite {
 	start := strings.Index(body, `["pending_invites"]`)
 	if start < 0 {
@@ -79,9 +79,9 @@ func ParsePendingInvites(path, body string) []PendingInvite {
 	return out
 }
 
-// ReadPendingInvites loads pending invite answers from every OurSagas SavedVariables file.
+// ReadPendingInvites loads pending invite answers from every Sagalore SavedVariables file.
 func ReadPendingInvites(wowDir string) ([]PendingInvite, error) {
-	files, err := ListOurSagasFiles(wowDir)
+	files, err := ListSagaloreFiles(wowDir)
 	if err != nil {
 		return nil, err
 	}

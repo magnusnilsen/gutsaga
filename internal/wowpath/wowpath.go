@@ -243,7 +243,7 @@ func DetectClient(configured string, candidates []string, client string) (string
 }
 
 func AddonDir(wow string) string {
-	return filepath.Join(wow, "Interface", "AddOns", "OurSagas")
+	return filepath.Join(wow, "Interface", "AddOns", "Sagalore")
 }
 
 func ChatLog(wow string) string { return filepath.Join(wow, "Logs", "WoWChatLog.txt") }

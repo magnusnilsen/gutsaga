@@ -1,12 +1,12 @@
 openapi: 3.0.3
 info:
-  title: OurSagas API
+  title: Sagalore API
   version: "0.2.0"
   description: |
     Battle.net login, groups, and sagas. Sessions are gss_. Personal tokens are gst_.
     ADMIN_TOKEN cannot author sagas. See docs/API.md.
 servers:
-  - url: https://oursagas.example.com
+  - url: https://sagalore.example.com
 paths:
   /healthz:
     get:

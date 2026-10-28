@@ -1,10 +1,10 @@
 -- Invite dialog outcomes, snooze across a simulated reload, and English fallback.
 local dir = arg[0]:match("^(.*)/") or "."
 
-dofile(dir .. "/OurSagas/Locales/enUS.lua")
-dofile(dir .. "/OurSagas/Locales/nbNO.lua")
-dofile(dir .. "/OurSagas/Locales/locale.lua")
-local Invite = dofile(dir .. "/OurSagas/OurSagasInvite.lua")
+dofile(dir .. "/Sagalore/Locales/enUS.lua")
+dofile(dir .. "/Sagalore/Locales/nbNO.lua")
+dofile(dir .. "/Sagalore/Locales/locale.lua")
+local Invite = dofile(dir .. "/Sagalore/SagaloreInvite.lua")
 
 local function assertTrue(cond, msg)
     if not cond then
@@ -13,8 +13,8 @@ local function assertTrue(cond, msg)
 end
 
 local id = "11111111-1111-1111-1111-111111111111"
-assertTrue(Invite.line("accept", id) == "[OurSagas] INVITE accept|" .. id, "accept line")
-assertTrue(Invite.line("decline", id) == "[OurSagas] INVITE decline|" .. id, "decline line")
+assertTrue(Invite.line("accept", id) == "[Sagalore] INVITE accept|" .. id, "accept line")
+assertTrue(Invite.line("decline", id) == "[Sagalore] INVITE decline|" .. id, "decline line")
 assertTrue(Invite.line("later", id) == nil, "later is client-only")
 
 local db = {}
@@ -42,21 +42,21 @@ assertTrue(prompt and prompt.key == "invite.include" and prompt.group == "Gutar"
 Invite.snooze(db, id2, now)
 assertTrue(Invite.prompt(db, character, data, now + 5) == nil, "snooze hides the dialog")
 
-OurSagasLanguage = "nb"
-assertTrue(OurSagas_L("invite.join") == "Bli med i %s?", "nb join")
-assertTrue(OurSagas_L("invite.accept") == "Ja", "nb accept")
-assertTrue(OurSagas_L("invite.decline") == "Nei", "nb decline")
-assertTrue(OurSagas_L("invite.later") == "Ikke nå", "nb later")
+SagaloreLanguage = "nb"
+assertTrue(Sagalore_L("invite.join") == "Bli med i %s?", "nb join")
+assertTrue(Sagalore_L("invite.accept") == "Ja", "nb accept")
+assertTrue(Sagalore_L("invite.decline") == "Nei", "nb decline")
+assertTrue(Sagalore_L("invite.later") == "Ikke nå", "nb later")
 
-OurSagasLocale.en["test.only_en"] = "English fallback"
-OurSagasLanguage = "nb"
-assertTrue(OurSagas_L("test.only_en") == "English fallback", "missing nb key uses English")
+SagaloreLocale.en["test.only_en"] = "English fallback"
+SagaloreLanguage = "nb"
+assertTrue(Sagalore_L("test.only_en") == "English fallback", "missing nb key uses English")
 
-OurSagasLanguage = "en"
-assertTrue(OurSagas_L("invite.join") == "Join %s?", "en join")
+SagaloreLanguage = "en"
+assertTrue(Sagalore_L("invite.join") == "Join %s?", "en join")
 
-for key in pairs(OurSagasLocale.nb) do
-    if OurSagasLocale.en[key] == nil then
+for key in pairs(SagaloreLocale.nb) do
+    if SagaloreLocale.en[key] == nil then
         error("nb key missing from en: " .. key)
     end
 end

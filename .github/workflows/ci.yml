@@ -37,7 +37,7 @@ jobs:
       - name: Build API and Windows companion
         run: |
           CGO_ENABLED=0 go build -o /tmp/gutsaga-api ./api
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/oursagas.exe ./cmd/oursagas
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/sagalore.exe ./cmd/sagalore
       - name: luacheck
         run: |
           sudo apt-get update
@@ -47,6 +47,7 @@ jobs:
           lua5.1 addon/objectives_test.lua
           lua5.1 addon/chains_test.lua
           lua5.1 addon/invite_test.lua
+          lua5.1 addon/migrate_test.lua
 
   version:
     runs-on: ubuntu-latest
@@ -70,17 +71,17 @@ jobs:
           - os: macos-latest
             goos: darwin
             goarch: arm64
-            asset: oursagas-darwin-arm64
+            asset: sagalore-darwin-arm64
             cgo: "1"
           - os: macos-latest
             goos: darwin
             goarch: amd64
-            asset: oursagas-darwin-amd64
+            asset: sagalore-darwin-amd64
             cgo: "1"
           - os: windows-latest
             goos: windows
             goarch: amd64
-            asset: oursagas-windows-amd64.exe
+            asset: sagalore-windows-amd64.exe
             cgo: "0"
     steps:
       - uses: actions/checkout@v4
@@ -95,14 +96,15 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           VERSION: ${{ needs.version.outputs.version }}
           # Official builds bake the public API URL. Empty leaves --api-url required.
-          OURSAGAS_API_URL: ${{ vars.OURSAGAS_API_URL }}
+          # SAGALORE_API_URL replaces the repository variable OURSAGAS_API_URL.
+          SAGALORE_API_URL: ${{ vars.SAGALORE_API_URL || vars.OURSAGAS_API_URL }}
         run: |
           if [ "$GOOS" = "darwin" ] && [ "$GOARCH" = "amd64" ]; then
             export CC="clang -arch x86_64"
             export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
           fi
           mkdir -p dist
-          go build -trimpath -ldflags "-s -w -X github.com/magnusnilsen/gutsaga/internal/version.Version=${VERSION} -X github.com/magnusnilsen/gutsaga/internal/version.DefaultAPIBaseURL=${OURSAGAS_API_URL}" -o "dist/${{ matrix.asset }}" ./cmd/oursagas
+          go build -trimpath -ldflags "-s -w -X github.com/magnusnilsen/gutsaga/internal/version.Version=${VERSION} -X github.com/magnusnilsen/gutsaga/internal/version.DefaultAPIBaseURL=${SAGALORE_API_URL}" -o "dist/${{ matrix.asset }}" ./cmd/sagalore
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
@@ -121,8 +123,13 @@ jobs:
           merge-multiple: true
       - name: Package addon and checksums
         run: |
-          (cd addon && zip -r ../dist/OurSagas-addon.zip OurSagas)
+          (cd addon && zip -r ../dist/Sagalore-addon.zip Sagalore)
           cd dist
+          # Older companions still look up the previous asset names.
+          cp Sagalore-addon.zip OurSagas-addon.zip
+          for f in sagalore-*; do
+            cp "$f" "oursagas-${f#sagalore-}"
+          done
           sha256sum * > SHA256SUMS
       - name: Publish GitHub release
         env:
@@ -141,14 +148,16 @@ jobs:
             echo ""
             echo "## Last ned"
             echo ""
-            echo "- \`oursagas-darwin-arm64\` and \`oursagas-darwin-amd64\` (macOS)"
-            echo "- \`oursagas-windows-amd64.exe\`"
-            echo "- \`OurSagas-addon.zip\`"
+            echo "- \`sagalore-darwin-arm64\` and \`sagalore-darwin-amd64\` (macOS)"
+            echo "- \`sagalore-windows-amd64.exe\`"
+            echo "- \`Sagalore-addon.zip\`"
             echo "- \`SHA256SUMS\`"
+            echo ""
+            echo "The product was renamed from OurSagas to Sagalore. \`oursagas-*\` and \`OurSagas-addon.zip\` are the same files, so a companion that still looks up the old names can update once."
             echo ""
             echo "The binaries are not signed."
           } >> notes.md
           gh release create "v${VERSION}" dist/* \
             --target "${GITHUB_SHA}" \
-            --title "OurSagas v${VERSION}" \
+            --title "Sagalore v${VERSION}" \
             --notes-file notes.md

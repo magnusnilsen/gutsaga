@@ -18,7 +18,7 @@ function M.line(action, id)
     if action ~= "accept" and action ~= "decline" then
         return nil
     end
-    return "[OurSagas] INVITE " .. action .. "|" .. id
+    return "[Sagalore] INVITE " .. action .. "|" .. id
 end
 
 function M.snooze(db, id, now)
@@ -42,7 +42,7 @@ function M.snoozed(db, id, now)
 end
 
 -- markAnswered hides an invite locally after Accept/Decline so the next one can show
--- before the companion rewrites OurSagasData.
+-- before the companion rewrites SagaloreData.
 function M.markAnswered(db, id)
     if type(db) ~= "table" or type(id) ~= "string" or id == "" then
         return
@@ -92,5 +92,5 @@ function M.prompt(db, character, data, now)
     return nil
 end
 
-OurSagasInvite = M
+SagaloreInvite = M
 return M

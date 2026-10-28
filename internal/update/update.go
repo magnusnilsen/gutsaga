@@ -27,14 +27,14 @@ type Release struct {
 }
 
 func AssetName(goos, goarch string) string {
-	name := "oursagas-" + goos + "-" + goarch
+	name := "sagalore-" + goos + "-" + goarch
 	if goos == "windows" {
 		name += ".exe"
 	}
 	return name
 }
 
-const AddonZip = "OurSagas-addon.zip"
+const AddonZip = "Sagalore-addon.zip"
 
 // Newer reports whether latest should replace current.
 // Development builds (version containing "dev") never auto-update.
@@ -92,7 +92,7 @@ func (c *Client) Latest(ctx context.Context, repo string) (Release, error) {
 		return Release{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "OurSagas")
+	req.Header.Set("User-Agent", "Sagalore")
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
@@ -117,7 +117,7 @@ func (c *Client) Download(ctx context.Context, asset Asset) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/octet-stream")
-	req.Header.Set("User-Agent", "OurSagas")
+	req.Header.Set("User-Agent", "Sagalore")
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}

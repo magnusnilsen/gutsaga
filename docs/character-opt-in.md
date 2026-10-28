@@ -9,4 +9,4 @@ A character is not a login. The addon `CHARACTER` line reports name, realm, leve
 
 `PATCH /v1/characters/{id}` with `{"participating": true}` is the same switch for a client that is not the addon.
 
-WoW Forever characters are not listed by Blizzard's profile API. OurSagas does not block on that. An optional later flag may record that the profile API confirmed a character. It is not required to play.
+WoW Forever characters are not listed by Blizzard's profile API. Sagalore does not block on that. An optional later flag may record that the profile API confirmed a character. It is not required to play.

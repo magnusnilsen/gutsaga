@@ -120,7 +120,7 @@ func TestReloadNews(t *testing.T) {
 
 func TestLuaNotice(t *testing.T) {
 	lua := WriteLuaFile("Magnus#2231", "t", nil, `New saga: Say "hi" is loaded.`, "id-1")
-	if !strings.Contains(lua, `notice = "New saga: Say \"hi\" is loaded."`) || !strings.Contains(lua, `notice_id = "id-1"`) || !strings.Contains(lua, "OurSagasData") {
+	if !strings.Contains(lua, `notice = "New saga: Say \"hi\" is loaded."`) || !strings.Contains(lua, `notice_id = "id-1"`) || !strings.Contains(lua, "SagaloreData") {
 		t.Fatal(lua)
 	}
 	if strings.Contains(WriteLua("Magnus#2231", "t", nil), "notice") {

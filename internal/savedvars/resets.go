@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// ResetRequest is one /oursagas reset the addon queued for the companion.
+// ResetRequest is one /sagalore reset the addon queued for the companion.
 // QuestID empty (or All) means wipe every progress row for the player.
 type ResetRequest struct {
 	QuestID string
@@ -23,7 +23,7 @@ var (
 	resetAt    = regexp.MustCompile(`\["at"\]\s*=\s*(-?\d+)`)
 )
 
-// ParseResets extracts OurSagasDB.pending_resets from one SavedVariables file.
+// ParseResets extracts SagaloreDB.pending_resets from one SavedVariables file.
 func ParseResets(path, body string) []ResetRequest {
 	start := strings.Index(body, `["pending_resets"]`)
 	if start < 0 {
@@ -79,9 +79,9 @@ func ParseResets(path, body string) []ResetRequest {
 	return out
 }
 
-// ReadResets loads pending reset requests from every OurSagas SavedVariables file.
+// ReadResets loads pending reset requests from every Sagalore SavedVariables file.
 func ReadResets(wowDir string) ([]ResetRequest, error) {
-	files, err := ListOurSagasFiles(wowDir)
+	files, err := ListSagaloreFiles(wowDir)
 	if err != nil {
 		return nil, err
 	}

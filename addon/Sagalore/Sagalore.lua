@@ -1,15 +1,16 @@
--- OurSagas quest log for Forever, retail Midnight, Classic Era, and Classic (Mists).
+-- Sagalore quest log for Forever, retail Midnight, Classic Era, and Classic (Mists).
 -- Interface numbers live in the .toc files (see addon/INTERFACE).
--- Completions are stored in OurSagasDB (SavedVariables). On Classic Era the
+-- Completions are stored in SagaloreDB (SavedVariables). On Classic Era the
 -- companion reads those after /reload or logout — live chat-log signaling is parked.
 -- There is no completion button. Goals may complete in any order unless
 -- objectives_ordered is true on the saga.
 
-local PREFIX = "OurSagas"
+local PREFIX = "Sagalore"
+local LEGACY_PREFIX = "OurSagas"
 
 local function L(key)
-    if type(OurSagas_L) == "function" then
-        local value = OurSagas_L(key)
+    if type(Sagalore_L) == "function" then
+        local value = Sagalore_L(key)
         if type(value) == "string" and value ~= "" then
             return value
         end
@@ -114,9 +115,9 @@ end
 
 -- Machine COMPLETE/CHARACTER/LEVELUP lines are parked on Classic Era: chat
 -- logging does not reliably accept addon SendChatMessage (taint / no flush).
--- Completions go to OurSagasDB and reach Discord after /reload via the companion.
+-- Completions go to SagaloreDB and reach Discord after /reload via the companion.
 local function chat(line)
-    -- Machine lines ([OurSagas] CHARACTER / COMPLETE / LEVELUP / INVITE) must
+    -- Machine lines ([Sagalore] CHARACTER / COMPLETE / LEVELUP / INVITE) must
     -- reach the chat log so the companion can post them. The addon has no HTTP.
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         DEFAULT_CHAT_FRAME:AddMessage(line)
@@ -142,20 +143,23 @@ local function sendAddon(prefix, message, channel)
 end
 
 local function initDB()
-    if type(OurSagasDB) ~= "table" then
-        OurSagasDB = {}
+    if type(SagaloreMigrate) == "table" and type(SagaloreMigrate.apply) == "function" then
+        SagaloreDB = SagaloreMigrate.apply(SagaloreDB, OurSagasDB)
     end
-    if type(OurSagasDB.completions) ~= "table" then
-        OurSagasDB.completions = {}
+    if type(SagaloreDB) ~= "table" then
+        SagaloreDB = {}
     end
-    if type(OurSagasDB.objectives) ~= "table" then
-        OurSagasDB.objectives = {}
+    if type(SagaloreDB.completions) ~= "table" then
+        SagaloreDB.completions = {}
     end
-    if type(OurSagasDB.pending_resets) ~= "table" then
-        OurSagasDB.pending_resets = {}
+    if type(SagaloreDB.objectives) ~= "table" then
+        SagaloreDB.objectives = {}
     end
-    if type(OurSagasDB.read) ~= "table" then
-        OurSagasDB.read = {}
+    if type(SagaloreDB.pending_resets) ~= "table" then
+        SagaloreDB.pending_resets = {}
+    end
+    if type(SagaloreDB.read) ~= "table" then
+        SagaloreDB.read = {}
     end
 end
 
@@ -172,28 +176,28 @@ local function queueReset(questID)
     else
         row.all = true
     end
-    table.insert(OurSagasDB.pending_resets, row)
+    table.insert(SagaloreDB.pending_resets, row)
 end
 
--- OurSagasData is only read at login and /reload. The companion writes notice
+-- SagaloreData is only read at login and /reload. The companion writes notice
 -- into that file when a saga changed, and shows the "skriv /reload" banner
 -- on the desktop because it cannot type into the client. After /reload this
 -- prints the notice once per character.
 local function showFreshNotice()
-    if type(OurSagasData) ~= "table" then
+    if type(SagaloreData) ~= "table" then
         return
     end
-    local id = OurSagasData.notice_id
-    local text = OurSagasData.notice
+    local id = SagaloreData.notice_id
+    local text = SagaloreData.notice
     if type(id) ~= "string" or id == "" or type(text) ~= "string" or text == "" then
         return
     end
     initDB()
-    if OurSagasDB.seen_notice == id then
+    if SagaloreDB.seen_notice == id then
         return
     end
-    OurSagasDB.seen_notice = id
-    chat("|cffc9a227OurSagas|r: " .. text)
+    SagaloreDB.seen_notice = id
+    chat("|cffc9a227Sagalore|r: " .. text)
 end
 
 local function pipe(s)
@@ -295,7 +299,7 @@ local function emitCharacter()
         return
     end
     local line = string.format(
-        "[OurSagas] CHARACTER %s|%s|%d|%s|%s|%s|%d",
+        "[Sagalore] CHARACTER %s|%s|%d|%s|%s|%s|%d",
         pipe(player.name), pipe(player.realm), player.level,
         pipe(player.race), pipe(player.class), pipe(player.battletag), unixNow()
     )
@@ -314,8 +318,8 @@ local function isComplete(entry)
         return true
     end
     local id = entry.saga_id
-    return type(id) == "string" and type(OurSagasDB) == "table"
-        and type(OurSagasDB.completions) == "table" and OurSagasDB.completions[id] ~= nil
+    return type(id) == "string" and type(SagaloreDB) == "table"
+        and type(SagaloreDB.completions) == "table" and SagaloreDB.completions[id] ~= nil
 end
 
 -- WoW-style quest-log colors from saga min_level vs player level.
@@ -356,10 +360,10 @@ end
 
 local function currentEntries()
     local out = {}
-    if player.name == "" or type(OurSagasData) ~= "table" or type(OurSagasData.entries) ~= "table" then
+    if player.name == "" or type(SagaloreData) ~= "table" or type(SagaloreData.entries) ~= "table" then
         return out
     end
-    for _, entry in ipairs(OurSagasData.entries) do
+    for _, entry in ipairs(SagaloreData.entries) do
         if type(entry) == "table" and same(entry.character, player.name) then
             local realm = entry.realm
             if type(realm) ~= "string" or realm == "" or player.realm == "" or same(realm, player.realm) then
@@ -408,7 +412,7 @@ local function findEntry(id)
     return nil
 end
 
--- OurSagasDB is SavedVariablesPerCharacter, so read state is already per toon.
+-- SagaloreDB is SavedVariablesPerCharacter, so read state is already per toon.
 -- Flat map: read[saga_id] = true. read_bootstrapped means the one-time
 -- upgrade seed already ran. Incomplete sagas missing from read are unread.
 local function flattenReadMap(raw)
@@ -433,14 +437,14 @@ end
 
 local function ensureReadMap()
     initDB()
-    if OurSagasDB.read_bootstrapped then
-        OurSagasDB.read = flattenReadMap(OurSagasDB.read)
-        return OurSagasDB.read
+    if SagaloreDB.read_bootstrapped then
+        SagaloreDB.read = flattenReadMap(SagaloreDB.read)
+        return SagaloreDB.read
     end
 
-    local flat = flattenReadMap(OurSagasDB.read)
+    local flat = flattenReadMap(SagaloreDB.read)
     -- First run: seed every saga already in the log as read so an upgrade is
-    -- not a wall of blue. /oursagas wipe|unread clears this for playtesting.
+    -- not a wall of blue. /sagalore wipe|unread clears this for playtesting.
     local entries = currentEntries()
     for i = 1, #entries do
         local id = entries[i].saga_id
@@ -448,9 +452,9 @@ local function ensureReadMap()
             flat[id] = true
         end
     end
-    OurSagasDB.read = flat
-    OurSagasDB.read_bootstrapped = true
-    return OurSagasDB.read
+    SagaloreDB.read = flat
+    SagaloreDB.read_bootstrapped = true
+    return SagaloreDB.read
 end
 
 local function markRead(questID)
@@ -464,13 +468,13 @@ end
 -- Mark every incomplete saga unread (and drop completed ids from the map).
 local function markAllUnread()
     initDB()
-    OurSagasDB.read = {}
-    OurSagasDB.read_bootstrapped = true
+    SagaloreDB.read = {}
+    SagaloreDB.read_bootstrapped = true
     local entries = currentEntries()
     for i = 1, #entries do
         local e = entries[i]
         if isComplete(e) and type(e.saga_id) == "string" then
-            OurSagasDB.read[e.saga_id] = true
+            SagaloreDB.read[e.saga_id] = true
         end
     end
 end
@@ -522,7 +526,7 @@ local function paintUnreadDot(tex)
     if not tex then
         return
     end
-    tex:SetTexture("Interface\\AddOns\\OurSagas\\unread")
+    tex:SetTexture("Interface\\AddOns\\Sagalore\\unread")
     tex:SetVertexColor(UNREAD_BLUE.r, UNREAD_BLUE.g, UNREAD_BLUE.b)
     if tex.SetAlpha then
         tex:SetAlpha(1)
@@ -698,7 +702,7 @@ local function activityList(entry)
     -- Local finishes before the companion has synced them to the API.
     if type(entry) == "table" and type(entry.saga_id) == "string" then
         initDB()
-        local localDone = OurSagasDB.completions and OurSagasDB.completions[entry.saga_id]
+        local localDone = SagaloreDB.completions and SagaloreDB.completions[entry.saga_id]
         if type(localDone) == "table" then
             add({
                 character = localDone.character or player.name,
@@ -723,10 +727,10 @@ end
 local function savedSteps(entry)
     initDB()
     local version = tonumber(entry.saga_version) or 0
-    local bucket = OurSagasDB.objectives[entry.saga_id]
+    local bucket = SagaloreDB.objectives[entry.saga_id]
     if type(bucket) ~= "table" or tonumber(bucket.version) ~= version then
         bucket = { version = version, steps = {} }
-        OurSagasDB.objectives[entry.saga_id] = bucket
+        SagaloreDB.objectives[entry.saga_id] = bucket
     end
     if type(bucket.steps) ~= "table" then
         bucket.steps = {}
@@ -809,8 +813,8 @@ end
 
 local function completionSet()
     local done = {}
-    if type(OurSagasDB) == "table" and type(OurSagasDB.completions) == "table" then
-        for id in pairs(OurSagasDB.completions) do
+    if type(SagaloreDB) == "table" and type(SagaloreDB.completions) == "table" then
+        for id in pairs(SagaloreDB.completions) do
             if type(id) == "string" then
                 done[id] = true
             end
@@ -820,10 +824,10 @@ local function completionSet()
 end
 
 local function entryLocked(entry, entries)
-    if type(entry) ~= "table" or type(OurSagasChains) ~= "table" or type(OurSagasChains.isLocked) ~= "function" then
+    if type(entry) ~= "table" or type(SagaloreChains) ~= "table" or type(SagaloreChains.isLocked) ~= "function" then
         return false
     end
-    return OurSagasChains.isLocked(entry, entries, completionSet()) and true or false
+    return SagaloreChains.isLocked(entry, entries, completionSet()) and true or false
 end
 
 local function entryIsGroup(entry)
@@ -861,7 +865,7 @@ local function loadFilters()
     end
     filtersLoaded = true
     initDB()
-    local saved = OurSagasDB.filters
+    local saved = SagaloreDB.filters
     if type(saved) ~= "table" then
         return
     end
@@ -906,7 +910,7 @@ local function saveFilters()
             hiddenGroups[name] = true
         end
     end
-    OurSagasDB.filters = {
+    SagaloreDB.filters = {
         status = {
             open = statusFilter.open ~= false,
             locked = statusFilter.locked ~= false,
@@ -1126,18 +1130,18 @@ local function listSubtitle(entry, entries)
     if group ~= "" then
         fallback = string.format(L("ui.group_by"), group, fallback)
     end
-    if type(OurSagasChains) ~= "table" or type(OurSagasChains.listSub) ~= "function" then
+    if type(SagaloreChains) ~= "table" or type(SagaloreChains.listSub) ~= "function" then
         return fallback
     end
-    return OurSagasChains.listSub(entry, entries, completionSet(), fallback)
+    return SagaloreChains.listSub(entry, entries, completionSet(), fallback)
 end
 
 local function sectionExpanded(key, defaultOpen)
     initDB()
-    if type(OurSagasDB.sections) ~= "table" then
-        OurSagasDB.sections = {}
+    if type(SagaloreDB.sections) ~= "table" then
+        SagaloreDB.sections = {}
     end
-    local v = OurSagasDB.sections[key]
+    local v = SagaloreDB.sections[key]
     if v == nil then
         return defaultOpen
     end
@@ -1146,10 +1150,10 @@ end
 
 local function setSectionExpanded(key, open)
     initDB()
-    if type(OurSagasDB.sections) ~= "table" then
-        OurSagasDB.sections = {}
+    if type(SagaloreDB.sections) ~= "table" then
+        SagaloreDB.sections = {}
     end
-    OurSagasDB.sections[key] = open and true or false
+    SagaloreDB.sections[key] = open and true or false
 end
 
 readClocks = function()
@@ -1321,8 +1325,8 @@ local function timeHint(when, done, clocks)
     if type(when) ~= "table" then
         return ""
     end
-    if OurSagasObjectives and type(OurSagasObjectives.timeHint) == "function" then
-        return OurSagasObjectives.timeHint(when, clocks, done) or ""
+    if SagaloreObjectives and type(SagaloreObjectives.timeHint) == "function" then
+        return SagaloreObjectives.timeHint(when, clocks, done) or ""
     end
     return ""
 end
@@ -1445,11 +1449,11 @@ local function objectiveLines(entry)
     for i, obj in ipairs(objs) do
         addObj(obj, i, 0)
     end
-    if type(entry.when) == "table" and OurSagasObjectives and OurSagasObjectives.timeOpen then
-        local open = OurSagasObjectives.timeOpen(entry.when, clocks)
+    if type(entry.when) == "table" and SagaloreObjectives and SagaloreObjectives.timeOpen then
+        local open = SagaloreObjectives.timeOpen(entry.when, clocks)
         table.insert(lines, { done = open, text = "Tid" .. timeHint(entry.when, open, clocks) })
     end
-    if type(entry.group) == "table" and tonumber(entry.group.size) and readGroup and OurSagasObjectives and OurSagasObjectives.groupOK then
+    if type(entry.group) == "table" and tonumber(entry.group.size) and readGroup and SagaloreObjectives and SagaloreObjectives.groupOK then
         local group = readGroup()
         local minLevel = tonumber(entry.group.min_level) or 1
         local have = 0
@@ -1465,7 +1469,7 @@ local function objectiveLines(entry)
         if type(entry.group.instance) == "string" and entry.group.instance ~= "" then
             label = label .. " i " .. entry.group.instance
         end
-        table.insert(lines, { done = OurSagasObjectives.groupOK(entry.group, group), text = label })
+        table.insert(lines, { done = SagaloreObjectives.groupOK(entry.group, group), text = label })
     end
     return lines
 end
@@ -1788,7 +1792,7 @@ local function objectiveState(entries)
 end
 
 local function checkAll()
-    if checking or type(OurSagasObjectives) ~= "table" or type(OurSagasObjectives.evaluate) ~= "function" then
+    if checking or type(SagaloreObjectives) ~= "table" or type(SagaloreObjectives.evaluate) ~= "function" then
         return
     end
     checking = true
@@ -1808,7 +1812,7 @@ local function checkAll()
                 local bucket = savedSteps(entry)
                 local ordered = entry.objectives_ordered and true or false
                 state.attests = world.attests[entry.saga_id]
-                local steps, done = OurSagasObjectives.evaluate(entry.objectives, state, bucket.steps, ordered, entry.when)
+                local steps, done = SagaloreObjectives.evaluate(entry.objectives, state, bucket.steps, ordered, entry.when)
                 if state.emote and state.emote ~= "" then
                     for _, row in pairs(steps) do
                         if type(row) == "table" and row.consumed_emote then
@@ -1819,8 +1823,8 @@ local function checkAll()
                 end
                 bucket.steps = steps
                 local groupReady = true
-                if type(entry.group) == "table" and OurSagasObjectives.groupOK then
-                    groupReady = OurSagasObjectives.groupOK(entry.group, group)
+                if type(entry.group) == "table" and SagaloreObjectives.groupOK then
+                    groupReady = SagaloreObjectives.groupOK(entry.group, group)
                 end
                 if done and groupReady then
                     finishQuest(entry, group)
@@ -1834,7 +1838,7 @@ local function checkAll()
     checking = false
     if not ok and err ~= lastCheckError then
         lastCheckError = err
-        chat("[OurSagas] feil: " .. tostring(err))
+        chat("[Sagalore] feil: " .. tostring(err))
     elseif ok then
         lastCheckError = ""
     end
@@ -2219,7 +2223,7 @@ refresh = function()
         end
         if player.name == "" then
             detailFS:SetText(L("ui.login_character"))
-        elseif type(OurSagasData) ~= "table" or type(OurSagasData.entries) ~= "table" or #OurSagasData.entries == 0 then
+        elseif type(SagaloreData) ~= "table" or type(SagaloreData.entries) ~= "table" or #SagaloreData.entries == 0 then
             detailFS:SetText(L("ui.no_sagas"))
         else
             detailFS:SetText(string.format(L("ui.no_sagas_for"), player.name))
@@ -2241,8 +2245,8 @@ refresh = function()
         detailY = detailY + (detailTitle:GetStringHeight() or 20) + 8
 
         local meta = ""
-        if type(OurSagasChains) == "table" and type(OurSagasChains.detailLines) == "function" then
-            meta = OurSagasChains.detailLines(selectedEntry, entries, completionSet()) or ""
+        if type(SagaloreChains) == "table" and type(SagaloreChains.detailLines) == "function" then
+            meta = SagaloreChains.detailLines(selectedEntry, entries, completionSet()) or ""
         end
         if detailMeta then
             if meta ~= "" then
@@ -2286,19 +2290,19 @@ refresh = function()
         row:SetWidth(rowWidth)
         row:Show()
         if goal.done then
-            row.box:SetTexture("Interface\\AddOns\\OurSagas\\check")
+            row.box:SetTexture("Interface\\AddOns\\Sagalore\\check")
             row.box:SetVertexColor(INK.r, INK.g, INK.b)
             row.text:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
         elseif goal.failed then
-            row.box:SetTexture("Interface\\AddOns\\OurSagas\\box")
+            row.box:SetTexture("Interface\\AddOns\\Sagalore\\box")
             row.box:SetVertexColor(0.45, 0.42, 0.38)
             row.text:SetTextColor(0.45, 0.42, 0.38)
         elseif selectedLocked then
-            row.box:SetTexture("Interface\\AddOns\\OurSagas\\box")
+            row.box:SetTexture("Interface\\AddOns\\Sagalore\\box")
             row.box:SetVertexColor(0.55, 0.55, 0.55)
             row.text:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
         else
-            row.box:SetTexture("Interface\\AddOns\\OurSagas\\box")
+            row.box:SetTexture("Interface\\AddOns\\Sagalore\\box")
             row.box:SetVertexColor(1, 1, 1)
             row.text:SetTextColor(INK.r, INK.g, INK.b)
         end
@@ -2418,7 +2422,7 @@ refresh = function()
             detailY = detailY + h + 10
         end)
         if not okRow then
-            chat("[OurSagas] aktivitet: " .. tostring(errRow))
+            chat("[Sagalore] aktivitet: " .. tostring(errRow))
         end
     end
     for i = #activities + 1, #activityRows do
@@ -2462,9 +2466,9 @@ local function placeLabel(rule, group)
         end
         return zone
     end
-    if inst ~= "" and OurSagasObjectives and OurSagasObjectives.groupOK then
+    if inst ~= "" and SagaloreObjectives and SagaloreObjectives.groupOK then
         local probe = { instance = inst, zone = "", members = { { name = player.name ~= "" and player.name or "x", level = 100 } } }
-        if OurSagasObjectives.groupOK({ size = 1, instance = rule.instance }, probe) then
+        if SagaloreObjectives.groupOK({ size = 1, instance = rule.instance }, probe) then
             return inst
         end
     end
@@ -2520,7 +2524,7 @@ end
 -- level. The ping lets every other addon attest for itself. Someone outside
 -- the dungeon never sends one.
 local function witnessGroupKills(deathName)
-    if type(deathName) ~= "string" or deathName == "" or not OurSagasObjectives or not OurSagasObjectives.listed then
+    if type(deathName) ~= "string" or deathName == "" or not SagaloreObjectives or not SagaloreObjectives.listed then
         return
     end
     cachePlayer()
@@ -2536,9 +2540,9 @@ local function witnessGroupKills(deathName)
                     local level = tonumber(obj.group.level) or 0
                     local inst = obj.group.instance
                     local here = type(inst) ~= "string" or inst == ""
-                        or OurSagasObjectives.listed(inst, group.instance)
-                        or OurSagasObjectives.listed(inst, group.zone)
-                    if here and (tonumber(player.level) or 0) == level and OurSagasObjectives.listed(obj.npc, deathName) then
+                        or SagaloreObjectives.listed(inst, group.instance)
+                        or SagaloreObjectives.listed(inst, group.zone)
+                    if here and (tonumber(player.level) or 0) == level and SagaloreObjectives.listed(obj.npc, deathName) then
                         rememberAttest(entry.saga_id, obj.id, player.name, now)
                         sendHerePing(entry.saga_id, obj.id)
                     end
@@ -2605,15 +2609,15 @@ finishQuest = function(entry, group)
         row.group_members = encodeMembers(group.members)
         row.instance = placeLabel(entry.group, group)
     end
-    OurSagasDB.completions[entry.saga_id] = row
+    SagaloreDB.completions[entry.saga_id] = row
     if type(entry.group) == "table" then
         sendGroupPing(entry.saga_id, version)
     end
     local title = entry.title or "Saga"
     local questID = entry.saga_id
     local unlocked = {}
-    if type(OurSagasChains) == "table" and type(OurSagasChains.newlyUnlocked) == "function" then
-        unlocked = OurSagasChains.newlyUnlocked(entries, before, completionSet()) or {}
+    if type(SagaloreChains) == "table" and type(SagaloreChains.newlyUnlocked) == "function" then
+        unlocked = SagaloreChains.newlyUnlocked(entries, before, completionSet()) or {}
     end
     if unlocked[1] and type(unlocked[1].saga_id) == "string" then
         selectedID = unlocked[1].saga_id
@@ -2623,7 +2627,7 @@ finishQuest = function(entry, group)
     refresh()
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         DEFAULT_CHAT_FRAME:AddMessage(
-            "|cffc9a227OurSagas|r: Fullført. Discord etter |cffffffff/reload|r."
+            "|cffc9a227Sagalore|r: Fullført. Discord etter |cffffffff/reload|r."
         )
         local n = #unlocked
         if n > 3 then
@@ -2631,7 +2635,7 @@ finishQuest = function(entry, group)
         end
         for i = 1, n do
             DEFAULT_CHAT_FRAME:AddMessage(
-                "|cffc9a227OurSagas|r: " .. string.format(L("ui.new_saga"), unlocked[i].title or "Saga")
+                "|cffc9a227Sagalore|r: " .. string.format(L("ui.new_saga"), unlocked[i].title or "Saga")
             )
         end
     end
@@ -2934,7 +2938,7 @@ local function build()
     end
     built = true
     local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
-    frame = CreateFrame("Frame", "OurSagasFrame", UIParent, backdropTemplate)
+    frame = CreateFrame("Frame", "SagaloreFrame", UIParent, backdropTemplate)
     frame:SetSize(700, 500)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("HIGH")
@@ -2944,7 +2948,7 @@ local function build()
     frame:EnableMouseWheel(true)
     frame:SetScript("OnMouseWheel", wheelOnFrame)
     frame:Hide()
-    table.insert(UISpecialFrames, "OurSagasFrame")
+    table.insert(UISpecialFrames, "SagaloreFrame")
     useBackdrop(frame, {
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -2961,13 +2965,13 @@ local function build()
     header:SetVertexColor(GOLD.r, GOLD.g, GOLD.b)
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOP", header, "TOP", 0, -14)
-    title:SetText("OurSagas")
+    title:SetText("Sagalore")
     title:SetTextColor(1, 0.95, 0.72)
 
     local mark = frame:CreateTexture(nil, "OVERLAY")
     mark:SetSize(58, 58)
     mark:SetPoint("TOPLEFT", frame, "TOPLEFT", -10, 14)
-    mark:SetTexture("Interface\\AddOns\\OurSagas\\OurSagas")
+    mark:SetTexture("Interface\\AddOns\\Sagalore\\Sagalore")
 
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
@@ -2989,14 +2993,14 @@ local function build()
     drag:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
         local point, _, rel, x, y = frame:GetPoint()
-        if type(OurSagasDB) == "table" and type(point) == "string" and type(rel) == "string" then
-            OurSagasDB.point = { point, rel, x, y }
+        if type(SagaloreDB) == "table" and type(point) == "string" and type(rel) == "string" then
+            SagaloreDB.point = { point, rel, x, y }
         end
     end)
 
-    if type(OurSagasDB) == "table" and type(OurSagasDB.point) == "table" then
+    if type(SagaloreDB) == "table" and type(SagaloreDB.point) == "table" then
         frame:ClearAllPoints()
-        frame:SetPoint(OurSagasDB.point[1], UIParent, OurSagasDB.point[2], OurSagasDB.point[3], OurSagasDB.point[4])
+        frame:SetPoint(SagaloreDB.point[1], UIParent, SagaloreDB.point[2], SagaloreDB.point[3], SagaloreDB.point[4])
     end
 
     listPanel = CreateFrame("Frame", nil, frame, backdropTemplate)
@@ -3016,26 +3020,26 @@ local function build()
     end
 
     if UIDropDownMenu_Initialize then
-        statusDrop = CreateFrame("Frame", "OurSagasStatusFilter", frame, "UIDropDownMenuTemplate")
+        statusDrop = CreateFrame("Frame", "SagaloreStatusFilter", frame, "UIDropDownMenuTemplate")
         statusDrop:SetPoint("BOTTOMLEFT", listPanel, "TOPLEFT", -14, -4)
         UIDropDownMenu_SetWidth(statusDrop, 78)
         UIDropDownMenu_JustifyText(statusDrop, "LEFT")
-        groupDrop = CreateFrame("Frame", "OurSagasGroupFilter", frame, "UIDropDownMenuTemplate")
+        groupDrop = CreateFrame("Frame", "SagaloreGroupFilter", frame, "UIDropDownMenuTemplate")
         groupDrop:SetPoint("LEFT", statusDrop, "RIGHT", -20, 0)
         UIDropDownMenu_SetWidth(groupDrop, 78)
         UIDropDownMenu_JustifyText(groupDrop, "LEFT")
-        creatorDrop = CreateFrame("Frame", "OurSagasCreatorFilter", frame, "UIDropDownMenuTemplate")
+        creatorDrop = CreateFrame("Frame", "SagaloreCreatorFilter", frame, "UIDropDownMenuTemplate")
         creatorDrop:SetPoint("LEFT", groupDrop, "RIGHT", -20, 0)
         UIDropDownMenu_SetWidth(creatorDrop, 96)
         UIDropDownMenu_JustifyText(creatorDrop, "LEFT")
         setupListFilters()
     end
 
-    listScroll = CreateFrame("ScrollFrame", "OurSagasListScroll", listPanel)
+    listScroll = CreateFrame("ScrollFrame", "SagaloreListScroll", listPanel)
     listScroll:SetPoint("TOPLEFT", 6, -8)
     listScroll:SetSize(202, 394)
     listScroll:SetPoint("BOTTOMRIGHT", -28, 8)
-    listChild = CreateFrame("Frame", "OurSagasListChild", listScroll)
+    listChild = CreateFrame("Frame", "SagaloreListChild", listScroll)
     listChild:SetSize(196, 418)
     listScroll:SetScrollChild(listChild)
     listPanel:EnableMouse(true)
@@ -3068,7 +3072,7 @@ local function build()
         detailPanel:SetBackdropColor(0.86, 0.78, 0.58, 0.97)
     end
 
-    searchBox = CreateFrame("EditBox", "OurSagasSearchBox", frame, "InputBoxTemplate")
+    searchBox = CreateFrame("EditBox", "SagaloreSearchBox", frame, "InputBoxTemplate")
     searchBox:SetAutoFocus(false)
     searchBox:SetHeight(20)
     searchBox:SetWidth(136)
@@ -3114,11 +3118,11 @@ local function build()
     parchment:SetTexCoord(0, 0.58, 0.02, 0.66)
     parchment:SetVertexColor(1, 0.97, 0.9)
 
-    detailScroll = CreateFrame("ScrollFrame", "OurSagasDetailScroll", detailPanel)
+    detailScroll = CreateFrame("ScrollFrame", "SagaloreDetailScroll", detailPanel)
     detailScroll:SetPoint("TOPLEFT", 12, -12)
     detailScroll:SetPoint("BOTTOMRIGHT", -30, 12)
     detailScroll:SetSize(368, 410)
-    detailChild = CreateFrame("Frame", "OurSagasDetailChild", detailScroll)
+    detailChild = CreateFrame("Frame", "SagaloreDetailChild", detailScroll)
     detailChild:SetSize(360, 410)
     detailScroll:SetScrollChild(detailChild)
     detailPanel:EnableMouse(true)
@@ -3181,7 +3185,7 @@ local function build()
     bindWheel(detailActivityHeader, detailScroll, 28)
     attachScrollBar(detailPanel, detailScroll, 28)
 
-    toast = CreateFrame("Frame", "OurSagasToast", UIParent, backdropTemplate)
+    toast = CreateFrame("Frame", "SagaloreToast", UIParent, backdropTemplate)
     toast:SetSize(390, 92)
     toast:SetFrameStrata("DIALOG")
     toast:SetPoint("TOP", UIParent, "TOP", 0, -30)
@@ -3197,7 +3201,7 @@ local function build()
     local toastIcon = toast:CreateTexture(nil, "ARTWORK")
     toastIcon:SetSize(58, 58)
     toastIcon:SetPoint("LEFT", 18, 0)
-    toastIcon:SetTexture("Interface\\AddOns\\OurSagas\\OurSagas")
+    toastIcon:SetTexture("Interface\\AddOns\\Sagalore\\Sagalore")
     local toastHeading = toast:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     toastHeading:SetPoint("TOPLEFT", toastIcon, "TOPRIGHT", 14, -8)
     toastHeading:SetText(L("ui.saga_completed"))
@@ -3276,12 +3280,12 @@ local function build()
         toast:SetAlpha(0)
         toast:Show()
         if PlaySoundFile then
-            pcall(PlaySoundFile, "Interface\\AddOns\\OurSagas\\complete.mp3", "Master")
+            pcall(PlaySoundFile, "Interface\\AddOns\\Sagalore\\complete.mp3", "Master")
         end
     end
 
     if Minimap then
-        local btn = CreateFrame("Button", "OurSagasMinimapButton", Minimap)
+        local btn = CreateFrame("Button", "SagaloreMinimapButton", Minimap)
         minimapBtn = btn
         -- Larger hit/visual size so the emblem is not crushed into ~20px.
         btn:SetSize(40, 40)
@@ -3289,8 +3293,8 @@ local function build()
         btn:RegisterForClicks("LeftButtonUp")
         btn:RegisterForDrag("LeftButton")
         btn.angle = math.pi * 0.75
-        if type(OurSagasDB) == "table" and type(OurSagasDB.minimapAngle) == "number" then
-            btn.angle = OurSagasDB.minimapAngle
+        if type(SagaloreDB) == "table" and type(SagaloreDB.minimapAngle) == "number" then
+            btn.angle = SagaloreDB.minimapAngle
         end
         -- Unread: soft blue ADD glow (Blizzard zoom highlight).
         local glow = btn:CreateTexture(nil, "BACKGROUND")
@@ -3307,7 +3311,7 @@ local function build()
         local icon = btn:CreateTexture(nil, "ARTWORK")
         icon:SetSize(30, 30)
         icon:SetPoint("TOPLEFT", 6, -5)
-        icon:SetTexture("Interface\\AddOns\\OurSagas\\OurSagasMinimap")
+        icon:SetTexture("Interface\\AddOns\\Sagalore\\SagaloreMinimap")
         local border = btn:CreateTexture(nil, "OVERLAY")
         border:SetSize(66, 66)
         border:SetPoint("TOPLEFT")
@@ -3326,7 +3330,7 @@ local function build()
         btn:SetScript("OnDragStop", function(self)
             self.dragging = false
             initDB()
-            OurSagasDB.minimapAngle = self.angle
+            SagaloreDB.minimapAngle = self.angle
         end)
         btn:SetScript("OnUpdate", function(self)
             if not self.dragging then
@@ -3354,7 +3358,7 @@ local function build()
                 return
             end
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:SetText("OurSagas")
+            GameTooltip:SetText("Sagalore")
             local unreadLine = unreadTooltipLine()
             if unreadLine then
                 GameTooltip:AddLine(unreadLine, UNREAD_BLUE.r, UNREAD_BLUE.g, UNREAD_BLUE.b)
@@ -3371,9 +3375,10 @@ local function build()
     end
 end
 
-SLASH_OURSAGAS1 = "/oursagas"
-SLASH_OURSAGAS2 = "/os"
-SlashCmdList.OURSAGAS = function(msg)
+SLASH_SAGALORE1 = "/sagalore"
+SLASH_SAGALORE2 = "/os"
+SLASH_SAGALORE3 = "/oursagas"
+SlashCmdList.SAGALORE = function(msg)
     msg = string.lower(string.gsub(msg or "", "^%s+", ""))
     if msg == "hide" then
         hide()
@@ -3384,12 +3389,12 @@ SlashCmdList.OURSAGAS = function(msg)
         -- progress after /reload (SavedVariables flush). Editing the SV file
         -- on disk while logged in is overwritten on the next /reload.
         initDB()
-        OurSagasDB.completions = {}
-        OurSagasDB.objectives = {}
+        SagaloreDB.completions = {}
+        SagaloreDB.objectives = {}
         markAllUnread()
         queueReset(nil)
         selectedID = nil
-        chat("|cffc9a227OurSagas|r: " .. L("ui.wipe"))
+        chat("|cffc9a227Sagalore|r: " .. L("ui.wipe"))
         onWorld()
         if frame and frame:IsShown() then
             refresh()
@@ -3398,7 +3403,7 @@ SlashCmdList.OURSAGAS = function(msg)
     end
     if msg == "unread" then
         markAllUnread()
-        chat("|cffc9a227OurSagas|r: " .. L("ui.unread_all"))
+        chat("|cffc9a227Sagalore|r: " .. L("ui.unread_all"))
         updateMinimapUnread()
         if frame and frame:IsShown() then
             refresh()
@@ -3407,22 +3412,22 @@ SlashCmdList.OURSAGAS = function(msg)
     end
     local function resetQuest(id, label)
         initDB()
-        OurSagasDB.completions[id] = nil
-        if type(OurSagasDB.objectives) == "table" then
-            OurSagasDB.objectives[id] = nil
+        SagaloreDB.completions[id] = nil
+        if type(SagaloreDB.objectives) == "table" then
+            SagaloreDB.objectives[id] = nil
         end
         local bucket = ensureReadMap()
         bucket[id] = nil
         queueReset(id)
         selectedID = id
-        chat("|cffc9a227OurSagas|r: " .. string.format(L("ui.reset_one"), label))
+        chat("|cffc9a227Sagalore|r: " .. string.format(L("ui.reset_one"), label))
         onWorld()
         show()
     end
     if msg == "reset selected" or msg == "reset this" then
         if type(selectedID) == "string" and selectedID ~= "" then
             local label = selectedID
-            local entries = OurSagasData and OurSagasData.entries
+            local entries = SagaloreData and SagaloreData.entries
             if type(entries) == "table" then
                 for _, e in ipairs(entries) do
                     if type(e) == "table" and e.saga_id == selectedID and type(e.title) == "string" then
@@ -3434,7 +3439,7 @@ SlashCmdList.OURSAGAS = function(msg)
             resetQuest(selectedID, label)
             return
         end
-        chat("|cffc9a227OurSagas|r: " .. L("ui.none_selected"))
+        chat("|cffc9a227Sagalore|r: " .. L("ui.none_selected"))
         return
     end
     show()
@@ -3603,18 +3608,18 @@ local showInviteDialog
 local maybeInvite
 
 local function emitInvite(action, id)
-    if type(OurSagasInvite) ~= "table" or type(OurSagasInvite.line) ~= "function" then
+    if type(SagaloreInvite) ~= "table" or type(SagaloreInvite.line) ~= "function" then
         return
     end
-    local line = OurSagasInvite.line(action, id)
+    local line = SagaloreInvite.line(action, id)
     if line then
         chat(line)
     end
     initDB()
-    if type(OurSagasDB.pending_invites) ~= "table" then
-        OurSagasDB.pending_invites = {}
+    if type(SagaloreDB.pending_invites) ~= "table" then
+        SagaloreDB.pending_invites = {}
     end
-    table.insert(OurSagasDB.pending_invites, { action = action, id = id, at = unixNow() })
+    table.insert(SagaloreDB.pending_invites, { action = action, id = id, at = unixNow() })
 end
 
 local function finishInviteDialog(f)
@@ -3628,9 +3633,9 @@ showInviteDialog = function(prompt)
         return
     end
     if not inviteFrame then
-        -- Must not use global name OurSagasInvite — that is the invite module table.
+        -- Must not use global name SagaloreInvite — that is the invite module table.
         local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
-        local f = CreateFrame("Frame", "OurSagasInviteDialog", UIParent, backdropTemplate)
+        local f = CreateFrame("Frame", "SagaloreInviteDialog", UIParent, backdropTemplate)
         f:SetSize(360, 92)
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
@@ -3658,9 +3663,9 @@ showInviteDialog = function(prompt)
         f.accept:SetScript("OnClick", function()
             if f.inviteID then
                 emitInvite("accept", f.inviteID)
-                if type(OurSagasInvite) == "table" and type(OurSagasInvite.markAnswered) == "function" then
+                if type(SagaloreInvite) == "table" and type(SagaloreInvite.markAnswered) == "function" then
                     initDB()
-                    OurSagasInvite.markAnswered(OurSagasDB, f.inviteID)
+                    SagaloreInvite.markAnswered(SagaloreDB, f.inviteID)
                 end
             end
             finishInviteDialog(f)
@@ -3668,17 +3673,17 @@ showInviteDialog = function(prompt)
         f.decline:SetScript("OnClick", function()
             if f.inviteID then
                 emitInvite("decline", f.inviteID)
-                if type(OurSagasInvite) == "table" and type(OurSagasInvite.markAnswered) == "function" then
+                if type(SagaloreInvite) == "table" and type(SagaloreInvite.markAnswered) == "function" then
                     initDB()
-                    OurSagasInvite.markAnswered(OurSagasDB, f.inviteID)
+                    SagaloreInvite.markAnswered(SagaloreDB, f.inviteID)
                 end
             end
             finishInviteDialog(f)
         end)
         f.later:SetScript("OnClick", function()
-            if f.inviteID and type(OurSagasInvite) == "table" then
+            if f.inviteID and type(SagaloreInvite) == "table" then
                 initDB()
-                OurSagasInvite.snooze(OurSagasDB, f.inviteID, unixNow())
+                SagaloreInvite.snooze(SagaloreDB, f.inviteID, unixNow())
             end
             finishInviteDialog(f)
         end)
@@ -3702,11 +3707,11 @@ showInviteDialog = function(prompt)
 end
 
 maybeInvite = function()
-    if type(OurSagasInvite) ~= "table" or InCombatLockdown and InCombatLockdown() then
+    if type(SagaloreInvite) ~= "table" or InCombatLockdown and InCombatLockdown() then
         return
     end
     initDB()
-    local prompt = OurSagasInvite.prompt(OurSagasDB, player, OurSagasData, unixNow())
+    local prompt = SagaloreInvite.prompt(SagaloreDB, player, SagaloreData, unixNow())
     if not prompt then
         return
     end
@@ -3752,11 +3757,12 @@ end)
 events:SetScript("OnEvent", function(_, event, ...)
     if event == "ADDON_LOADED" then
         local name = ...
-        if name ~= "OurSagas" then
+        if name ~= "Sagalore" then
             return
         end
         initDB()
         registerPrefix(PREFIX)
+        registerPrefix(LEGACY_PREFIX)
         installEmoteHook()
         installInteractHook()
         return
@@ -3911,7 +3917,7 @@ events:SetScript("OnEvent", function(_, event, ...)
     end
     if event == "CHAT_MSG_ADDON" then
         local prefix, message, _, sender = ...
-        if prefix ~= PREFIX or type(sender) ~= "string" then
+        if (prefix ~= PREFIX and prefix ~= LEGACY_PREFIX) or type(sender) ~= "string" then
             return
         end
         local msg = plainString(message)
@@ -3978,7 +3984,7 @@ events:SetScript("OnEvent", function(_, event, ...)
                 end
             end
             if entry and not isComplete(entry) and known and type(entry.group) == "table"
-                and OurSagasObjectives and OurSagasObjectives.groupOK and OurSagasObjectives.groupOK(entry.group, group) then
+                and SagaloreObjectives and SagaloreObjectives.groupOK and SagaloreObjectives.groupOK(entry.group, group) then
                 finishQuest(entry, group)
             end
             return
@@ -3996,6 +4002,6 @@ events:SetScript("OnEvent", function(_, event, ...)
         if player.name ~= "" and same(short, player.name) then
             return
         end
-        chat("|cffc9a227OurSagas|r: " .. string.format(L("ui.completed_line"), short))
+        chat("|cffc9a227Sagalore|r: " .. string.format(L("ui.completed_line"), short))
     end
 end)

@@ -51,7 +51,7 @@ func Maintain(ctx context.Context, h Hooks) {
 		conn, resp, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
 			HTTPHeader: http.Header{
 				"Authorization": []string{"Bearer " + token},
-				"User-Agent":    []string{"OurSagas"},
+				"User-Agent":    []string{"Sagalore"},
 			},
 		})
 		if err != nil {
@@ -106,7 +106,7 @@ func readSocket(ctx context.Context, conn *websocket.Conn, on func(Event)) error
 	}
 }
 
-// WebSocketURL maps an API base (http://localhost:8080 or https://oursagas.example.com)
+// WebSocketURL maps an API base (http://localhost:8080 or https://sagalore.example.com)
 // to the player socket. http becomes ws, https becomes wss.
 func WebSocketURL(apiBase string) string {
 	u, err := url.Parse(strings.TrimSpace(apiBase))

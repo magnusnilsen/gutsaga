@@ -1,4 +1,5 @@
-// Package config stores OurSagas settings in the user config directory.
+// Package config stores Sagalore settings in the user config directory.
+// An existing OurSagas (and older GutSaga / SagaBoard) folder is copied once.
 package config
 
 import (
@@ -15,7 +16,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/wowpath"
 )
 
-// DefaultUpdateRepo is the public OurSagas repo. Releases live there.
+// DefaultUpdateRepo is the public Sagalore repo. Releases live there.
 const DefaultUpdateRepo = "magnusnilsen/gutsaga"
 
 type Update struct {
@@ -51,7 +52,7 @@ type Config struct {
 	Update          Update `json:"update"`
 }
 
-// Token is the credential sent to the OurSagas API. A session wins over a personal token stored in APIKey.
+// Token is the credential sent to the Sagalore API. A session wins over a personal token stored in APIKey.
 func (c Config) Token() string {
 	if strings.TrimSpace(c.SessionToken) != "" {
 		return strings.TrimSpace(c.SessionToken)
@@ -66,30 +67,31 @@ func Dir() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, "Library", "Application Support", "OurSagas"), nil
+		return filepath.Join(home, "Library", "Application Support", "Sagalore"), nil
 	case "windows":
 		if app := os.Getenv("APPDATA"); app != "" {
-			return filepath.Join(app, "OurSagas"), nil
+			return filepath.Join(app, "Sagalore"), nil
 		}
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, "AppData", "Roaming", "OurSagas"), nil
+		return filepath.Join(home, "AppData", "Roaming", "Sagalore"), nil
 	default:
 		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-			return filepath.Join(xdg, "OurSagas"), nil
+			return filepath.Join(xdg, "Sagalore"), nil
 		}
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		return filepath.Join(home, ".local", "share", "OurSagas"), nil
+		return filepath.Join(home, ".local", "share", "Sagalore"), nil
 	}
 }
 
 // legacyDirs are older product config folders, preferred in order.
-// GutSaga was the original; SagaBoard was a short intermediate name.
+// OurSagas is the previous product name. GutSaga was the original; SagaBoard
+// was a short intermediate name.
 func legacyDirs() ([]string, error) {
 	var names []string
 	switch runtime.GOOS {
@@ -99,7 +101,7 @@ func legacyDirs() ([]string, error) {
 			return nil, err
 		}
 		base := filepath.Join(home, "Library", "Application Support")
-		names = []string{filepath.Join(base, "GutSaga"), filepath.Join(base, "SagaBoard")}
+		names = []string{filepath.Join(base, "OurSagas"), filepath.Join(base, "GutSaga"), filepath.Join(base, "SagaBoard")}
 	case "windows":
 		base := os.Getenv("APPDATA")
 		if base == "" {
@@ -109,7 +111,7 @@ func legacyDirs() ([]string, error) {
 			}
 			base = filepath.Join(home, "AppData", "Roaming")
 		}
-		names = []string{filepath.Join(base, "GutSaga"), filepath.Join(base, "SagaBoard")}
+		names = []string{filepath.Join(base, "OurSagas"), filepath.Join(base, "GutSaga"), filepath.Join(base, "SagaBoard")}
 	default:
 		base := os.Getenv("XDG_DATA_HOME")
 		if base == "" {
@@ -119,7 +121,7 @@ func legacyDirs() ([]string, error) {
 			}
 			base = filepath.Join(home, ".local", "share")
 		}
-		names = []string{filepath.Join(base, "gutsaga"), filepath.Join(base, "SagaBoard")}
+		names = []string{filepath.Join(base, "OurSagas"), filepath.Join(base, "gutsaga"), filepath.Join(base, "SagaBoard")}
 	}
 	return names, nil
 }
@@ -129,7 +131,7 @@ func dirEmpty(path string) bool {
 	return err != nil || len(entries) == 0
 }
 
-// MigrateLegacy copies an older config directory once when OurSagas's directory is empty.
+// MigrateLegacy copies an older config directory once when Sagalore's directory is empty.
 func MigrateLegacy() error {
 	next, err := Dir()
 	if err != nil {

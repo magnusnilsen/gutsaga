@@ -7,7 +7,7 @@ import (
 
 func TestParseCompletions(t *testing.T) {
 	body := `
-OurSagasDB = {
+SagaloreDB = {
 ["completions"] = {
 ["4cc34091-0e9b-4c18-800a-3162c90acc56"] = {
 ["saga_id"] = "4cc34091-0e9b-4c18-800a-3162c90acc56",

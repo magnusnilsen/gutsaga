@@ -45,7 +45,7 @@ func TestPushRewritesLuaAndNotifies(t *testing.T) {
 	if len(notes) != 0 {
 		t.Fatalf("startup notified: %v", notes)
 	}
-	path := filepath.Join(a.WowDir, "Interface", "AddOns", "OurSagas", "OurSagasData.lua")
+	path := filepath.Join(a.WowDir, "Interface", "AddOns", "Sagalore", "SagaloreData.lua")
 	first, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestPushRewritesLuaAndNotifies(t *testing.T) {
 	if err := a.pullSync(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(notes) != 1 || notes[0] != "OurSagas: New saga: En kveld i Goldshire — type /reload in WoW" {
+	if len(notes) != 1 || notes[0] != "Sagalore: New saga: En kveld i Goldshire — type /reload in WoW" {
 		t.Fatalf("%v", notes)
 	}
 	second, err := os.ReadFile(path)
