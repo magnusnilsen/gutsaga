@@ -283,7 +283,7 @@ func TestDiscordQueueDoesNotBlockTheRequest(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("webhook was not called")
 	}
-	if payload.Username != "OurSagas" || !strings.Contains(payload.Content, "created a new saga") {
+	if payload.Username != "Sagalore" || !strings.Contains(payload.Content, "created a new saga") {
 		t.Fatalf("payload %+v", payload)
 	}
 	if len(payload.Embeds) != 1 || payload.Embeds[0].Title != "Køtest" || payload.Embeds[0].Color != discord.ColorSaga || payload.Embeds[0].Image == nil {

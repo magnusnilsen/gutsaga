@@ -3,7 +3,7 @@ package savedvars
 import "testing"
 
 func TestParseResets(t *testing.T) {
-	body := `OurSagasDB = {
+	body := `SagaloreDB = {
   ["completions"] = {
   },
   ["pending_resets"] = {
@@ -20,7 +20,7 @@ func TestParseResets(t *testing.T) {
   },
 }
 `
-	got := ParseResets("/tmp/OurSagas.lua", body)
+	got := ParseResets("/tmp/Sagalore.lua", body)
 	if len(got) != 2 {
 		t.Fatalf("got %d resets, want 2: %+v", len(got), got)
 	}
@@ -33,7 +33,7 @@ func TestParseResets(t *testing.T) {
 }
 
 func TestParseResetsEmpty(t *testing.T) {
-	if got := ParseResets("x", `OurSagasDB = { ["completions"] = {} }`); len(got) != 0 {
+	if got := ParseResets("x", `SagaloreDB = { ["completions"] = {} }`); len(got) != 0 {
 		t.Fatalf("got %v", got)
 	}
 }

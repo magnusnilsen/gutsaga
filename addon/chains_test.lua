@@ -1,6 +1,6 @@
 local src = debug.getinfo(1, "S").source
 local dir = src:match("^@(.*)[/\\][^/\\]+$") or "."
-local M = dofile(dir .. "/OurSagas/OurSagasChains.lua")
+local M = dofile(dir .. "/Sagalore/SagaloreChains.lua")
 
 local function assertTrue(cond, msg)
     if not cond then

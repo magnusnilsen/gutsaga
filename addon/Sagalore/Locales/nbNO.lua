@@ -1,6 +1,6 @@
 -- Norwegian Bokmål. Every key here must also exist in enUS.lua.
-OurSagasLocale = OurSagasLocale or {}
-OurSagasLocale.nb = {
+SagaloreLocale = SagaloreLocale or {}
+SagaloreLocale.nb = {
     ["invite.join"] = "Bli med i %s?",
     ["invite.include"] = "Ta med %s i %s?",
     ["invite.accept"] = "Ja",
@@ -16,7 +16,7 @@ OurSagasLocale.nb = {
     ["ui.completed"] = "Fullført",
     ["ui.none"] = "Ingen",
     ["ui.login_character"] = "Logg inn på en karakter.",
-    ["ui.no_sagas"] = "Ingen sagaer ennå.\n\nStart OurSagas på maskinen og skriv /reload.",
+    ["ui.no_sagas"] = "Ingen sagaer ennå.\n\nStart Sagalore på maskinen og skriv /reload.",
     ["ui.no_sagas_for"] = "Ingen sagaer for %s.",
     ["ui.search"] = "Søk",
     ["ui.description"] = "Beskrivelse",
@@ -32,7 +32,7 @@ OurSagasLocale.nb = {
     ["ui.wipe"] = "Alle lokale fullføringer er slettet (ulest). Skriv /reload så companion rydder API-progress.",
     ["ui.unread_all"] = "Alle åpne sagaer er ulest.",
     ["ui.reset_one"] = "«%s» er tilbakestilt. Skriv /reload så companion rydder API-progress.",
-    ["ui.none_selected"] = "Ingen saga er valgt. Åpne loggen og velg en, eller bruk /oursagas wipe.",
+    ["ui.none_selected"] = "Ingen saga er valgt. Åpne loggen og velg en, eller bruk /sagalore wipe (eller /sl wipe).",
 
     ["chain.chapter"] = "Kapittel %d av %d",
     ["chain.locked"] = "Låst: fullfør %s først",

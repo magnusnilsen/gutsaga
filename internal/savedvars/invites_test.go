@@ -3,7 +3,7 @@ package savedvars
 import "testing"
 
 func TestParsePendingInvites(t *testing.T) {
-	body := `OurSagasDB = {
+	body := `SagaloreDB = {
   ["pending_invites"] = {
     {
       ["action"] = "accept",
@@ -18,7 +18,7 @@ func TestParsePendingInvites(t *testing.T) {
   },
 }
 `
-	got := ParsePendingInvites("/tmp/OurSagas.lua", body)
+	got := ParsePendingInvites("/tmp/Sagalore.lua", body)
 	if len(got) != 2 {
 		t.Fatalf("got %d invites, want 2: %+v", len(got), got)
 	}
@@ -31,7 +31,7 @@ func TestParsePendingInvites(t *testing.T) {
 }
 
 func TestParsePendingInvitesEmpty(t *testing.T) {
-	if got := ParsePendingInvites("x", `OurSagasDB = { ["completions"] = {} }`); len(got) != 0 {
+	if got := ParsePendingInvites("x", `SagaloreDB = { ["completions"] = {} }`); len(got) != 0 {
 		t.Fatalf("got %v", got)
 	}
 }

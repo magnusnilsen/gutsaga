@@ -1,7 +1,7 @@
 -- Resolves a catalog key. Missing keys fall back to English.
--- OurSagasLanguage is "en", "nb", or nil (then GetLocale()).
+-- SagaloreLanguage is "en", "nb", or nil (then GetLocale()).
 local function catalog(lang)
-    local all = OurSagasLocale or {}
+    local all = SagaloreLocale or {}
     if lang == "nb" and type(all.nb) == "table" then
         return all.nb
     end
@@ -9,7 +9,7 @@ local function catalog(lang)
 end
 
 local function clientLang()
-    local set = OurSagasLanguage
+    local set = SagaloreLanguage
     if set == "en" or set == "nb" then
         return set
     end
@@ -23,7 +23,7 @@ local function clientLang()
     return "en"
 end
 
-function OurSagas_L(key)
+function Sagalore_L(key)
     if type(key) ~= "string" or key == "" then
         return ""
     end

@@ -28,6 +28,6 @@ A `talk` step (older name `interact`) completes when the player opens that NPC's
 
 A new saga starts at version 1. Text edits require `changes` and bump the version. Completions keep the version the character had loaded.
 
-`GET /v1/sync` is what the companion writes into `OurSagasData.lua`. The addon reads it on `/reload`.
+`GET /v1/sync` is what the companion writes into `SagaloreData.lua`. The addon reads it on `/reload`.
 
-Covers: `PUT /v1/sagas/{id}/image`. The companion converts the PNG to TGA under `Interface/AddOns/OurSagas/media/`. Signed public URLs use `PUBLIC_BASE_URL` and `IMAGE_URL_SECRET`.
+Covers: `PUT /v1/sagas/{id}/image`. The companion converts the PNG to TGA under `Interface/AddOns/Sagalore/media/`. Signed public URLs use `PUBLIC_BASE_URL` and `IMAGE_URL_SECRET`.

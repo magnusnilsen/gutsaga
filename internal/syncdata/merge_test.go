@@ -65,7 +65,7 @@ func TestSagaAuthorAndCompleters(t *testing.T) {
 			{ID: "c1", Name: "Magni", Realm: "Celebras", Level: 1},
 		},
 		Quests: []contract.Quest{
-			{ID: "q1", Title: "En kveld", Active: true, PartyQuest: true, Version: 1, CreatedBy: "OurSagas#0000"},
+			{ID: "q1", Title: "En kveld", Active: true, PartyQuest: true, Version: 1, CreatedBy: "Sagalore#0000"},
 		},
 		Progress: []contract.Progress{
 			{QuestID: "q1", CharacterID: "c1", Status: "completed", CompletedAt: "2026-10-22T17:00:00Z"},
@@ -76,7 +76,7 @@ func TestSagaAuthorAndCompleters(t *testing.T) {
 		},
 	}
 	entries := Merge(sync)
-	if len(entries) != 1 || entries[0].CreatedBy != "OurSagas#0000" || len(entries[0].CompletedBy) != 2 {
+	if len(entries) != 1 || entries[0].CreatedBy != "Sagalore#0000" || len(entries[0].CompletedBy) != 2 {
 		t.Fatalf("%+v", entries)
 	}
 	if entries[0].CompletedBy[0].Character != "Magni" || entries[0].CompletedBy[1].Character != "Mira" {
@@ -89,7 +89,7 @@ func TestSagaAuthorAndCompleters(t *testing.T) {
 		t.Fatalf("when %+v", entries[0].CompletedBy[0])
 	}
 	lua := WriteLua("", "t", entries)
-	if !strings.Contains(lua, `created_by = "OurSagas#0000"`) || !strings.Contains(lua, `character = "Mira"`) ||
+	if !strings.Contains(lua, `created_by = "Sagalore#0000"`) || !strings.Contains(lua, `character = "Mira"`) ||
 		!strings.Contains(lua, `battletag = "Magnus#2231"`) || !strings.Contains(lua, `class = "Warrior"`) ||
 		!strings.Contains(lua, `when = "22 oktober 2026 19:00"`) {
 		t.Fatal(lua)

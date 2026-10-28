@@ -1,4 +1,4 @@
-// Package app runs the OurSagas companion: install the addon, sync quests, and
+// Package app runs the Sagalore companion: install the addon, sync quests, and
 // report completions from the chat log and SavedVariables. It never sends input
 // to the game.
 package app
@@ -296,7 +296,7 @@ func (a *App) pullSync(ctx context.Context) error {
 		}
 	}
 	body := syncdata.WriteSyncLua(sync.BattleTag, sync.GeneratedAt, entries, notice, noticeID, sync.Groups, sync.Invites, sync.Characters)
-	path := filepath.Join(addonDir, "OurSagasData.lua")
+	path := filepath.Join(addonDir, "SagaloreData.lua")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -322,7 +322,7 @@ func (a *App) announce(desktop string) {
 	// Log only — Discord carries the player-facing alert. Notify is for tests.
 	a.Log.Info(desktop)
 	if a.Notify != nil {
-		a.Notify("OurSagas", desktop)
+		a.Notify("Sagalore", desktop)
 	}
 }
 
@@ -426,7 +426,7 @@ func (a *App) pollChat() {
 
 // pollSavedVars enqueues completions the addon wrote locally. On Classic Era,
 // AddMessage lines never reach WoWChatLog.txt, so this is the reliable path.
-// It also applies /oursagas reset requests and invite answers from SavedVariables.
+// It also applies /sagalore and /sl reset requests and invite answers from SavedVariables.
 func (a *App) pollSavedVars() {
 	if a.WowDir == "" {
 		return
@@ -463,7 +463,7 @@ func (a *App) pollSavedVars() {
 }
 
 // pollPendingResets deletes API progress for /gutsaga wipe|reset after /reload
-// wrote OurSagasDB.pending_resets. Without this, the next sync brings completed
+// wrote SagaloreDB.pending_resets. Without this, the next sync brings completed
 // status back and the local wipe looks broken.
 func (a *App) pollPendingResets() {
 	if a.Client == nil || a.Client.APIKey == "" {
@@ -510,7 +510,7 @@ func (a *App) pollPendingResets() {
 	}
 }
 
-// pollPendingInvites enqueues accept/decline from OurSagasDB.pending_invites.
+// pollPendingInvites enqueues accept/decline from SagaloreDB.pending_invites.
 func (a *App) pollPendingInvites() {
 	list, err := savedvars.ReadPendingInvites(a.WowDir)
 	if err != nil || len(list) == 0 {
@@ -781,7 +781,7 @@ func (a *App) ApplyUpdate() error {
 	if err := update.ReplaceExecutable(body); err != nil {
 		return err
 	}
-	a.Log.Info("starter OurSagas på nytt")
+	a.Log.Info("starter Sagalore på nytt")
 	restart()
 	return nil
 }

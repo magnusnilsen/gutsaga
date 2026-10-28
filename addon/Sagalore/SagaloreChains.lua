@@ -6,8 +6,8 @@
 local M = {}
 
 local function L(key)
-    if type(OurSagas_L) == "function" then
-        local value = OurSagas_L(key)
+    if type(Sagalore_L) == "function" then
+        local value = Sagalore_L(key)
         if type(value) == "string" and value ~= "" and value ~= key then
             return value
         end
@@ -221,5 +221,5 @@ function M.newlyUnlocked(entries, before, after)
     return out
 end
 
-OurSagasChains = M
+SagaloreChains = M
 return M

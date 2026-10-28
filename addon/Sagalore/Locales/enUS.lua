@@ -1,6 +1,6 @@
 -- English catalog. This is the fallback when a key is missing.
-OurSagasLocale = OurSagasLocale or {}
-OurSagasLocale.en = {
+SagaloreLocale = SagaloreLocale or {}
+SagaloreLocale.en = {
     ["invite.join"] = "Join %s?",
     ["invite.include"] = "Include %s in %s?",
     ["invite.accept"] = "Accept",
@@ -16,7 +16,7 @@ OurSagasLocale.en = {
     ["ui.completed"] = "Completed",
     ["ui.none"] = "None",
     ["ui.login_character"] = "Log in on a character.",
-    ["ui.no_sagas"] = "No sagas yet.\n\nStart OurSagas on this computer and type /reload.",
+    ["ui.no_sagas"] = "No sagas yet.\n\nStart Sagalore on this computer and type /reload.",
     ["ui.no_sagas_for"] = "No sagas for %s.",
     ["ui.search"] = "Search",
     ["ui.description"] = "Description",
@@ -32,7 +32,7 @@ OurSagasLocale.en = {
     ["ui.wipe"] = "All local completions were cleared (unread). Type /reload so the companion clears API progress.",
     ["ui.unread_all"] = "All open sagas are unread.",
     ["ui.reset_one"] = "\"%s\" was reset. Type /reload so the companion clears API progress.",
-    ["ui.none_selected"] = "No saga is selected. Open the log and pick one, or use /oursagas wipe.",
+    ["ui.none_selected"] = "No saga is selected. Open the log and pick one, or use /sagalore wipe (or /sl wipe).",
 
     ["chain.chapter"] = "Chapter %d of %d",
     ["chain.locked"] = "Locked: finish %s first",

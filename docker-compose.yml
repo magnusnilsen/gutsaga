@@ -1,7 +1,8 @@
 # Local development only. Railway does not use this file — it builds api/Dockerfile
 # via railway.json and takes ADMIN_TOKEN / IMAGE_URL_SECRET from the Railway dashboard.
 # The known defaults below (dev-admin-token, …) are rejected at API startup unless
-# OURSAGAS_ALLOW_DEV_SECRETS=1, so they cannot silently ship to production.
+# SAGALORE_ALLOW_DEV_SECRETS=1, so they cannot silently ship to production.
+# OURSAGAS_* is the previous name and is still accepted by the API.
 services:
   postgres:
     image: postgres:16
@@ -26,13 +27,13 @@ services:
       DATABASE_URL: postgres://gutsaga:gutsaga@postgres:5432/gutsaga?sslmode=disable
       ADMIN_TOKEN: dev-admin-token
       IMAGE_URL_SECRET: dev-image-url-secret
-      OURSAGAS_ALLOW_DEV_SECRETS: "1"
+      SAGALORE_ALLOW_DEV_SECRETS: "1"
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
-      OURSAGAS_DEV_TOKEN: ${OURSAGAS_DEV_TOKEN:-}
+      SAGALORE_DEV_TOKEN: ${SAGALORE_DEV_TOKEN:-${OURSAGAS_DEV_TOKEN:-}}
       BNET_CLIENT_ID: ${BNET_CLIENT_ID:-}
       BNET_CLIENT_SECRET: ${BNET_CLIENT_SECRET:-}
       # slug:Name for the local tutorial group. A fresh database does nothing until seed creates sagas.
-      OURSAGAS_BOOTSTRAP_GROUP: tutorial:Tutorial
+      SAGALORE_BOOTSTRAP_GROUP: ${SAGALORE_BOOTSTRAP_GROUP:-${OURSAGAS_BOOTSTRAP_GROUP:-tutorial:Tutorial}}
       # Optional: copied once onto the bootstrap group when its webhook is empty.
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
       PORT: "8080"

@@ -36,7 +36,7 @@ type Entry struct {
 	ChainIndex        int                  `json:"chain_index,omitempty"`
 	ChainTotal        int                  `json:"chain_total,omitempty"`
 	Locked            bool                 `json:"locked,omitempty"`
-	Image             string               `json:"image,omitempty"`        // Interface\\AddOns\\OurSagas\\media\\<id>
+	Image             string               `json:"image,omitempty"`        // Interface\\AddOns\\Sagalore\\media\\<id>
 	ImageAspect       float64              `json:"image_aspect,omitempty"` // width/height
 	HasImage          bool                 `json:"has_image"`
 }
@@ -104,7 +104,7 @@ func Merge(sync contract.SyncResponse) []Entry {
 				e.ChainTotal = q.Chain.Total
 			}
 			if q.HasImage {
-				e.Image = `Interface\AddOns\OurSagas\media\` + q.ID
+				e.Image = `Interface\AddOns\Sagalore\media\` + q.ID
 			}
 			if has {
 				e.Status = p.Status

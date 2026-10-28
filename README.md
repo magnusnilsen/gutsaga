@@ -1,12 +1,26 @@
-# OurSagas
+# Sagalore
 
-OurSagas is a saga log for a World of Warcraft group. One person plays. The desktop companion installs the addon, signs in with Battle.net, and syncs sagas. The addon has no HTTP of its own: it writes chat lines and SavedVariables, and the companion posts them.
+Sagalore is a saga log for a World of Warcraft group. One person plays. The desktop companion installs the addon, signs in with Battle.net, and syncs sagas. The addon has no HTTP of its own: it writes chat lines and SavedVariables, and the companion posts them.
 
 API paths stay `/v1/sagas`. A saga is still a saga. The JSON field `group` on a kill step or a saga is the party-size rule. Who plays together is a row in `groups`.
 
+The product was renamed from OurSagas to Sagalore. The repository and Go module stay `gutsaga`. See [CHANGELOG.md](CHANGELOG.md).
+
+## Rename from OurSagas
+
+Existing WoW Classic characters keep their progress:
+
+- The companion copies `WTF/.../SavedVariables/OurSagas.lua` to `Sagalore.lua` and renames the `OurSagasDB` global. A `Sagalore.lua` that already has progress is left as-is. On the first addon load, if `OurSagasDB` is still in memory and `SagaloreDB` has no progress, the addon copies it.
+- The companion copies `Interface/AddOns/OurSagas/OurSagasData.lua` and `media/*.tga` into `Interface/AddOns/Sagalore`, then removes the old addon folder (or renames it to `OurSagas.disabled` if the folder is locked) so the client does not load two addons.
+- Settings move from the OurSagas config folder to Sagalore when the new folder is empty. Older GutSaga and SagaBoard folders are still picked up.
+- `/sagalore` and `/sl` open the log.
+- Chat lines use `[Sagalore]`. The companion still reads `[OurSagas]` lines already in the chat log. Addon messages sent with the old prefix are still accepted.
+- `SAGALORE_*` environment variables replace `OURSAGAS_*`. The old names are still read when the new one is unset. Official builds read the GitHub Actions variable `SAGALORE_API_URL`, and fall back to `OURSAGAS_API_URL`.
+- Release files are `sagalore-*` and `Sagalore-addon.zip`. The same bytes are also uploaded as `oursagas-*` and `OurSagas-addon.zip` so an already-installed companion can update once.
+
 ## Try it locally
 
-You need Docker, Go, and a WoW client. Postgres and the API come from Compose. Login in development uses `OURSAGAS_DEV_TOKEN` so you do not need a Battle.net app for the first run.
+You need Docker, Go, and a WoW client. Postgres and the API come from Compose. Login in development uses `SAGALORE_DEV_TOKEN` so you do not need a Battle.net app for the first run.
 
 ```bash
 make dev
@@ -15,22 +29,22 @@ make dev
 That starts Postgres and the API, waits for `/healthz`, and seeds the Elwynn tutorial sagas. In another terminal:
 
 ```bash
-OURSAGAS_DEV_TOKEN=dev-token OURSAGAS_ADDON_SRC=addon/OurSagas \
-  go run ./cmd/oursagas --api-url http://localhost:8080 --client classic_era
+SAGALORE_DEV_TOKEN=dev-token SAGALORE_ADDON_SRC=addon/Sagalore \
+  go run ./cmd/sagalore --api-url http://localhost:8080 --client classic_era
 ```
 
-The API container must have the same `OURSAGAS_DEV_TOKEN`. `make dev` sets `dev-token` for local use only.
+The API container must have the same `SAGALORE_DEV_TOKEN`. `make dev` sets `dev-token` for local use only.
 
-The companion installs `Interface/AddOns/OurSagas`. In game, `/reload`, then `/oursagas` or `/os`.
+The companion installs `Interface/AddOns/Sagalore`. In game, `/reload`, then `/sagalore` or `/sl`.
 
-If the database already has sagas and no group, set `OURSAGAS_BOOTSTRAP_GROUP=slug:Name` before the API starts. See [docs/self-hosting.md](docs/self-hosting.md).
+If the database already has sagas and no group, set `SAGALORE_BOOTSTRAP_GROUP=slug:Name` before the API starts. See [docs/self-hosting.md](docs/self-hosting.md).
 
 ## What you set before a real login
 
 - Register a Battle.net application for this host. The redirect URI is `{PUBLIC_BASE_URL}/v1/auth/bnet/callback`. Blizzard will not accept a random loopback port, so the secret stays on the API.
 - `BNET_CLIENT_ID` and `BNET_CLIENT_SECRET` on the API.
 - `PUBLIC_BASE_URL` for that redirect and for signed cover URLs.
-- Official release binaries get the public API URL from the GitHub Actions variable `OURSAGAS_API_URL` (`-ldflags`). A self-hosted companion passes `--api-url`.
+- Official release binaries get the public API URL from the GitHub Actions variable `SAGALORE_API_URL` (`-ldflags`). A self-hosted companion passes `--api-url`.
 
 ## Groups
 
@@ -57,4 +71,4 @@ Players who only play never need a token. A long-lived `gst_` token is for exter
 
 ## Updates
 
-Release assets are `oursagas-darwin-arm64`, `oursagas-darwin-amd64`, `oursagas-windows-amd64.exe`, and `OurSagas-addon.zip`. The default update repo is `magnusnilsen/gutsaga`. Self-hosters set `update.repo` or turn updates off. Binaries are not signed.
+Release assets are `sagalore-darwin-arm64`, `sagalore-darwin-amd64`, `sagalore-windows-amd64.exe`, and `Sagalore-addon.zip`. The default update repo is `magnusnilsen/gutsaga`. Self-hosters set `update.repo` or turn updates off. Binaries are not signed.

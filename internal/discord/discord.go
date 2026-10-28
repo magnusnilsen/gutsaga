@@ -1,5 +1,5 @@
-// Package discord posts OurSagas notices to an incoming Discord webhook.
-// The username is always OurSagas. Text follows the group's locale (default English).
+// Package discord posts Sagalore notices to an incoming Discord webhook.
+// The username is always Sagalore. Text follows the group's locale (default English).
 //
 // Messages are embeds with a shared palette:
 //
@@ -10,7 +10,7 @@
 //	ColorLevel  amber   a milestone level
 //
 // Images are attached as webhook files and referenced as attachment://
-// so Discord renders them without a public OurSagas URL.
+// so Discord renders them without a public Sagalore URL.
 package discord
 
 import (
@@ -31,9 +31,9 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
 )
 
-const username = "OurSagas"
+const username = "Sagalore"
 
-// Palette shared by every OurSagas embed.
+// Palette shared by every Sagalore embed.
 const (
 	ColorSaga   = 0xC6A15B
 	ColorDone   = 0x3BA55D

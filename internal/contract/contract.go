@@ -1,4 +1,4 @@
-// Package contract is the JSON API shared by the OurSagas API and the companion.
+// Package contract is the JSON API shared by the Sagalore API and the companion.
 package contract
 
 import "time"
@@ -181,7 +181,7 @@ type PersonalToken struct {
 }
 
 // SessionResponse is what the API returns after Battle.net login.
-// The session token is a OurSagas credential (gss_). It is not a Battle.net token.
+// The session token is a Sagalore credential (gss_). It is not a Battle.net token.
 type SessionResponse struct {
 	TokenType    string `json:"token_type"`
 	SessionToken string `json:"session_token"`

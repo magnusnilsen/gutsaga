@@ -1,4 +1,4 @@
-// Package backend is the companion's client for the OurSagas API.
+// Package backend is the companion's client for the Sagalore API.
 package backend
 
 import (
@@ -10,12 +10,12 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/magnusnilsen/gutsaga/internal/envcompat"
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
 )
 
@@ -49,18 +49,19 @@ func (e *HTTPError) Permanent() bool {
 	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusTooManyRequests && e.Status != http.StatusRequestTimeout
 }
 
-// DevLogin exchanges OURSAGAS_DEV_TOKEN for a gss_ session. It does not call Battle.net.
-// Optional identity comes from OURSAGAS_DEV_BATTLETAG / OURSAGAS_DEV_BNET_ACCOUNT /
-// OURSAGAS_DEV_DISPLAY_NAME so a local run can merge onto an existing player.
+// DevLogin exchanges SAGALORE_DEV_TOKEN for a gss_ session. It does not call Battle.net.
+// Optional identity comes from SAGALORE_DEV_BATTLETAG / SAGALORE_DEV_BNET_ACCOUNT /
+// SAGALORE_DEV_DISPLAY_NAME so a local run can merge onto an existing player.
+// The previous OURSAGAS_DEV_* names are still read.
 func (c *Client) DevLogin(ctx context.Context, devToken string) (contract.SessionResponse, error) {
 	body := map[string]string{}
-	if v := strings.TrimSpace(os.Getenv("OURSAGAS_DEV_BATTLETAG")); v != "" {
+	if v := envcompat.Get("SAGALORE_DEV_BATTLETAG"); v != "" {
 		body["battletag"] = v
 	}
-	if v := strings.TrimSpace(os.Getenv("OURSAGAS_DEV_BNET_ACCOUNT")); v != "" {
+	if v := envcompat.Get("SAGALORE_DEV_BNET_ACCOUNT"); v != "" {
 		body["bnet_account_id"] = v
 	}
-	if v := strings.TrimSpace(os.Getenv("OURSAGAS_DEV_DISPLAY_NAME")); v != "" {
+	if v := envcompat.Get("SAGALORE_DEV_DISPLAY_NAME"); v != "" {
 		body["display_name"] = v
 	}
 	raw := []byte(`{}`)
@@ -167,7 +168,7 @@ func (c *Client) SagaImage(ctx context.Context, questID string) (contentType str
 	if c.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
-	req.Header.Set("User-Agent", "OurSagas")
+	req.Header.Set("User-Agent", "Sagalore")
 	resp, err := c.http().Do(req)
 	if err != nil {
 		return "", nil, err
@@ -263,7 +264,7 @@ func (c *Client) doToken(ctx context.Context, token, method, path string, body [
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	req.Header.Set("User-Agent", "OurSagas")
+	req.Header.Set("User-Agent", "Sagalore")
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}

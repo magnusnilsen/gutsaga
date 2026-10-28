@@ -112,7 +112,7 @@ func (h *Hub) remove(c *client) {
 	h.mu.Unlock()
 }
 
-// Serve upgrades one player socket. playerID is the OurSagas player uuid from
+// Serve upgrades one player socket. playerID is the Sagalore player uuid from
 // the session. The handler must authenticate before calling Serve.
 // Origin is not checked: this is not a browser, and the bearer token is the
 // credential. Railway terminates TLS and forwards the upgrade.
