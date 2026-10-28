@@ -196,10 +196,12 @@ func (s *Store) playerByPersonalToken(ctx context.Context, key string) (contract
 	var p contract.Player
 	var created time.Time
 	err := s.pool.QueryRow(ctx, `
-		SELECT p.id::text, COALESCE(p.battletag, ''), p.display_name, COALESCE(p.bnet_account_id, ''), p.created_at
+		SELECT p.id::text, COALESCE(p.battletag, ''), p.display_name, COALESCE(p.bnet_account_id, ''), p.created_at,
+			COALESCE(t.oauth_client_id, '')
 		FROM personal_tokens t
 		JOIN players p ON p.id = t.player_id
-		WHERE t.token_hash=$1 AND t.revoked_at IS NULL`, hashKey(key)).Scan(&p.ID, &p.BattleTag, &p.DisplayName, &p.BnetAccountID, &created)
+		WHERE t.token_hash=$1 AND t.revoked_at IS NULL
+		  AND (t.expires_at IS NULL OR t.expires_at > now())`, hashKey(key)).Scan(&p.ID, &p.BattleTag, &p.DisplayName, &p.BnetAccountID, &created, &p.OAuthClientID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contract.Player{}, ErrForbidden
 	}

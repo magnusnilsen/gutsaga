@@ -58,12 +58,15 @@ Invites are addressed to a character. Accept joins that Battle.net account and m
 
 Players who only play never need a token. A long-lived `gst_` token is for external HTTP clients. `POST /v1/me/tokens` returns the raw token once. `DELETE /v1/me/tokens/{id}` revokes it. The tray can mint and revoke one.
 
+Other services can register as OAuth clients and send the player through Battle.net and a consent page. The access token is also a `gst_` token, so the same API checks accept it. See [docs/oauth.md](docs/oauth.md).
+
 `ADMIN_TOKEN` is for operators: hard-delete a saga, or delete a group and its sagas. It cannot author sagas.
 
 ## Docs
 
 - [docs/self-hosting.md](docs/self-hosting.md) — Compose, env, Battle.net app, curl
 - [docs/API.md](docs/API.md) — HTTP
+- [docs/oauth.md](docs/oauth.md) — OAuth 2.1 for external clients
 - [docs/sagas-api.md](docs/sagas-api.md) — saga JSON
 - [docs/character-opt-in.md](docs/character-opt-in.md) — participating characters
 - [docs/openapi.yaml](docs/openapi.yaml)

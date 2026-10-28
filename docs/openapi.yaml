@@ -4,7 +4,8 @@ info:
   version: "0.3.0"
   description: |
     Battle.net login, groups, and sagas. Sessions are gss_. Personal tokens are gst_.
-    ADMIN_TOKEN cannot author sagas. See docs/API.md.
+    External clients use the OAuth 2.1 endpoints and receive a gst_ access token.
+    ADMIN_TOKEN cannot author sagas. See docs/API.md and docs/oauth.md.
 servers:
   - url: https://sagalore.example.com
 paths:
@@ -44,6 +45,49 @@ paths:
           description: Session
         "202":
           description: Pending
+  /.well-known/oauth-authorization-server:
+    get:
+      summary: RFC 8414 authorization server metadata
+      responses:
+        "200":
+          description: issuer, endpoints, S256, supported scopes
+  /.well-known/oauth-protected-resource:
+    get:
+      summary: RFC 9728 protected resource metadata
+      responses:
+        "200":
+          description: resource and authorization server
+  /oauth/register:
+    post:
+      summary: RFC 7591 dynamic client registration
+      responses:
+        "201":
+          description: client_id, and client_secret once when the client is confidential
+  /oauth/authorize:
+    get:
+      summary: Authorization code + PKCE. Battle.net login, then consent.
+      responses:
+        "302":
+          description: Battle.net, or the client redirect after an error
+        "200":
+          description: Consent page when the browser is signed in
+    post:
+      summary: Approve or deny the consent page
+      responses:
+        "302":
+          description: Client redirect with code and state, or an error
+  /oauth/token:
+    post:
+      summary: Exchange a code or rotate a refresh token
+      responses:
+        "200":
+          description: gst_ access token and gsr_ refresh token
+  /oauth/revoke:
+    post:
+      summary: RFC 7009 token revocation
+      responses:
+        "200":
+          description: Revoked, or the token was unknown
   /v1/auth/dev:
     post:
       summary: Dev token bypass. Does not call Blizzard.

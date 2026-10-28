@@ -27,6 +27,8 @@ The API listens on port 8080. Compose is for local development and a single host
 
 Each host registers its own Battle.net application and redirect URI. WoW Forever characters are not in Blizzard's profile API. The addon reports characters. A later check may mark them verified. Login does not wait for that.
 
+The same Battle.net app and redirect URI also sign in players for the OAuth 2.1 authorization server. External clients register themselves at `POST /oauth/register`. They do not get the Battle.net client secret. See [oauth.md](oauth.md). Discovery documents are `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource`.
+
 ## Companion
 
 ```bash

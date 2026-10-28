@@ -17,21 +17,12 @@ import (
 )
 
 const (
-	bnetAuthorizeURL = "https://oauth.battle.net/authorize"
-	bnetTokenURL     = "https://oauth.battle.net/token"
-	bnetUserInfoURL  = "https://oauth.battle.net/userinfo"
+	bnetAuthorizeURL  = "https://oauth.battle.net/authorize"
+	bnetTokenURL      = "https://oauth.battle.net/token"
+	bnetUserInfoURL   = "https://oauth.battle.net/userinfo"
+	bnetKindCompanion = "companion"
+	bnetKindOAuth     = "oauth"
 )
-
-type bnetAttempt struct {
-	verifier string
-	state    string
-	session  *sessionWire
-	errCode  string
-	errMsg   string
-	created  time.Time
-}
-
-var errBnetNotConfigured = errors.New("bnet not configured")
 
 type sessionWire struct {
 	TokenType    string `json:"token_type"`
@@ -40,28 +31,53 @@ type sessionWire struct {
 	Player       any    `json:"player"`
 }
 
+// bnetFlow is the HTTP client for Battle.net. Attempts themselves live in
+// Postgres so a restart or another replica can finish the login.
 type bnetFlow struct {
-	mu       sync.Mutex
-	attempts map[string]*bnetAttempt
-	client   *http.Client
-	now      func() time.Time
+	mu           sync.Mutex
+	client       *http.Client
+	now          func() time.Time
+	authorizeURL string
+	tokenURL     string
+	userInfoURL  string
 }
+
+var errBnetNotConfigured = errors.New("bnet not configured")
 
 func newBnetFlow() *bnetFlow {
-	return &bnetFlow{attempts: map[string]*bnetAttempt{}, client: &http.Client{Timeout: 20 * time.Second}, now: time.Now}
+	return &bnetFlow{client: &http.Client{Timeout: 20 * time.Second}, now: time.Now}
 }
 
-func (f *bnetFlow) prune() {
-	cut := f.now().Add(-30 * time.Minute)
-	for id, a := range f.attempts {
-		if a.created.Before(cut) {
-			delete(f.attempts, id)
-		}
+func (f *bnetFlow) authorizeEndpoint() string {
+	if f != nil && f.authorizeURL != "" {
+		return f.authorizeURL
 	}
+	return bnetAuthorizeURL
+}
+
+func (f *bnetFlow) tokenEndpoint() string {
+	if f != nil && f.tokenURL != "" {
+		return f.tokenURL
+	}
+	return bnetTokenURL
+}
+
+func (f *bnetFlow) userInfoEndpoint() string {
+	if f != nil && f.userInfoURL != "" {
+		return f.userInfoURL
+	}
+	return bnetUserInfoURL
+}
+
+func (s *Server) bnetFlow() *bnetFlow {
+	if s.bnet == nil {
+		s.bnet = newBnetFlow()
+	}
+	return s.bnet
 }
 
 func (s *Server) bnetConfigured() bool {
-	return strings.TrimSpace(s.bnetClientID) != "" && strings.TrimSpace(s.publicBaseURL) != "" && s.bnet != nil
+	return strings.TrimSpace(s.bnetClientID) != "" && strings.TrimSpace(s.publicBaseURL) != ""
 }
 
 func (s *Server) battleNetAuthorizeURL(state, challenge string) string {
@@ -73,7 +89,7 @@ func (s *Server) battleNetAuthorizeURL(state, challenge string) string {
 	q.Set("state", state)
 	q.Set("code_challenge", challenge)
 	q.Set("code_challenge_method", "S256")
-	return bnetAuthorizeURL + "?" + q.Encode()
+	return s.bnetFlow().authorizeEndpoint() + "?" + q.Encode()
 }
 
 func (s *Server) bnetPollURL(attempt string) string {
@@ -85,9 +101,10 @@ func (s *Server) bnetPollURL(attempt string) string {
 	return base + path
 }
 
-// registerBnetAttempt stores a PKCE attempt and returns the Battle.net authorize URL.
-// An empty id is generated.
-func (s *Server) registerBnetAttempt(id string) (string, string, error) {
+// registerBnetAttempt stores a companion PKCE attempt and returns its id and
+// the Battle.net authorize URL. An empty id is generated. Companion ids are a
+// different kind from OAuth consent attempts, so the same string cannot collide.
+func (s *Server) registerBnetAttempt(ctx context.Context, id string) (string, string, error) {
 	if !s.bnetConfigured() {
 		return "", "", errBnetNotConfigured
 	}
@@ -110,10 +127,11 @@ func (s *Server) registerBnetAttempt(id string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	s.bnet.mu.Lock()
-	s.bnet.prune()
-	s.bnet.attempts[id] = &bnetAttempt{verifier: verifier, state: state, created: s.bnet.now()}
-	s.bnet.mu.Unlock()
+	if err := s.store.UpsertBnetAttempt(ctx, bnetAttemptRecord{
+		Kind: bnetKindCompanion, ID: id, Verifier: verifier, State: state,
+	}); err != nil {
+		return "", "", err
+	}
 	return id, s.battleNetAuthorizeURL(state, challenge), nil
 }
 
@@ -123,7 +141,7 @@ func (s *Server) bnetStart(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", "attempt is required")
 		return
 	}
-	_, authURL, err := s.registerBnetAttempt(attempt)
+	_, authURL, err := s.registerBnetAttempt(r.Context(), attempt)
 	if err != nil {
 		if errors.Is(err, errBnetNotConfigured) {
 			writeErr(w, http.StatusServiceUnavailable, "bnet_not_configured", "BNET_CLIENT_ID and PUBLIC_BASE_URL are required")
@@ -135,6 +153,28 @@ func (s *Server) bnetStart(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
+// beginBnetLogin stores an OAuth consent attempt. The id is the authorization
+// request id, stored under a different kind from companion attempts.
+func (s *Server) beginBnetLogin(ctx context.Context, requestID string) (string, error) {
+	if !s.bnetConfigured() {
+		return "", errBnetNotConfigured
+	}
+	verifier, challenge, err := pkcePair()
+	if err != nil {
+		return "", err
+	}
+	state, err := randomToken(16)
+	if err != nil {
+		return "", err
+	}
+	if err := s.store.UpsertBnetAttempt(ctx, bnetAttemptRecord{
+		Kind: bnetKindOAuth, ID: requestID, Verifier: verifier, State: state, OAuthRequestID: requestID,
+	}); err != nil {
+		return "", err
+	}
+	return s.battleNetAuthorizeURL(state, challenge), nil
+}
+
 func (s *Server) bnetRedirect() string {
 	return strings.TrimRight(s.publicBaseURL, "/") + "/v1/auth/bnet/callback"
 }
@@ -142,31 +182,18 @@ func (s *Server) bnetRedirect() string {
 func (s *Server) bnetCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
-	s.bnet.mu.Lock()
-	var attempt string
-	var row *bnetAttempt
-	for id, a := range s.bnet.attempts {
-		if a.state == state {
-			attempt = id
-			row = a
-			break
-		}
+	row, err := s.store.BnetAttemptByState(r.Context(), state)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		s.fail(w, err)
+		return
 	}
-	verifier := ""
-	if row != nil {
-		verifier = row.verifier
-	}
-	s.bnet.mu.Unlock()
-	if row == nil || code == "" {
+	if errors.Is(err, ErrNotFound) || code == "" {
 		writeErr(w, http.StatusBadRequest, "invalid", "unknown Battle.net login attempt")
 		return
 	}
-	info, err := s.exchangeBnet(r.Context(), code, verifier)
+	info, err := s.exchangeBnet(r.Context(), code, row.Verifier)
 	if err != nil {
-		s.bnet.mu.Lock()
-		row.errCode = "bnet_unavailable"
-		row.errMsg = err.Error()
-		s.bnet.mu.Unlock()
+		_ = s.store.SetBnetAttemptError(r.Context(), row.Kind, row.ID, "bnet_unavailable", "Battle.net login failed")
 		writeErr(w, http.StatusBadGateway, "bnet_unavailable", "Battle.net login failed")
 		return
 	}
@@ -175,45 +202,51 @@ func (s *Server) bnetCallback(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	if row.Kind == bnetKindOAuth {
+		raw, err := s.store.IssueConsentSession(r.Context(), player.ID)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		_ = s.store.DeleteBnetAttempt(r.Context(), row.Kind, row.ID)
+		http.SetCookie(w, oauthSessionCookie(s.publicBaseURL, raw, r))
+		http.Redirect(w, r, "/oauth/authorize?request="+url.QueryEscape(row.OAuthRequestID), http.StatusFound)
+		return
+	}
 	sess, err := s.store.IssueSessionFor(r.Context(), player.ID)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	wire := &sessionWire{TokenType: sess.TokenType, SessionToken: sess.SessionToken, ExpiresAt: sess.ExpiresAt, Player: sess.Player}
-	s.bnet.mu.Lock()
-	if cur := s.bnet.attempts[attempt]; cur != nil {
-		cur.session = wire
+	wire := sessionWire{TokenType: sess.TokenType, SessionToken: sess.SessionToken, ExpiresAt: sess.ExpiresAt, Player: sess.Player}
+	if err := s.store.SetBnetAttemptSession(r.Context(), row.Kind, row.ID, wire); err != nil {
+		s.fail(w, err)
+		return
 	}
-	s.bnet.mu.Unlock()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = io.WriteString(w, "<!doctype html><title>Sagalore</title><p>You are logged in. You can close this window.</p>")
 }
 
 func (s *Server) bnetPoll(w http.ResponseWriter, r *http.Request) {
 	attempt := strings.TrimSpace(r.URL.Query().Get("attempt"))
-	s.bnet.mu.Lock()
-	row := s.bnet.attempts[attempt]
-	var sess *sessionWire
-	var code, msg string
-	if row != nil {
-		sess = row.session
-		code, msg = row.errCode, row.errMsg
-	}
-	s.bnet.mu.Unlock()
-	if row == nil {
+	row, err := s.store.BnetAttempt(r.Context(), bnetKindCompanion, attempt)
+	if errors.Is(err, ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "not_found", "unknown attempt")
 		return
 	}
-	if code != "" {
-		writeErr(w, http.StatusBadGateway, code, msg)
+	if err != nil {
+		s.fail(w, err)
 		return
 	}
-	if sess == nil {
+	if row.ErrCode != "" {
+		writeErr(w, http.StatusBadGateway, row.ErrCode, row.ErrMsg)
+		return
+	}
+	if row.Session == nil {
 		writeJSON(w, http.StatusAccepted, map[string]string{"status": "pending"})
 		return
 	}
-	writeJSON(w, http.StatusOK, sess)
+	writeJSON(w, http.StatusOK, row.Session)
 }
 
 func (s *Server) devLogin(w http.ResponseWriter, r *http.Request) {
@@ -266,13 +299,14 @@ func (s *Server) exchangeBnet(ctx context.Context, code, verifier string) (bnetU
 	form.Set("code", code)
 	form.Set("redirect_uri", s.bnetRedirect())
 	form.Set("code_verifier", verifier)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, bnetTokenURL, strings.NewReader(form.Encode()))
+	flow := s.bnetFlow()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, flow.tokenEndpoint(), strings.NewReader(form.Encode()))
 	if err != nil {
 		return bnetUser{}, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(s.bnetClientID, s.bnetClientSecret)
-	resp, err := s.bnet.client.Do(req)
+	resp, err := flow.client.Do(req)
 	if err != nil {
 		return bnetUser{}, err
 	}
@@ -287,12 +321,12 @@ func (s *Server) exchangeBnet(ctx context.Context, code, verifier string) (bnetU
 	if err := json.Unmarshal(raw, &tok); err != nil || tok.AccessToken == "" {
 		return bnetUser{}, fmt.Errorf("token response")
 	}
-	ureq, err := http.NewRequestWithContext(ctx, http.MethodGet, bnetUserInfoURL, nil)
+	ureq, err := http.NewRequestWithContext(ctx, http.MethodGet, flow.userInfoEndpoint(), nil)
 	if err != nil {
 		return bnetUser{}, err
 	}
 	ureq.Header.Set("Authorization", "Bearer "+tok.AccessToken)
-	uresp, err := s.bnet.client.Do(ureq)
+	uresp, err := flow.client.Do(ureq)
 	if err != nil {
 		return bnetUser{}, err
 	}

@@ -48,6 +48,12 @@ func usage() {
 
 GET /v1/ws is the player WebSocket (same bearer as /v1/sync).
 
+OAuth 2.1 for external clients (PKCE, discovery, dynamic registration):
+  /.well-known/oauth-authorization-server
+  /.well-known/oauth-protected-resource
+  /oauth/register  /oauth/authorize  /oauth/token  /oauth/revoke
+  Access tokens are gst_ and work on the API. Refresh tokens are gsr_.
+
 Environment:
   DATABASE_URL                 Postgres connection string (required)
   ADMIN_TOKEN                  ops only: seed is a command; HTTP hard-delete of a saga or a group
@@ -176,6 +182,17 @@ func serve(args []string) int {
 		}
 		listen = ":" + port
 	}
+	go func() {
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			if err := store.CleanupOAuth(ctx); err != nil {
+				slog.Error("oauth cleanup", "err", err)
+			}
+			cancel()
+		}
+	}()
 	httpSrv := &http.Server{
 		Addr:              listen,
 		Handler:           srv.Handler(),

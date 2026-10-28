@@ -22,8 +22,12 @@ Login merges an existing player by `bnet_account_id`, else by BattleTag. No othe
 
 | Method | Path | |
 | --- | --- | --- |
-| `POST` | `/v1/me/tokens` | Mint `gst_`. The raw token is in the response once. |
-| `DELETE` | `/v1/me/tokens/{id}` | Revoke. |
+| `POST` | `/v1/me/tokens` | Mint `gst_`. The raw token is in the response once. It does not expire. An OAuth access token cannot call this. |
+| `DELETE` | `/v1/me/tokens/{id}` | Revoke. A session or hand-minted `gst_` can revoke an OAuth access token, which also revokes its refresh tokens. An OAuth access token cannot call this. |
+
+External clients can also obtain a `gst_` access token from the OAuth 2.1 authorization server. That token expires. A refresh token (`gsr_`) is not an API key. See [oauth.md](oauth.md).
+
+A `401` from a player route includes `WWW-Authenticate` with `resource_metadata` when `PUBLIC_BASE_URL` is set, so a client can discover the authorization server (RFC 9728).
 
 Saga and group writes reject `ADMIN_TOKEN`, `created_by`, and user-identity headers. The signed-in account is the author.
 
