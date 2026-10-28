@@ -67,14 +67,15 @@ Smia hosts the Sagalore tools and calls this API over HTTP. Each call acts as th
 Set `SAGALORE_MCP_SERVICE_SECRET` on the API (`OURSAGAS_MCP_SERVICE_SECRET` still works when the new name is unset). The MCP sends:
 
 - `Authorization: Bearer $SAGALORE_MCP_SERVICE_SECRET`
-- `X-Sagalore-Caller-Subject`: the Smia user id
+- `X-Smia-Caller`: Smia-signed ES256 JWT. When it is present it must verify, and it wins over the headers below.
+- `X-Sagalore-Caller-Subject`: the Smia user id, used when the JWT header is absent
 - `X-Sagalore-Caller-Email`: optional, stored on the link
 
-The caller headers do nothing unless the bearer is that secret. A personal token cannot impersonate a subject.
+The caller headers and the JWT do nothing unless the bearer is that secret. A personal token cannot impersonate a subject. A bad JWT does not fall back to the caller headers.
 
-A Smia user who has not linked Battle.net gets `403` `identity_not_linked`, with `link_url` (the Battle.net authorize URL) and `attempt`. `POST /v1/auth/link` returns the same URL. The player opens it, signs in, and the existing `/v1/auth/bnet/callback` binds that Battle.net account to the Smia subject. Later calls are that player: owner in groups they own, member where they were invited.
+`SAGALORE_SMIA_ISSUER` is the Smia origin (default `https://app.smia.io`). Keys come from `{issuer}/.well-known/smia-caller-jwks.json`. `aud` must be this API's `PUBLIC_BASE_URL` origin. `SAGALORE_REQUIRE_SMIA_JWT=1` rejects header-only identity. The default is off. The `OURSAGAS_*` names still work.
 
-The secret check stays in front of a `CallerVerifier`. The verifier in this release reads the caller headers. A Smia-signed JWT verifier can replace or wrap it later without new routes. The service secret is still required.
+A Smia user who has not linked Battle.net gets `403` `identity_not_linked`, with `link_url` (the Battle.net authorize URL) and `attempt`. `POST /v1/auth/link` returns the same URL. The player opens it, signs in, and the existing `/v1/auth/bnet/callback` binds that Battle.net account to the Smia subject. Later calls are that player: owner in groups they own, member where they were invited. The JWT `sub` is the Smia user id. `email` is stored on the link.
 
 ## Docs
 

@@ -30,9 +30,8 @@ type CallerIdentity struct {
 
 // CallerVerifier checks a service call and returns the caller's external
 // identity. The HTTP middleware rejects the call when SAGALORE_MCP_SERVICE_SECRET
-// does not match, before Verify runs. Replace SharedSecretVerifier with a
-// Smia-signed JWT verifier (or wrap it) when that token format is confirmed.
-// A verifier still must not treat the caller headers as proof by themselves.
+// does not match, before Verify runs. A verifier still must not treat caller
+// headers or a JWT as proof by themselves.
 type CallerVerifier interface {
 	Verify(r *http.Request) (CallerIdentity, error)
 }
@@ -70,10 +69,40 @@ func (v SharedSecretVerifier) Verify(r *http.Request) (CallerIdentity, error) {
 	return CallerIdentity{Provider: provider, Subject: subject, Email: email}, nil
 }
 
+// MCPCallerVerifier is the production caller check.
+// X-Smia-Caller, when present, must verify and wins over X-Sagalore-Caller-*.
+// A bad JWT does not fall back to those headers. RequireSmiaJWT rejects
+// header-only identity. The service secret is required on every path.
+type MCPCallerVerifier struct {
+	RequireSmiaJWT bool
+	Headers        SharedSecretVerifier
+	Smia           *SmiaCallerVerifier
+}
+
+func (v *MCPCallerVerifier) Verify(r *http.Request) (CallerIdentity, error) {
+	if v == nil {
+		return CallerIdentity{}, errCallerAuth
+	}
+	secret := strings.TrimSpace(v.Headers.Secret)
+	if secret == "" || subtleConstantTimeString(bearer(r), secret) != 1 {
+		return CallerIdentity{}, errCallerAuth
+	}
+	if strings.TrimSpace(r.Header.Get(headerSmiaCaller)) != "" {
+		if v.Smia == nil {
+			return CallerIdentity{}, errCallerAuth
+		}
+		return v.Smia.Verify(r)
+	}
+	if v.RequireSmiaJWT {
+		return CallerIdentity{}, errCallerAuth
+	}
+	return v.Headers.Verify(r)
+}
+
 // serviceCallerPresented is true when the request is trying to act as an
 // external identity. Those requests never fall through to a gst_ or gss_ token.
 func (s *Server) serviceCallerPresented(r *http.Request) bool {
-	if strings.TrimSpace(r.Header.Get(headerCallerSubject)) != "" || strings.TrimSpace(r.Header.Get(headerCallerEmail)) != "" {
+	if strings.TrimSpace(r.Header.Get(headerSmiaCaller)) != "" || strings.TrimSpace(r.Header.Get(headerCallerSubject)) != "" || strings.TrimSpace(r.Header.Get(headerCallerEmail)) != "" {
 		return true
 	}
 	secret := strings.TrimSpace(s.mcpServiceSecret)

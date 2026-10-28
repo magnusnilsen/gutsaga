@@ -58,7 +58,9 @@ Environment:
   IMAGE_URL_TTL                signed URL lifetime (Go duration, default 1h)
   PORT                         listen port (default 8080)
   SAGALORE_DEV_TOKEN            dev/CI login bypass. Not a stand-in for Battle.net.
-  SAGALORE_MCP_SERVICE_SECRET   shared secret for the Smia MCP. Callers also send X-Sagalore-Caller-Subject.
+  SAGALORE_MCP_SERVICE_SECRET   shared secret for the Smia MCP. Required with caller identity.
+  SAGALORE_SMIA_ISSUER          Smia origin for caller JWTs (default https://app.smia.io)
+  SAGALORE_REQUIRE_SMIA_JWT     set to 1 to reject X-Sagalore-Caller-* without X-Smia-Caller
   SAGALORE_BOOTSTRAP_GROUP      slug:Name, required only when sagas have no group yet
   SAGALORE_OWNER_BATTLETAG      owner of the bootstrap group (else the oldest BattleTag)
   DISCORD_WEBHOOK_URL          copied once onto the bootstrap group when its webhook is empty
@@ -72,6 +74,15 @@ Environment:
 var knownDevSecrets = map[string]string{
 	"ADMIN_TOKEN":      "dev-admin-token",
 	"IMAGE_URL_SECRET": "dev-image-url-secret",
+}
+
+func envTruthy(name string) bool {
+	switch strings.ToLower(envcompat.Get(name)) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 func rejectDevSecrets() error {
@@ -157,6 +168,17 @@ func serve(args []string) int {
 		slog.Warn("signed saga image URLs need both PUBLIC_BASE_URL and IMAGE_URL_SECRET")
 	}
 	mcpSecret := envcompat.Get("SAGALORE_MCP_SERVICE_SECRET")
+	smiaIssuer := envcompat.Get("SAGALORE_SMIA_ISSUER")
+	if smiaIssuer == "" {
+		smiaIssuer = smiaDefaultISS
+	}
+	requireSmiaJWT := envTruthy("SAGALORE_REQUIRE_SMIA_JWT")
+	var smiaKeys *SmiaCallerVerifier
+	if origin := publicOrigin(publicBase); origin != "" {
+		smiaKeys = NewSmiaCallerVerifier(smiaIssuer, origin)
+	} else if requireSmiaJWT {
+		slog.Warn("SAGALORE_REQUIRE_SMIA_JWT is set but PUBLIC_BASE_URL has no origin; Smia caller JWTs cannot be checked")
+	}
 	srv := &Server{
 		store:            store,
 		adminToken:       os.Getenv("ADMIN_TOKEN"),
@@ -170,7 +192,11 @@ func serve(args []string) int {
 		bnetClientSecret: strings.TrimSpace(os.Getenv("BNET_CLIENT_SECRET")),
 		bnet:             newBnetFlow(),
 		mcpServiceSecret: mcpSecret,
-		callerVerifier:   SharedSecretVerifier{Secret: mcpSecret, Provider: smiaProvider},
+		callerVerifier: &MCPCallerVerifier{
+			RequireSmiaJWT: requireSmiaJWT,
+			Headers:        SharedSecretVerifier{Secret: mcpSecret, Provider: smiaProvider},
+			Smia:           smiaKeys,
+		},
 	}
 	listen := *addr
 	if listen == "" {

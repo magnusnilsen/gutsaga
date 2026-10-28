@@ -4,7 +4,8 @@ info:
   version: "0.3.0"
   description: |
     Battle.net login, groups, and sagas. Sessions are gss_. Personal tokens are gst_.
-    The Smia MCP sends SAGALORE_MCP_SERVICE_SECRET plus X-Sagalore-Caller-Subject.
+    The Smia MCP sends SAGALORE_MCP_SERVICE_SECRET plus X-Smia-Caller (ES256 JWT)
+    or X-Sagalore-Caller-Subject.
     ADMIN_TOKEN cannot author sagas. See docs/API.md.
 servers:
   - url: https://sagalore.example.com

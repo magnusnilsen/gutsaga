@@ -25,10 +25,15 @@ Smia calls the API with a service credential and the caller's own identity. Set 
 | Header | |
 | --- | --- |
 | `Authorization` | `Bearer $SAGALORE_MCP_SERVICE_SECRET` |
-| `X-Sagalore-Caller-Subject` | Smia user id. Required. |
+| `X-Smia-Caller` | Smia-signed ES256 JWT. When present it must verify, and it wins over the caller headers below. |
+| `X-Sagalore-Caller-Subject` | Smia user id. Used when `X-Smia-Caller` is absent. |
 | `X-Sagalore-Caller-Email` | Optional. Stored on the link. Not a lookup key. |
 
-The headers are not an identity by themselves. A request that sends them without the service secret is `401`, including when it also sends a `gst_` or `gss_` token. The API does not fall through to that token.
+The headers are not an identity by themselves. A request that sends them, or `X-Smia-Caller`, without the service secret is `401`, including when it also sends a `gst_` or `gss_` token. The API does not fall through to that token. A JWT that fails verification does not fall back to `X-Sagalore-Caller-*`.
+
+`X-Smia-Caller` is a JWT signed with ES256 (P-256), lifetime at most 5 minutes. `kid` selects a key from `{SAGALORE_SMIA_ISSUER}/.well-known/smia-caller-jwks.json` (default issuer `https://app.smia.io`). The API checks the signature, `iss` (the Smia origin), `aud` (the `PUBLIC_BASE_URL` origin, scheme and host), `exp` (30 seconds of clock skew), and `jti` (rejected if seen again before `exp`). `sub` is the Smia user id. `email` is stored on the link. `hub`, `listing_id`, and `tool` must be present. Keys are cached and refreshed when `kid` is unknown.
+
+`SAGALORE_REQUIRE_SMIA_JWT=1` rejects header-only identity. The default is off, so `X-Sagalore-Caller-Subject` still works until Smia sends the JWT. `OURSAGAS_SMIA_ISSUER` and `OURSAGAS_REQUIRE_SMIA_JWT` are the fallbacks.
 
 | Method | Path | |
 | --- | --- | --- |
@@ -42,9 +47,9 @@ An authenticated caller with no link gets `403`:
 {"error":"identity_not_linked","message":"...","link_url":"https://oauth.battle.net/authorize?...","attempt":"..."}
 ```
 
-`link_url` is the same authorize URL. After the player finishes Battle.net login, the same headers act as that player.
+`link_url` is the same authorize URL. After the player finishes Battle.net login, the same caller acts as that player.
 
-The service-secret comparison runs before `CallerVerifier.Verify`. The built-in verifier reads the caller headers and sets provider `smia`. A Smia-signed JWT verifier can replace or wrap that step later. It still cannot skip the service secret.
+The service-secret comparison runs before `CallerVerifier.Verify`. `MCPCallerVerifier` checks `X-Smia-Caller` when it is set, and otherwise reads the caller headers. Neither path skips the service secret.
 
 ## Tokens
 
