@@ -658,9 +658,6 @@ local function formatOsloWhen(raw)
 end
 
 SagaloreBoard = SagaloreBoard or {}
-SagaloreBoard.periodBtns = {}
-SagaloreBoard.groupBtns = {}
-SagaloreBoard.rows = {}
 SagaloreBoard.rows = {}
 
 function SagaloreBoard.formatDuration(sec)
@@ -1075,11 +1072,145 @@ local function updateSearchHint()
     end
 end
 
+local function closeMenusIfOutside()
+    local list = _G.DropDownList1
+    if not list or not list.IsShown or not list:IsShown() then
+        return
+    end
+    if list.IsMouseOver and list:IsMouseOver() then
+        return
+    end
+    local owner = list.dropdown or UIDROPDOWNMENU_OPEN_MENU
+    if owner and owner.IsMouseOver and owner:IsMouseOver() then
+        return
+    end
+    if CloseDropDownMenus then
+        CloseDropDownMenus()
+    else
+        list:Hide()
+    end
+end
+
 local function blurSearch()
     if searchBox then
         searchBox:ClearFocus()
         updateSearchHint()
     end
+    closeMenusIfOutside()
+end
+
+local MENU_ROW = 22
+local MENU_PAD_X = 22
+local MENU_PAD_Y = 14
+
+local function spaceDropList(level)
+    level = level or 1
+    local list = _G["DropDownList" .. level]
+    if not list or not list.numButtons or list.numButtons < 1 then
+        return
+    end
+    local n = list.numButtons
+    local widest = 48
+    for i = 1, n do
+        local btn = _G["DropDownList" .. level .. "Button" .. i]
+        local fs = btn and _G[btn:GetName() .. "NormalText"]
+        local tw = fs and fs.GetStringWidth and fs:GetStringWidth() or 0
+        if tw > widest then
+            widest = tw
+        end
+    end
+    -- Checkbox sits on the button's left edge, so the inset is the gap
+    -- between the menu border and the check / label.
+    local width = widest + (MENU_PAD_X * 2) + 36
+    if width < 160 then
+        width = 160
+    end
+    list:SetWidth(width)
+    -- Buttons span the menu so the yellow hover fills the dropdown.
+    -- Checkbox / label are inset for padding; the highlight is not.
+    local edge = 2
+    local inset = MENU_PAD_X - edge
+    if inset < 8 then
+        inset = 8
+    end
+    for i = 1, n do
+        local btn = _G["DropDownList" .. level .. "Button" .. i]
+        if btn then
+            local name = btn:GetName()
+            btn:SetHeight(MENU_ROW)
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", list, "TOPLEFT", edge, -(MENU_PAD_Y + (i - 1) * MENU_ROW))
+            btn:SetPoint("RIGHT", list, "RIGHT", -edge, 0)
+            local check = _G[name .. "Check"]
+            local uncheck = _G[name .. "UnCheck"]
+            local text = _G[name .. "NormalText"]
+            if check then
+                check:ClearAllPoints()
+                check:SetPoint("LEFT", btn, "LEFT", inset, 0)
+            end
+            if uncheck then
+                uncheck:ClearAllPoints()
+                uncheck:SetPoint("LEFT", btn, "LEFT", inset, 0)
+            end
+            if text then
+                text:ClearAllPoints()
+                text:SetPoint("LEFT", btn, "LEFT", inset + 18, 0)
+            end
+            local hl = _G[name .. "Highlight"]
+            if hl then
+                hl:ClearAllPoints()
+                hl:SetPoint("LEFT", list, "LEFT", edge, 0)
+                hl:SetPoint("RIGHT", list, "RIGHT", -edge, 0)
+                hl:SetPoint("TOP", btn, "TOP", 0, 0)
+                hl:SetPoint("BOTTOM", btn, "BOTTOM", 0, 0)
+            end
+        end
+    end
+    list:SetHeight((n * MENU_ROW) + (MENU_PAD_Y * 2))
+end
+
+local dropListHooked = false
+local function hookDropListSpacing()
+    if WorldFrame and WorldFrame.HookScript and not SagaloreBoard.worldClickHooked then
+        SagaloreBoard.worldClickHooked = true
+        WorldFrame:HookScript("OnMouseDown", function()
+            closeMenusIfOutside()
+        end)
+    end
+    if dropListHooked then
+        return
+    end
+    local list = _G.DropDownList1
+    if not list or not list.HookScript then
+        return
+    end
+    dropListHooked = true
+    list:HookScript("OnShow", function(self)
+        local owner = self.dropdown or UIDROPDOWNMENU_OPEN_MENU
+        if owner == statusDrop or owner == groupDrop or owner == creatorDrop
+            or owner == SagaloreBoard.boardGroupDrop or owner == SagaloreBoard.boardPeriodDrop then
+            spaceDropList(1)
+            -- Stay above the log panels, and don't start the auto-hide countdown
+            -- while the cursor is still on the menu. A click outside still closes it.
+            self:SetFrameStrata("TOOLTIP")
+            self.showTimer = nil
+            self.isCounting = nil
+        end
+    end)
+    list:HookScript("OnUpdate", function(self)
+        if not self:IsShown() then
+            return
+        end
+        local owner = self.dropdown or UIDROPDOWNMENU_OPEN_MENU
+        if owner ~= statusDrop and owner ~= groupDrop and owner ~= creatorDrop
+            and owner ~= SagaloreBoard.boardGroupDrop and owner ~= SagaloreBoard.boardPeriodDrop then
+            return
+        end
+        if self:IsMouseOver() or (owner and owner.IsMouseOver and owner:IsMouseOver()) then
+            self.showTimer = nil
+            self.isCounting = nil
+        end
+    end)
 end
 
 local function filterCheck(text, checked, onClick)
@@ -1088,8 +1219,20 @@ local function filterCheck(text, checked, onClick)
     info.isNotRadio = true
     info.keepShownOnClick = true
     info.checked = checked
-    info.func = function(_, _, _, value)
-        onClick(value and true or false)
+    info.func = function(button, _, _, value)
+        -- Paint on the next frame. Rebuilding the list inside the click
+        -- leaves the open menu showing the previous rows until it closes.
+        local on
+        if type(value) == "boolean" then
+            on = value
+        elseif button and button.GetName then
+            local mark = _G[button:GetName() .. "Check"]
+            if mark and mark.IsShown then
+                on = mark:IsShown() and true or false
+            end
+        end
+        onClick(on and true or false)
+        SagaloreBoard.pendingRefresh = true
     end
     UIDropDownMenu_AddButton(info)
 end
@@ -1102,19 +1245,17 @@ local function setupListFilters()
         filterCheck(L("ui.not_started"), statusFilter.open ~= false, function(on)
             statusFilter.open = on
             saveFilters()
-            refresh()
         end)
         -- Chain prerequisite not finished yet ("Låst: fullfør … først").
         filterCheck(L("ui.requires_previous"), statusFilter.locked ~= false, function(on)
             statusFilter.locked = on
             saveFilters()
-            refresh()
         end)
         filterCheck(L("ui.completed"), statusFilter.done ~= false, function(on)
             statusFilter.done = on
             saveFilters()
-            refresh()
         end)
+        spaceDropList(1)
     end)
     UIDropDownMenu_SetText(statusDrop, L("ui.status"))
     if groupDrop then
@@ -1131,6 +1272,7 @@ local function setupListFilters()
             table.sort(names)
             if #names == 0 then
                 filterCheck(L("ui.none"), false, function() end)
+                spaceDropList(1)
                 return
             end
             for i = 1, #names do
@@ -1142,9 +1284,9 @@ local function setupListFilters()
                         groupHidden[name] = true
                     end
                     saveFilters()
-                    refresh()
                 end)
             end
+            spaceDropList(1)
         end)
         UIDropDownMenu_SetText(groupDrop, L("ui.group"))
     end
@@ -1161,6 +1303,7 @@ local function setupListFilters()
         table.sort(names)
         if #names == 0 then
             filterCheck(L("ui.none"), false, function() end)
+            spaceDropList(1)
             return
         end
         for i = 1, #names do
@@ -1172,11 +1315,12 @@ local function setupListFilters()
                     creatorHidden[name] = true
                 end
                 saveFilters()
-                refresh()
             end)
         end
+        spaceDropList(1)
     end)
     UIDropDownMenu_SetText(creatorDrop, L("ui.created_by"))
+    hookDropListSpacing()
 end
 
 local function listSubtitle(entry, entries)
@@ -1995,8 +2139,13 @@ local function ensureActivityRow(i)
     row = CreateFrame("Frame", nil, detailChild)
     row:SetHeight(36)
     row:EnableMouse(true)
+    local bullet = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    bullet:SetPoint("TOPLEFT", 0, 0)
+    bullet:SetText("•")
+    bullet:SetTextColor(INK.r, INK.g, INK.b)
+    row.bullet = bullet
     local whenFS = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    whenFS:SetPoint("TOPLEFT", 0, 0)
+    whenFS:SetPoint("TOPLEFT", bullet, "TOPRIGHT", 6, 0)
     whenFS:SetJustifyH("LEFT")
     whenFS:SetJustifyV("TOP")
     whenFS:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
@@ -2168,44 +2317,184 @@ function SagaloreBoard.findLeaderboard(groupID, period)
     return nil
 end
 
-function SagaloreBoard.paintToggle(btn, on)
-    if not btn or not btn.GetFontString then
+function SagaloreBoard.tintTab(tab)
+    local name = tab and tab.GetName and tab:GetName()
+    if not name then
         return
     end
-    local fs = btn:GetFontString()
-    if not fs then
+    local parts = { "Left", "Middle", "Right", "LeftDisabled", "MiddleDisabled", "RightDisabled" }
+    for i = 1, #parts do
+        local tex = _G[name .. parts[i]]
+        if tex and tex.SetVertexColor then
+            tex:SetVertexColor(1, 0.9, 0.58)
+        end
+    end
+end
+
+-- The dialog edge cannot be clipped. A short mask, only as wide as the
+-- active tab, covers the gold line and stops there.
+function SagaloreBoard.ensureTabMask(tab)
+    if tab.masks or not frame then
         return
     end
-    if on then
-        fs:SetTextColor(1, 0.85, 0.4)
-    else
-        fs:SetTextColor(1, 0.95, 0.8)
+    tab.masks = {}
+    -- Stacked: DialogBox-Background is translucent on its own.
+    for i = 1, 3 do
+        local t = tab:CreateTexture(nil, "BACKGROUND", nil, i)
+        t:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background")
+        if t.SetHorizTile then
+            t:SetHorizTile(true)
+        end
+        if t.SetVertTile then
+            t:SetVertTile(true)
+        end
+        t:SetPoint("BOTTOMLEFT", tab, "TOPLEFT", 16, 0)
+        t:SetPoint("BOTTOMRIGHT", tab, "TOPRIGHT", -16, 0)
+        t:SetHeight(4)
+        t:Hide()
+        tab.masks[i] = t
+    end
+end
+
+function SagaloreBoard.placeTabs(active)
+    local tabs = { SagaloreBoard.sagasTab, SagaloreBoard.boardTab }
+    if not frame or not tabs[1] or not tabs[2] then
+        return
+    end
+    -- Same baseline: tab tops sit on the dialog's bottom gold edge.
+    local y = 6
+    local x = 11
+    local level = frame:GetFrameLevel() or 1
+    for i = 1, 2 do
+        local tab = tabs[i]
+        SagaloreBoard.tintTab(tab)
+        SagaloreBoard.ensureTabMask(tab)
+        tab:ClearAllPoints()
+        if i == 1 then
+            tab:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", x, y)
+        else
+            local w = tabs[1]:GetWidth() or 0
+            if w < 40 then
+                w = 80
+            end
+            tab:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", x + w - 15, y)
+        end
+        local on = i == active
+        tab:SetFrameLevel(level + (on and 8 or 2))
+        if tab.masks then
+            for m = 1, #tab.masks do
+                if on then
+                    tab.masks[m]:Show()
+                else
+                    tab.masks[m]:Hide()
+                end
+            end
+        end
     end
 end
 
 function SagaloreBoard.paintViewButtons()
-    local board = SagaloreBoard.currentView() == "board"
-    SagaloreBoard.paintToggle(SagaloreBoard.viewSagasBtn, not board)
-    SagaloreBoard.paintToggle(SagaloreBoard.viewBoardBtn, board)
+    if not frame then
+        return
+    end
+    local id = SagaloreBoard.currentView() == "board" and 2 or 1
+    if frame.selectedTab ~= id and PanelTemplates_SetTab then
+        pcall(PanelTemplates_SetTab, frame, id)
+    end
+    SagaloreBoard.placeTabs(id)
+end
+
+function SagaloreBoard.menuOpen()
+    local list = _G.DropDownList1
+    return list and list.IsShown and list:IsShown()
+end
+
+function SagaloreBoard.applyBoardSkin()
+    if detailPanel and detailPanel.parchment then
+        detailPanel.parchment:Hide()
+    end
+    if detailPanel and detailPanel.SetBackdropColor then
+        detailPanel:SetBackdropColor(0, 0, 0, 0)
+    end
+    if detailPanel and detailPanel.SetBackdropBorderColor then
+        detailPanel:SetBackdropBorderColor(0, 0, 0, 0)
+    end
+end
+
+function SagaloreBoard.applyLogSkin()
+    if detailPanel and detailPanel.parchment then
+        detailPanel.parchment:Show()
+    end
+    if detailPanel and detailPanel.SetBackdropColor then
+        detailPanel:SetBackdropColor(0.86, 0.78, 0.58, 0.97)
+    end
+    if detailPanel and detailPanel.SetBackdropBorderColor then
+        detailPanel:SetBackdropBorderColor(GOLD.r, GOLD.g, GOLD.b, 1)
+    end
 end
 
 function SagaloreBoard.hideBoardChrome()
-    for i = 1, #SagaloreBoard.periodBtns do
-        SagaloreBoard.periodBtns[i]:Hide()
-    end
-    for i = 1, #SagaloreBoard.groupBtns do
-        SagaloreBoard.groupBtns[i]:Hide()
-    end
     for i = 1, #SagaloreBoard.rows do
         SagaloreBoard.rows[i]:Hide()
     end
     if SagaloreBoard.emptyFS then
         SagaloreBoard.emptyFS:Hide()
     end
+    if SagaloreBoard.boardGroupDrop then
+        SagaloreBoard.boardGroupDrop:Hide()
+    end
+    if SagaloreBoard.boardPeriodDrop then
+        SagaloreBoard.boardPeriodDrop:Hide()
+    end
+end
+
+function SagaloreBoard.layoutLogPanels()
+    SagaloreBoard.applyLogSkin()
+    if SagaloreBoard.layoutMode == "log" then
+        if listPanel then
+            listPanel:Show()
+        end
+        return
+    end
+    SagaloreBoard.layoutMode = "log"
+    if listPanel then
+        listPanel:ClearAllPoints()
+        listPanel:SetPoint("TOPLEFT", 22, -72)
+        listPanel:SetPoint("BOTTOMLEFT", 22, 22)
+        listPanel:SetSize(236, 410)
+        listPanel:Show()
+    end
+    if detailPanel then
+        detailPanel:ClearAllPoints()
+        detailPanel:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 14, 0)
+        detailPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -18, 22)
+        detailPanel:Show()
+    end
+end
+
+function SagaloreBoard.layoutBoardPanels()
+    SagaloreBoard.applyBoardSkin()
+    if SagaloreBoard.layoutMode == "board" then
+        if listPanel then
+            listPanel:Hide()
+        end
+        return
+    end
+    SagaloreBoard.layoutMode = "board"
+    if listPanel then
+        listPanel:Hide()
+    end
+    if detailPanel then
+        detailPanel:ClearAllPoints()
+        detailPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", 22, -72)
+        detailPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -18, 22)
+        detailPanel:Show()
+    end
 end
 
 function SagaloreBoard.showLogChrome()
     SagaloreBoard.hideBoardChrome()
+    SagaloreBoard.layoutLogPanels()
     if searchBox then
         searchBox:Show()
     end
@@ -2268,113 +2557,200 @@ function SagaloreBoard.hideLogLists()
     end
 end
 
-function SagaloreBoard.ensureBoardRow(i)
-    local row = SagaloreBoard.rows[i]
-    if row then
-        return row
-    end
-    row = CreateFrame("Frame", nil, detailChild)
-    row:SetHeight(36)
-    local nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    nameFS:SetPoint("TOPLEFT", 0, 0)
-    nameFS:SetJustifyH("LEFT")
-    nameFS:SetTextColor(INK.r, INK.g, INK.b)
-    local subFS = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    subFS:SetPoint("TOPLEFT", nameFS, "BOTTOMLEFT", 0, -2)
-    subFS:SetJustifyH("LEFT")
-    subFS:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
-    row.nameFS = nameFS
-    row.subFS = subFS
-    SagaloreBoard.rows[i] = row
-    return row
-end
-
-function SagaloreBoard.ensureGroupBtn(i)
-    local btn = SagaloreBoard.groupBtns[i]
-    if btn then
-        return btn
-    end
-    btn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
-    btn:SetSize(200, 22)
-    btn:SetScript("OnClick", function(self)
-        initDB()
-        SagaloreDB.board_group = self.groupID
-        refresh()
-    end)
-    SagaloreBoard.groupBtns[i] = btn
-    return btn
-end
-
-function SagaloreBoard.refreshBoard()
-    if not detailTitle or not detailChild then
-        return
-    end
-    SagaloreBoard.hideLogLists()
-    SagaloreBoard.paintViewButtons()
-    local period = SagaloreBoard.currentPeriod()
-    local groups = SagaloreBoard.dataGroups()
-    local selected = SagaloreBoard.currentBoardGroup()
-    local y = 10
-    if #groups > 1 then
-        for i = 1, #groups do
-            local btn = SagaloreBoard.ensureGroupBtn(i)
-            btn.groupID = groups[i].id
-            btn:SetText(groups[i].name or groups[i].slug or L("ui.group"))
-            btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", listPanel, "TOPLEFT", 12, -y)
-            btn:Show()
-            SagaloreBoard.paintToggle(btn, selected and selected.id == groups[i].id)
-            y = y + 26
-        end
-    end
-    for i = #groups + 1, #SagaloreBoard.groupBtns do
-        SagaloreBoard.groupBtns[i]:Hide()
-    end
-    if #groups <= 1 then
-        for i = 1, #SagaloreBoard.groupBtns do
-            SagaloreBoard.groupBtns[i]:Hide()
-        end
-    end
-    local periodOrder = { "all", "month", "week", "today" }
+function SagaloreBoard.periodLabel(period)
     local periodKey = {
         all = "ui.period_all",
         month = "ui.period_month",
         week = "ui.period_week",
         today = "ui.period_today",
     }
-    for i = 1, #SagaloreBoard.periodBtns do
-        local btn = SagaloreBoard.periodBtns[i]
-        local key = periodOrder[i]
-        btn.period = key
-        btn:SetText(L(periodKey[key] or key))
-        btn:ClearAllPoints()
-        btn:SetPoint("TOPLEFT", listPanel, "TOPLEFT", 12, -y)
-        btn:Show()
-        SagaloreBoard.paintToggle(btn, key == period)
-        y = y + 26
-    end
+    return L(periodKey[period] or "ui.period_all")
+end
 
-    local width = 340
-    detailTitle:SetText(L("ui.leaderboard"))
-    detailTitle:SetTextColor(INK.r, INK.g, INK.b)
+function SagaloreBoard.syncBoardLabels()
+    if not UIDropDownMenu_SetText then
+        return
+    end
+    local selected = SagaloreBoard.currentBoardGroup()
+    if SagaloreBoard.boardGroupDrop then
+        local label = L("ui.group")
+        if selected then
+            label = selected.name or selected.slug or label
+        end
+        UIDropDownMenu_SetText(SagaloreBoard.boardGroupDrop, label)
+    end
+    if SagaloreBoard.boardPeriodDrop then
+        UIDropDownMenu_SetText(SagaloreBoard.boardPeriodDrop, SagaloreBoard.periodLabel(SagaloreBoard.currentPeriod()))
+    end
+end
+
+function SagaloreBoard.setupBoardFilters()
+    if not UIDropDownMenu_Initialize or not SagaloreBoard.boardGroupDrop or not SagaloreBoard.boardPeriodDrop then
+        return
+    end
+    if SagaloreBoard.filtersReady then
+        SagaloreBoard.syncBoardLabels()
+        return
+    end
+    SagaloreBoard.filtersReady = true
+    local function pick(text, checked, onPick)
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = text
+        info.checked = checked
+        info.padding = 6
+        info.func = function()
+            onPick()
+            SagaloreBoard.pendingRefresh = true
+        end
+        UIDropDownMenu_AddButton(info)
+    end
+    UIDropDownMenu_Initialize(SagaloreBoard.boardGroupDrop, function()
+        local groups = SagaloreBoard.dataGroups()
+        local selected = SagaloreBoard.currentBoardGroup()
+        if #groups == 0 then
+            pick(L("ui.none"), false, function() end)
+            spaceDropList(1)
+            return
+        end
+        for i = 1, #groups do
+            local g = groups[i]
+            local label = g.name or g.slug or L("ui.group")
+            pick(label, selected and selected.id == g.id, function()
+                initDB()
+                SagaloreDB.board_group = g.id
+                refresh()
+            end)
+        end
+        spaceDropList(1)
+    end)
+    local periodOrder = { "all", "month", "week", "today" }
+    UIDropDownMenu_Initialize(SagaloreBoard.boardPeriodDrop, function()
+        local current = SagaloreBoard.currentPeriod()
+        for i = 1, #periodOrder do
+            local key = periodOrder[i]
+            pick(SagaloreBoard.periodLabel(key), key == current, function()
+                initDB()
+                SagaloreDB.board_period = key
+                refresh()
+            end)
+        end
+        spaceDropList(1)
+    end)
+    hookDropListSpacing()
+    SagaloreBoard.syncBoardLabels()
+end
+
+local CLASS_COLOR = {
+    WARRIOR = { 0.78, 0.61, 0.43 },
+    PALADIN = { 0.96, 0.55, 0.73 },
+    HUNTER = { 0.67, 0.83, 0.45 },
+    ROGUE = { 1.00, 0.96, 0.41 },
+    PRIEST = { 1.00, 1.00, 1.00 },
+    SHAMAN = { 0.00, 0.44, 0.87 },
+    MAGE = { 0.41, 0.80, 0.94 },
+    WARLOCK = { 0.58, 0.51, 0.79 },
+    DRUID = { 1.00, 0.49, 0.04 },
+}
+local CLASS_TOKEN = {
+    warrior = "WARRIOR", kriger = "WARRIOR",
+    paladin = "PALADIN",
+    hunter = "HUNTER", jeger = "HUNTER",
+    rogue = "ROGUE", sniker = "ROGUE", banditt = "ROGUE",
+    priest = "PRIEST", prest = "PRIEST",
+    shaman = "SHAMAN", sjaman = "SHAMAN",
+    mage = "MAGE", magiker = "MAGE",
+    warlock = "WARLOCK", heksemester = "WARLOCK",
+    druid = "DRUID",
+}
+local RANK_COLOR = {
+    { 1.00, 0.78, 0.20 },
+    { 0.82, 0.86, 0.94 },
+    { 0.92, 0.55, 0.24 },
+}
+
+function SagaloreBoard.classColor(className)
+    local token = CLASS_TOKEN[string.lower(className or "")]
+    local rgb = token and CLASS_COLOR[token]
+    if rgb then
+        return rgb[1], rgb[2], rgb[3]
+    end
+    return 1, 0.95, 0.82
+end
+
+function SagaloreBoard.ensureBoardRow(i)
+    local row = SagaloreBoard.rows[i]
+    if row then
+        return row
+    end
+    row = CreateFrame("Frame", nil, detailChild)
+    row:SetHeight(46)
+    local bg = row:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(1, 1, 1, 1)
+    row.bg = bg
+    local rankFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    rankFS:SetPoint("LEFT", 8, 1)
+    rankFS:SetWidth(28)
+    rankFS:SetJustifyH("CENTER")
+    row.rankFS = rankFS
+    local countFS = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    countFS:SetPoint("RIGHT", -12, 0)
+    countFS:SetWidth(108)
+    countFS:SetJustifyH("RIGHT")
+    row.countFS = countFS
+    local nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    nameFS:SetPoint("TOPLEFT", 46, -6)
+    nameFS:SetJustifyH("LEFT")
+    row.nameFS = nameFS
+    local subFS = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    subFS:SetPoint("TOPLEFT", nameFS, "BOTTOMLEFT", 0, -1)
+    subFS:SetJustifyH("LEFT")
+    subFS:SetTextColor(0.86, 0.78, 0.62)
+    row.subFS = subFS
+    bindWheel(row, detailScroll, 28)
+    SagaloreBoard.rows[i] = row
+    return row
+end
+
+function SagaloreBoard.refreshBoard()
+    if not detailTitle or not detailChild then
+        return
+    end
+    -- A world tick rebuilds this view every second. Repositioning or
+    -- reinitializing the dropdowns closes the menu almost immediately.
+    if SagaloreBoard.menuOpen() then
+        return
+    end
+    SagaloreBoard.hideLogLists()
+    SagaloreBoard.layoutBoardPanels()
+    SagaloreBoard.paintViewButtons()
+    if SagaloreBoard.boardGroupDrop then
+        SagaloreBoard.boardGroupDrop:Show()
+    end
+    if SagaloreBoard.boardPeriodDrop then
+        SagaloreBoard.boardPeriodDrop:Show()
+    end
+    SagaloreBoard.setupBoardFilters()
+
+    local period = SagaloreBoard.currentPeriod()
+    local selected = SagaloreBoard.currentBoardGroup()
+    local width = 560
+    if detailPanel and detailPanel.GetWidth and detailChild then
+        local pw = detailPanel:GetWidth()
+        if type(pw) == "number" and pw > 200 then
+            detailChild:SetWidth(pw - 48)
+            width = pw - 60
+        end
+    end
+    local heading = L("ui.leaderboard")
+    if selected then
+        heading = selected.name or selected.slug or heading
+    end
+    detailTitle:SetText(heading)
+    detailTitle:SetTextColor(1, 0.86, 0.45)
     detailTitle:SetWidth(width)
     detailTitle:Show()
-    local detailY = (detailTitle:GetStringHeight() or 24) + 8
-    local subtitle = ""
-    if selected then
-        subtitle = selected.name or selected.slug or ""
-    end
-    if subtitle ~= "" then
-        subtitle = subtitle .. " · "
-    end
-    subtitle = subtitle .. L(periodKey[period] or "ui.period_all")
-    detailMeta:SetText(subtitle)
-    detailMeta:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
-    detailMeta:SetWidth(width)
-    detailMeta:ClearAllPoints()
-    detailMeta:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-    detailMeta:Show()
-    detailY = detailY + (detailMeta:GetStringHeight() or 16) + 12
+    local detailY = (detailTitle:GetStringHeight() or 24) + 12
 
     local entries = {}
     local board = selected and SagaloreBoard.findLeaderboard(selected.id, period) or nil
@@ -2386,6 +2762,7 @@ function SagaloreBoard.refreshBoard()
             SagaloreBoard.emptyFS:ClearAllPoints()
             SagaloreBoard.emptyFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
             SagaloreBoard.emptyFS:SetWidth(width)
+            SagaloreBoard.emptyFS:SetTextColor(0.9, 0.84, 0.7)
             SagaloreBoard.emptyFS:SetText(L("ui.board_empty"))
             SagaloreBoard.emptyFS:Show()
             detailY = detailY + (SagaloreBoard.emptyFS:GetStringHeight() or 16) + 8
@@ -2396,50 +2773,54 @@ function SagaloreBoard.refreshBoard()
     for i = 1, #entries do
         local e = entries[i]
         local row = SagaloreBoard.ensureBoardRow(i)
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-        row:SetWidth(width)
-        row:Show()
         local rank = tonumber(e.rank) or i
         local name = plainString(e.name) or ""
-        row.nameFS:SetWidth(width)
-        row.nameFS:SetText(string.format("%d. %s", rank, name))
-        local bits = { string.format(L("ui.board_count"), tonumber(e.completed) or 0) }
+        local done = tonumber(e.completed) or 0
+        local podium = rank <= 3
+        local h = 46
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 4, -detailY)
+        row:SetWidth(width)
+        row:SetHeight(h)
+        row:Show()
+        local medal = RANK_COLOR[rank] or { 0.78, 0.72, 0.55 }
+        local you = player.name ~= "" and same(name, player.name)
+        if you then
+            row.bg:SetVertexColor(1, 0.86, 0.45, 0.16)
+        elseif podium then
+            row.bg:SetVertexColor(1, 0.9, 0.7, 0.07)
+        else
+            row.bg:SetVertexColor(1, 1, 1, 0.04)
+        end
+        row.rankFS:SetText(tostring(rank))
+        row.rankFS:SetTextColor(medal[1], medal[2], medal[3])
+        local cr, cg, cb = SagaloreBoard.classColor(plainString(e.class) or "")
+        row.nameFS:SetText(name)
+        row.nameFS:SetTextColor(cr, cg, cb)
+        local nameW = width - 180
+        if nameW < 80 then
+            nameW = 80
+        end
+        row.nameFS:SetWidth(nameW)
+        row.countFS:SetText(string.format(L("ui.board_count"), done))
+        row.countFS:SetTextColor(1, 0.9, 0.66)
         local who = ""
-        local race = plainString(e.race) or ""
-        local className = plainString(e.class) or ""
         local level = tonumber(e.level) or 0
         if level > 0 then
             who = "Level " .. tostring(level)
         end
+        local race = plainString(e.race) or ""
+        local className = plainString(e.class) or ""
         if race ~= "" then
-            if who ~= "" then
-                who = who .. " "
-            end
-            who = who .. race
+            who = who == "" and race or (who .. " " .. race)
         end
         if className ~= "" then
-            if who ~= "" then
-                who = who .. " "
-            end
-            who = who .. className
+            who = who == "" and className or (who .. " " .. className)
         end
-        if who ~= "" then
-            bits[#bits + 1] = who
-        end
-        local realm = plainString(e.realm) or ""
-        if realm ~= "" then
-            bits[#bits + 1] = realm
-        end
-        local when = formatOsloWhen(e.last_completed_at)
-        if when ~= "" then
-            bits[#bits + 1] = when
-        end
-        row.subFS:SetWidth(width)
-        row.subFS:SetText(table.concat(bits, " · "))
-        local h = (row.nameFS:GetStringHeight() or 14) + (row.subFS:GetStringHeight() or 12) + 8
-        row:SetHeight(h)
-        detailY = detailY + h + 8
+        row.subFS:SetWidth(nameW)
+        row.subFS:SetText(who)
+        row.subFS:SetTextColor(0.86, 0.78, 0.62)
+        detailY = detailY + h + 4
     end
     for i = #entries + 1, #SagaloreBoard.rows do
         SagaloreBoard.rows[i]:Hide()
@@ -2447,9 +2828,6 @@ function SagaloreBoard.refreshBoard()
     detailChild:SetHeight(math.max(detailY + 8, 10))
     if detailScroll and detailScroll.UpdateScrollChildRect then
         detailScroll:UpdateScrollChildRect()
-    end
-    if listChild then
-        listChild:SetHeight(10)
     end
     if updateMinimapUnread then
         updateMinimapUnread()
@@ -2472,19 +2850,38 @@ end
 function SagaloreBoard.placeActivitySort(y, width)
     local headerW = width
     local headerH = 20
-    if SagaloreBoard.activitySortBtn then
-        headerW = width - 108
+    local btn = SagaloreBoard.activitySortBtn
+    local label = SagaloreBoard.activitySortLabel
+    if btn then
+        if SagaloreBoard.sortMode() == "completion_time" then
+            btn:SetText(L("ui.sort_fastest"))
+        else
+            btn:SetText(L("ui.sort_newest"))
+        end
+        local btnW = 48
+        if btn.sortFS and btn.sortFS.GetStringWidth then
+            btnW = btn.sortFS:GetStringWidth() or btnW
+        end
+        if btnW < 36 then
+            btnW = 36
+        end
+        btn:SetWidth(btnW + 2)
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPRIGHT", detailChild, "TOPRIGHT", 0, -y)
+        btn:Show()
+        local labelW = 0
+        if label then
+            label:SetText(L("ui.sort_by"))
+            label:SetTextColor(INK.r, INK.g, INK.b)
+            label:ClearAllPoints()
+            label:SetPoint("RIGHT", btn, "LEFT", -6, 0)
+            label:Show()
+            labelW = (label:GetStringWidth() or 48) + 8
+        end
+        headerW = width - btnW - labelW - 12
         if headerW < 80 then
             headerW = 80
         end
-        if SagaloreBoard.sortMode() == "completion_time" then
-            SagaloreBoard.activitySortBtn:SetText(L("ui.sort_fastest"))
-        else
-            SagaloreBoard.activitySortBtn:SetText(L("ui.sort_newest"))
-        end
-        SagaloreBoard.activitySortBtn:ClearAllPoints()
-        SagaloreBoard.activitySortBtn:SetPoint("TOPRIGHT", detailChild, "TOPRIGHT", 0, -y)
-        SagaloreBoard.activitySortBtn:Show()
         headerH = 22
     end
     return headerW, headerH
@@ -2493,6 +2890,9 @@ end
 function SagaloreBoard.hideActivitySort()
     if SagaloreBoard.activitySortBtn then
         SagaloreBoard.activitySortBtn:Hide()
+    end
+    if SagaloreBoard.activitySortLabel then
+        SagaloreBoard.activitySortLabel:Hide()
     end
 end
 
@@ -2864,12 +3264,16 @@ refresh = function()
             if line ~= "" then
                 line = line .. " " .. L("ui.activity_done")
             end
-            row.whenFS:SetWidth(width)
-            row.charFS:SetWidth(width)
+            row.whenFS:SetWidth(width - 16)
+            row.charFS:SetWidth(width - 16)
             row.whenFS:SetText(whenText)
             row.charFS:SetText(line)
             row.charFS:SetTextColor(INK.r, INK.g, INK.b)
             row.whenFS:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+            if row.bullet and row.bullet.SetTextColor then
+                row.bullet:SetText("•")
+                row.bullet:SetTextColor(INK.r, INK.g, INK.b)
+            end
             row.tipName = charText
             row.tipLevel = act.level or 0
             row.tipRace = act.race or ""
@@ -3114,7 +3518,12 @@ local function onWorld()
     readObject()
     checkAll()
     if frame and frame:IsShown() then
-        refresh()
+        -- Rebuilding the window closes an open dropdown. The world tick is
+        -- about once a second, which is what made the menu vanish.
+        local list = _G.DropDownList1
+        if not (list and list.IsShown and list:IsShown()) then
+            refresh()
+        end
     else
         updateMinimapUnread()
     end
@@ -3399,11 +3808,123 @@ local function makeSectionHeader(parent)
     return btn
 end
 
-local function build()
-    if built then
+-- Same bottom tabs as the character / social window.
+-- Minimap is created before build(), so a template error cannot hide the icon.
+local function makeBottomTab(parent, id, label)
+    local name = parent:GetName() and (parent:GetName() .. "Tab" .. id) or nil
+    local tab = CreateFrame("Button", name, parent, "CharacterFrameTabButtonTemplate")
+    tab:SetID(id)
+    tab:SetText(label)
+    if PanelTemplates_TabResize then
+        -- Era uses (tab, padding). Older clients used (padding, tab).
+        if not pcall(PanelTemplates_TabResize, tab, 0) then
+            pcall(PanelTemplates_TabResize, 0, tab)
+        end
+    end
+    SagaloreBoard.tintTab(tab)
+    return tab
+end
+
+local function ensureMinimapButton()
+    if minimapBtn or not Minimap then
         return
     end
-    built = true
+    local btn = CreateFrame("Button", "SagaloreMinimapButton", Minimap)
+    minimapBtn = btn
+    -- Larger hit/visual size so the emblem is not crushed into ~20px.
+    btn:SetSize(40, 40)
+    btn:SetFrameStrata("MEDIUM")
+    btn:RegisterForClicks("LeftButtonUp")
+    btn:RegisterForDrag("LeftButton")
+    btn.angle = math.pi * 0.75
+    if type(SagaloreDB) == "table" and type(SagaloreDB.minimapAngle) == "number" then
+        btn.angle = SagaloreDB.minimapAngle
+    end
+    -- Unread: soft blue ADD glow (Blizzard zoom highlight).
+    local glow = btn:CreateTexture(nil, "BACKGROUND")
+    glow:SetSize(58, 58)
+    glow:SetPoint("CENTER")
+    glow:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+    glow:SetBlendMode("ADD")
+    glow:SetVertexColor(0.42, 0.72, 1.0)
+    glow:SetAlpha(1)
+    glow:Hide()
+    btn.unreadGlow = glow
+    -- LibDBIcon TrackingBorder layout, scaled so the icon stays ~30px
+    -- (small holes look crunchy with the ornate gold rim).
+    local icon = btn:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(30, 30)
+    icon:SetPoint("TOPLEFT", 6, -5)
+    icon:SetTexture("Interface\\AddOns\\Sagalore\\SagaloreMinimap")
+    local border = btn:CreateTexture(nil, "OVERLAY")
+    border:SetSize(66, 66)
+    border:SetPoint("TOPLEFT")
+    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    local function placeMinimap(self)
+        local angle = self.angle or (math.pi * 0.75)
+        local radius = (Minimap:GetWidth() / 2) + 8
+        self:ClearAllPoints()
+        self:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+    end
+    placeMinimap(btn)
+    btn:SetScript("OnDragStart", function(self)
+        self.dragging = true
+        self.moved = true
+    end)
+    btn:SetScript("OnDragStop", function(self)
+        self.dragging = false
+        initDB()
+        SagaloreDB.minimapAngle = self.angle
+    end)
+    btn:SetScript("OnUpdate", function(self)
+        if not self.dragging then
+            return
+        end
+        local mx, my = Minimap:GetCenter()
+        local scale = Minimap:GetEffectiveScale()
+        if not mx or not scale or scale == 0 then
+            return
+        end
+        local cx, cy = GetCursorPosition()
+        cx, cy = cx / scale, cy / scale
+        self.angle = math.atan2(cy - my, cx - mx)
+        placeMinimap(self)
+    end)
+    btn:SetScript("OnClick", function(self)
+        if self.moved then
+            self.moved = false
+            return
+        end
+        toggle()
+    end)
+    btn:SetScript("OnEnter", function(self)
+        if not GameTooltip then
+            return
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Sagalore")
+        local unreadLine = unreadTooltipLine()
+        if unreadLine then
+            GameTooltip:AddLine(unreadLine, UNREAD_BLUE.r, UNREAD_BLUE.g, UNREAD_BLUE.b)
+        end
+        GameTooltip:AddLine(L("ui.drag_minimap"), 0.9, 0.8, 0.6)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
+    updateMinimapUnread()
+end
+
+local function build()
+    if built then
+        ensureMinimapButton()
+        return
+    end
+    -- Minimap first so a later UI error cannot leave the player without the icon.
+    ensureMinimapButton()
     local backdropTemplate = BackdropTemplateMixin and "BackdropTemplate" or nil
     frame = CreateFrame("Frame", "SagaloreFrame", UIParent, backdropTemplate)
     frame:SetSize(700, 500)
@@ -3433,7 +3954,8 @@ local function build()
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOP", header, "TOP", 0, -14)
     title:SetText("Sagalore")
-    title:SetTextColor(1, 0.95, 0.72)
+    -- Yellower than the border gold so the header reads as lit metal.
+    title:SetTextColor(1.0, 0.82, 0.12)
 
     local mark = frame:CreateTexture(nil, "OVERLAY")
     mark:SetSize(58, 58)
@@ -3443,23 +3965,30 @@ local function build()
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
 
-    SagaloreBoard.viewSagasBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    SagaloreBoard.viewSagasBtn:SetSize(100, 22)
-    SagaloreBoard.viewSagasBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 24, -36)
-    SagaloreBoard.viewSagasBtn:SetText(L("ui.sagas"))
-    SagaloreBoard.viewSagasBtn:SetScript("OnClick", function()
+    -- Bottom tabs (Social / Friends style). The active tab is lifted so it
+    -- covers the dialog border and reads as part of the page.
+    SagaloreBoard.sagasTab = makeBottomTab(frame, 1, L("ui.sagas"))
+    SagaloreBoard.sagasTab:SetScript("OnClick", function()
         initDB()
         SagaloreDB.view = "log"
         refresh()
     end)
-    SagaloreBoard.viewBoardBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    SagaloreBoard.viewBoardBtn:SetSize(120, 22)
-    SagaloreBoard.viewBoardBtn:SetPoint("LEFT", SagaloreBoard.viewSagasBtn, "RIGHT", 6, 0)
-    SagaloreBoard.viewBoardBtn:SetText(L("ui.leaderboard"))
-    SagaloreBoard.viewBoardBtn:SetScript("OnClick", function()
+    SagaloreBoard.boardTab = makeBottomTab(frame, 2, L("ui.leaderboard"))
+    SagaloreBoard.boardTab:SetScript("OnClick", function()
         initDB()
         SagaloreDB.view = "board"
         refresh()
+    end)
+    frame.numTabs = 2
+    if PanelTemplates_SetNumTabs then
+        PanelTemplates_SetNumTabs(frame, 2)
+    end
+    if PanelTemplates_SetTab then
+        PanelTemplates_SetTab(frame, 1)
+    end
+    SagaloreBoard.placeTabs(1)
+    frame:SetScript("OnMouseDown", function()
+        blurSearch()
     end)
 
     local drag = CreateFrame("Frame", nil, frame)
@@ -3491,7 +4020,7 @@ local function build()
 
     listPanel = CreateFrame("Frame", nil, frame, backdropTemplate)
     listPanel:SetPoint("TOPLEFT", 22, -72)
-    listPanel:SetPoint("BOTTOMLEFT", 22, 18)
+    listPanel:SetPoint("BOTTOMLEFT", 22, 22)
     listPanel:SetSize(236, 410)
     useBackdrop(listPanel, {
         bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -3503,19 +4032,6 @@ local function build()
     }, GOLD)
     if listPanel.SetBackdropColor then
         listPanel:SetBackdropColor(0.07, 0.05, 0.03, 0.92)
-    end
-
-    local periodOrder = { "all", "month", "week", "today" }
-    for i = 1, #periodOrder do
-        local btn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
-        btn:SetSize(200, 22)
-        btn:SetScript("OnClick", function(self)
-            initDB()
-            SagaloreDB.board_period = self.period
-            refresh()
-        end)
-        btn:Hide()
-        SagaloreBoard.periodBtns[i] = btn
     end
 
     if UIDropDownMenu_Initialize then
@@ -3557,7 +4073,7 @@ local function build()
     -- clipping valid even when refreshed before the window is first shown.
     detailPanel = CreateFrame("Frame", nil, frame, backdropTemplate)
     detailPanel:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 14, 0)
-    detailPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -18, 18)
+    detailPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -18, 22)
     detailPanel:SetSize(410, 410)
     useBackdrop(detailPanel, {
         bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -3569,6 +4085,21 @@ local function build()
     }, GOLD)
     if detailPanel.SetBackdropColor then
         detailPanel:SetBackdropColor(0.86, 0.78, 0.58, 0.97)
+    end
+
+    if UIDropDownMenu_Initialize then
+        -- Leaderboard filters: same dropdown style as the saga list filters.
+        SagaloreBoard.boardGroupDrop = CreateFrame("Frame", "SagaloreBoardGroupFilter", frame, "UIDropDownMenuTemplate")
+        SagaloreBoard.boardGroupDrop:SetPoint("BOTTOMLEFT", detailPanel, "TOPLEFT", -14, -4)
+        UIDropDownMenu_SetWidth(SagaloreBoard.boardGroupDrop, 150)
+        UIDropDownMenu_JustifyText(SagaloreBoard.boardGroupDrop, "LEFT")
+        SagaloreBoard.boardPeriodDrop = CreateFrame("Frame", "SagaloreBoardPeriodFilter", frame, "UIDropDownMenuTemplate")
+        SagaloreBoard.boardPeriodDrop:SetPoint("LEFT", SagaloreBoard.boardGroupDrop, "RIGHT", -8, 0)
+        UIDropDownMenu_SetWidth(SagaloreBoard.boardPeriodDrop, 110)
+        UIDropDownMenu_JustifyText(SagaloreBoard.boardPeriodDrop, "LEFT")
+        SagaloreBoard.boardGroupDrop:Hide()
+        SagaloreBoard.boardPeriodDrop:Hide()
+        SagaloreBoard.setupBoardFilters()
     end
 
     searchBox = CreateFrame("EditBox", "SagaloreSearchBox", frame, "InputBoxTemplate")
@@ -3616,6 +4147,7 @@ local function build()
     parchment:SetTexture("Interface\\QuestFrame\\QuestBG")
     parchment:SetTexCoord(0, 0.58, 0.02, 0.66)
     parchment:SetVertexColor(1, 0.97, 0.9)
+    detailPanel.parchment = parchment
 
     detailScroll = CreateFrame("ScrollFrame", "SagaloreDetailScroll", detailPanel)
     detailScroll:SetPoint("TOPLEFT", 12, -12)
@@ -3672,9 +4204,30 @@ local function build()
     detailActivityHeader:SetText(L("ui.activity"))
     detailActivityHeader:SetTextColor(INK.r, INK.g, INK.b)
     detailActivityHeader:Hide()
-    SagaloreBoard.activitySortBtn = CreateFrame("Button", nil, detailChild, "UIPanelButtonTemplate")
-    SagaloreBoard.activitySortBtn:SetSize(100, 22)
+    SagaloreBoard.activitySortLabel = detailChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    SagaloreBoard.activitySortLabel:SetJustifyH("RIGHT")
+    SagaloreBoard.activitySortLabel:SetText(L("ui.sort_by"))
+    SagaloreBoard.activitySortLabel:SetTextColor(INK.r, INK.g, INK.b)
+    SagaloreBoard.activitySortLabel:Hide()
+    SagaloreBoard.activitySortBtn = CreateFrame("Button", nil, detailChild)
+    SagaloreBoard.activitySortBtn:SetSize(72, 18)
+    local sortFS = SagaloreBoard.activitySortBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    sortFS:SetPoint("RIGHT", 0, 0)
+    sortFS:SetJustifyH("RIGHT")
+    sortFS:SetTextColor(0.45, 0.32, 0.16)
+    SagaloreBoard.activitySortBtn:SetFontString(sortFS)
+    SagaloreBoard.activitySortBtn.sortFS = sortFS
     SagaloreBoard.activitySortBtn:SetText(L("ui.sort_newest"))
+    SagaloreBoard.activitySortBtn:SetScript("OnEnter", function(self)
+        if self.sortFS then
+            self.sortFS:SetTextColor(INK.r, INK.g, INK.b)
+        end
+    end)
+    SagaloreBoard.activitySortBtn:SetScript("OnLeave", function(self)
+        if self.sortFS then
+            self.sortFS:SetTextColor(0.45, 0.32, 0.16)
+        end
+    end)
     SagaloreBoard.activitySortBtn:Hide()
     SagaloreBoard.activitySortBtn:SetScript("OnClick", function()
         initDB()
@@ -3801,96 +4354,7 @@ local function build()
             pcall(PlaySoundFile, "Interface\\AddOns\\Sagalore\\complete.mp3", "Master")
         end
     end
-
-    if Minimap then
-        local btn = CreateFrame("Button", "SagaloreMinimapButton", Minimap)
-        minimapBtn = btn
-        -- Larger hit/visual size so the emblem is not crushed into ~20px.
-        btn:SetSize(40, 40)
-        btn:SetFrameStrata("MEDIUM")
-        btn:RegisterForClicks("LeftButtonUp")
-        btn:RegisterForDrag("LeftButton")
-        btn.angle = math.pi * 0.75
-        if type(SagaloreDB) == "table" and type(SagaloreDB.minimapAngle) == "number" then
-            btn.angle = SagaloreDB.minimapAngle
-        end
-        -- Unread: soft blue ADD glow (Blizzard zoom highlight).
-        local glow = btn:CreateTexture(nil, "BACKGROUND")
-        glow:SetSize(58, 58)
-        glow:SetPoint("CENTER")
-        glow:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
-        glow:SetBlendMode("ADD")
-        glow:SetVertexColor(0.42, 0.72, 1.0)
-        glow:SetAlpha(1)
-        glow:Hide()
-        btn.unreadGlow = glow
-        -- LibDBIcon TrackingBorder layout, scaled so the icon stays ~30px
-        -- (small holes look crunchy with the ornate gold rim).
-        local icon = btn:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(30, 30)
-        icon:SetPoint("TOPLEFT", 6, -5)
-        icon:SetTexture("Interface\\AddOns\\Sagalore\\SagaloreMinimap")
-        local border = btn:CreateTexture(nil, "OVERLAY")
-        border:SetSize(66, 66)
-        border:SetPoint("TOPLEFT")
-        border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-        local function placeMinimap(self)
-            local angle = self.angle or (math.pi * 0.75)
-            local radius = (Minimap:GetWidth() / 2) + 8
-            self:ClearAllPoints()
-            self:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
-        end
-        placeMinimap(btn)
-        btn:SetScript("OnDragStart", function(self)
-            self.dragging = true
-            self.moved = true
-        end)
-        btn:SetScript("OnDragStop", function(self)
-            self.dragging = false
-            initDB()
-            SagaloreDB.minimapAngle = self.angle
-        end)
-        btn:SetScript("OnUpdate", function(self)
-            if not self.dragging then
-                return
-            end
-            local mx, my = Minimap:GetCenter()
-            local scale = Minimap:GetEffectiveScale()
-            if not mx or not scale or scale == 0 then
-                return
-            end
-            local cx, cy = GetCursorPosition()
-            cx, cy = cx / scale, cy / scale
-            self.angle = math.atan2(cy - my, cx - mx)
-            placeMinimap(self)
-        end)
-        btn:SetScript("OnClick", function(self)
-            if self.moved then
-                self.moved = false
-                return
-            end
-            toggle()
-        end)
-        btn:SetScript("OnEnter", function(self)
-            if not GameTooltip then
-                return
-            end
-            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:SetText("Sagalore")
-            local unreadLine = unreadTooltipLine()
-            if unreadLine then
-                GameTooltip:AddLine(unreadLine, UNREAD_BLUE.r, UNREAD_BLUE.g, UNREAD_BLUE.b)
-            end
-            GameTooltip:AddLine(L("ui.drag_minimap"), 0.9, 0.8, 0.6)
-            GameTooltip:Show()
-        end)
-        btn:SetScript("OnLeave", function()
-            if GameTooltip then
-                GameTooltip:Hide()
-            end
-        end)
-        updateMinimapUnread()
-    end
+    built = true
 end
 
 SLASH_SAGALORE1 = "/sagalore"
@@ -4264,6 +4728,12 @@ events:RegisterEvent("BAG_UPDATE")
 events:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 events:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 events:SetScript("OnUpdate", function(_, elapsed)
+    if SagaloreBoard.pendingRefresh then
+        SagaloreBoard.pendingRefresh = false
+        if refresh then
+            refresh()
+        end
+    end
     tick = tick + (elapsed or 0)
     if tick < 1 then
         return

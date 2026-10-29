@@ -266,23 +266,6 @@ func run(opts options) int {
 		})
 	}
 	tray.Run(ctx, "Sagalore "+version.Version, []tray.Item{
-		{Title: "Create personal token", Tooltip: "Write a gst_ token once for external tools", OnClick: func() {
-			go func() {
-				path, err := application.MintPersonalToken(context.Background())
-				if err != nil {
-					log.Warn("personal token", "err", err)
-					return
-				}
-				log.Info("personal token written", "path", path)
-			}()
-		}},
-		{Title: "Revoke personal token", Tooltip: "Revoke the token minted on this computer", OnClick: func() {
-			go func() {
-				if err := application.RevokePersonalToken(context.Background()); err != nil {
-					log.Warn("revoke token", "err", err)
-				}
-			}()
-		}},
 		{Title: "Language: English / Norwegian", Tooltip: "Rewrite the addon language file", OnClick: func() {
 			go func() {
 				next := "nb"

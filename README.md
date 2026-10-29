@@ -64,7 +64,7 @@ Finish times are whatever the addon reported. They are not verified. Repeatable 
 
 ## Personal tokens
 
-Players who only play never need a token. A long-lived `gst_` token is for external HTTP clients. `POST /v1/me/tokens` returns the raw token once. `DELETE /v1/me/tokens/{id}` revokes it. The tray can mint and revoke one.
+Players who only play never need a token. A long-lived `gst_` token is for external HTTP clients. `POST /v1/me/tokens` returns the raw token once. `DELETE /v1/me/tokens/{id}` revokes it.
 
 Other services can register as OAuth clients and send the player through Battle.net and a consent page. The access token is also a `gst_` token, so the same API checks accept it. See [docs/oauth.md](docs/oauth.md).
 

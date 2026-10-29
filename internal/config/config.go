@@ -39,17 +39,16 @@ func (u *Update) SetEnabled(on bool) {
 }
 
 type Config struct {
-	BattleTag       string `json:"battletag,omitempty"`
-	PlayerName      string `json:"player_name,omitempty"`
-	PlayerEmail     string `json:"player_email,omitempty"`
-	APIBaseURL      string `json:"api_base_url"`
-	APIKey          string `json:"api_key,omitempty"`
-	SessionToken    string `json:"session_token,omitempty"`
-	Language        string `json:"language,omitempty"`
-	PersonalTokenID string `json:"personal_token_id,omitempty"`
-	WowPath         string `json:"wow_path"`
-	Client          string `json:"client"`
-	Update          Update `json:"update"`
+	BattleTag    string `json:"battletag,omitempty"`
+	PlayerName   string `json:"player_name,omitempty"`
+	PlayerEmail  string `json:"player_email,omitempty"`
+	APIBaseURL   string `json:"api_base_url"`
+	APIKey       string `json:"api_key,omitempty"`
+	SessionToken string `json:"session_token,omitempty"`
+	Language     string `json:"language,omitempty"`
+	WowPath      string `json:"wow_path"`
+	Client       string `json:"client"`
+	Update       Update `json:"update"`
 }
 
 // Token is the credential sent to the Sagalore API. A session wins over a personal token stored in APIKey.
