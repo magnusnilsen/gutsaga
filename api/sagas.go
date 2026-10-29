@@ -58,7 +58,7 @@ func (s *Server) createSaga(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.announceCreated(r.Context(), out, body.Announce, image, contentType)
-	writeJSON(w, http.StatusCreated, withSagaImageURL(out))
+	writeJSON(w, http.StatusCreated, s.withSignedCoverURL(withSagaImageURL(out)))
 }
 
 func (s *Server) listSagas(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +70,7 @@ func (s *Server) listSagas(w http.ResponseWriter, r *http.Request) {
 	}
 	list := make([]contract.Quest, 0, len(out))
 	for _, q := range out {
-		list = append(list, withSagaImageURL(q))
+		list = append(list, s.withSignedCoverURL(withSagaImageURL(q)))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sagas": list})
 }
@@ -87,7 +87,7 @@ func (s *Server) getSaga(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	out.Quest = withSagaImageURL(out.Quest)
+	out.Quest = s.withSignedCoverURL(withSagaImageURL(out.Quest))
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -125,7 +125,7 @@ func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, withSagaImageURL(out))
+		writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
 		return
 	}
 	detail, gerr := s.store.GetQuest(r.Context(), id)
@@ -140,7 +140,7 @@ func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
 		_ = image
 		_ = contentType
 	}
-	writeJSON(w, http.StatusOK, withSagaImageURL(out))
+	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
 }
 
 func (s *Server) putSagaImage(w http.ResponseWriter, r *http.Request) {
@@ -161,7 +161,7 @@ func (s *Server) putSagaImage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, withSagaImageURL(out))
+	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
 }
 
 func (s *Server) deleteSagaImage(w http.ResponseWriter, r *http.Request) {
@@ -171,7 +171,7 @@ func (s *Server) deleteSagaImage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, withSagaImageURL(out))
+	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
 }
 
 func (s *Server) getSagaImage(w http.ResponseWriter, r *http.Request) {
