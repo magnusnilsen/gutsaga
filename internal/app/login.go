@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -183,53 +181,6 @@ func (a *App) clearSessionLocked(keepSignedOut bool) {
 	if !keepSignedOut {
 		a.loginTried = false
 	}
-}
-
-// MintPersonalToken creates a gst_ token, stores its id, and writes the raw token once.
-func (a *App) MintPersonalToken(ctx context.Context) (string, error) {
-	if err := a.ensureLogin(ctx); err != nil {
-		return "", err
-	}
-	tok, err := a.Client.MintToken(ctx, "companion")
-	if err != nil {
-		return "", err
-	}
-	dir, err := config.Dir()
-	if err != nil {
-		return "", err
-	}
-	path := filepath.Join(dir, "personal-token.txt")
-	if err := os.WriteFile(path, []byte(tok.Token+"\n"), 0o600); err != nil {
-		return "", err
-	}
-	a.mu.Lock()
-	a.Config.PersonalTokenID = tok.ID
-	cfg := a.Config
-	a.mu.Unlock()
-	_ = config.Save(cfg)
-	return path, nil
-}
-
-// RevokePersonalToken revokes the token minted from this companion.
-func (a *App) RevokePersonalToken(ctx context.Context) error {
-	a.mu.Lock()
-	id := a.Config.PersonalTokenID
-	a.mu.Unlock()
-	if id == "" {
-		return errors.New("no personal token to revoke")
-	}
-	if err := a.Client.RevokeToken(ctx, id); err != nil {
-		return err
-	}
-	a.mu.Lock()
-	a.Config.PersonalTokenID = ""
-	cfg := a.Config
-	a.mu.Unlock()
-	_ = config.Save(cfg)
-	if dir, err := config.Dir(); err == nil {
-		_ = os.Remove(filepath.Join(dir, "personal-token.txt"))
-	}
-	return nil
 }
 
 // SetLanguage stores en or nb and rewrites the addon language file.

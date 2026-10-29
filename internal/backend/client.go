@@ -104,17 +104,6 @@ func (c *Client) PollBnet(ctx context.Context, attempt string) (contract.Session
 	return out, false, nil
 }
 
-// MintToken creates a gst_ personal token. The raw token is returned once.
-func (c *Client) MintToken(ctx context.Context, label string) (contract.PersonalToken, error) {
-	raw, err := json.Marshal(map[string]string{"label": label})
-	if err != nil {
-		return contract.PersonalToken{}, err
-	}
-	var out contract.PersonalToken
-	err = c.do(ctx, http.MethodPost, "/v1/me/tokens", raw, "application/json", nil, &out)
-	return out, err
-}
-
 // AcceptInvite joins the signed-in account for one invite.
 func (c *Client) AcceptInvite(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodPost, "/v1/invites/"+url.PathEscape(id)+"/accept", []byte(`{}`), "application/json", nil, nil)
@@ -123,11 +112,6 @@ func (c *Client) AcceptInvite(ctx context.Context, id string) error {
 // DeclineInvite marks an invite declined. The decision sticks.
 func (c *Client) DeclineInvite(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodPost, "/v1/invites/"+url.PathEscape(id)+"/decline", []byte(`{}`), "application/json", nil, nil)
-}
-
-// RevokeToken revokes a personal token by id.
-func (c *Client) RevokeToken(ctx context.Context, id string) error {
-	return c.do(ctx, http.MethodDelete, "/v1/me/tokens/"+url.PathEscape(id), nil, "", nil, nil)
 }
 
 func (c *Client) UpsertCharacter(ctx context.Context, req contract.CharacterUpsert) (contract.Character, error) {
