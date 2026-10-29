@@ -73,6 +73,24 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Player endpoints (used by OAuth clients) must also carry the signed URL.
+	var playerDetail contract.QuestDetail
+	if resp, err := player.do(http.MethodGet, "/v1/sagas/"+quest.ID, nil, &playerDetail); err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("player get saga %d %v", statusOf(resp), err)
+	}
+	if !strings.HasPrefix(playerDetail.Quest.ImageSignedURL, "https://sagalore.example.com/v1/public/sagas/"+quest.ID+"/image?exp=") {
+		t.Fatalf("player get saga missing signed url: %q", playerDetail.Quest.ImageSignedURL)
+	}
+	var playerList struct {
+		Sagas []contract.Quest `json:"sagas"`
+	}
+	if resp, err := player.do(http.MethodGet, "/v1/sagas", nil, &playerList); err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("player list sagas %d %v", statusOf(resp), err)
+	}
+	if len(playerList.Sagas) != 1 || playerList.Sagas[0].ImageSignedURL == "" {
+		t.Fatalf("player list sagas missing signed url: %+v", playerList.Sagas)
+	}
+
 	status, adminHdr, adminBody := rawGet(t, srv.Client(), srv.URL+"/v1/admin/sagas/"+quest.ID+"/image", "admin-test")
 	if status != http.StatusOK || adminHdr.Get("Content-Type") != "image/png" || adminHdr.Get("Cache-Control") != "private, max-age=300" {
 		t.Fatalf("admin image %d type %q cache %q", status, adminHdr.Get("Content-Type"), adminHdr.Get("Cache-Control"))
@@ -182,9 +200,11 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("get saga %d %v", statusOf(resp), err)
 	}
-	raw, _ := io.ReadAll(resp.Body)
-	if saga.ImageSignedURL != "" || strings.Contains(string(raw), "image_signed_url") {
-		t.Fatalf("player response included signed url: %s", raw)
+	// Player (session or OAuth) clients may not be able to send a bearer
+	// token when fetching the cover, so they get the short-lived signed URL
+	// for a saga they can already read.
+	if !strings.HasPrefix(saga.ImageSignedURL, "https://sagalore.example.com/v1/public/sagas/"+saga.ID+"/image?exp=") {
+		t.Fatalf("player response missing signed url: %q", saga.ImageSignedURL)
 	}
 	if saga.ImageURL != "/v1/sagas/"+saga.ID+"/image" {
 		t.Fatalf("player image_url %q", saga.ImageURL)
@@ -201,7 +221,7 @@ func TestAdminAndSignedSagaImage(t *testing.T) {
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("unsigned admin get %d %v", statusOf(resp), err)
 	}
-	raw, _ = io.ReadAll(resp.Body)
+	raw, _ := io.ReadAll(resp.Body)
 	if plainDetail.ImageSignedURL != "" || strings.Contains(string(raw), "image_signed_url") {
 		t.Fatalf("missing secret still signed: %s", raw)
 	}
