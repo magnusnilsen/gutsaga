@@ -600,40 +600,6 @@ func oauthSessionCookie(publicBase, token string, r *http.Request) *http.Cookie 
 	}
 }
 
-type consentView struct {
-	ClientName  string
-	Who         string
-	RedirectURI string
-	RequestID   string
-	CSRF        string
-}
-
-var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sagalore</title>
-<style>
-  body { font: 16px/1.45 sans-serif; margin: 2rem; max-width: 36rem; color: #1c1917; }
-  button { font: inherit; margin-right: 0.5rem; padding: 0.35rem 0.8rem; }
-</style>
-</head>
-<body>
-<h1>Allow {{.ClientName}}?</h1>
-<p>{{.ClientName}} is asking to use Sagalore as {{.Who}}.</p>
-<p>It will be able to call this API as you. You can revoke that later.</p>
-<p>After you choose, the browser returns to {{.RedirectURI}}.</p>
-<form method="post" action="/oauth/authorize">
-  <input type="hidden" name="request" value="{{.RequestID}}">
-  <input type="hidden" name="csrf" value="{{.CSRF}}">
-  <button type="submit" name="decision" value="approve">Allow</button>
-  <button type="submit" name="decision" value="deny">Deny</button>
-</form>
-</body>
-</html>
-`))
-
 func (s *Server) renderConsent(w http.ResponseWriter, view consentView) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -672,7 +638,7 @@ func consentCSP(redirectURI string) string {
 	if src, ok := oauthFormActionSource(redirectURI); ok {
 		action += " " + src
 	}
-	return "default-src 'none'; style-src 'unsafe-inline'; " + action + "; base-uri 'none'"
+	return "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; " + action + "; base-uri 'none'"
 }
 
 // oauthFormActionSource is the CSP source for a registered redirect URI.
@@ -892,7 +858,7 @@ func (s *Server) renderOAuthRestart(w http.ResponseWriter) {
 	writeOAuthPage(w, http.StatusBadRequest, oauthStaticCSP, restartTmpl, nil)
 }
 
-const oauthStaticCSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'"
+const oauthStaticCSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'none'; base-uri 'none'"
 
 func writeOAuthPage(w http.ResponseWriter, status int, csp string, tmpl *template.Template, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -905,46 +871,6 @@ func writeOAuthPage(w http.ResponseWriter, status int, csp string, tmpl *templat
 		slog.Error("oauth page", "err", err)
 	}
 }
-
-type handoffView struct {
-	Target template.URL
-}
-
-var handoffTmpl = template.Must(template.New("handoff").Parse(`<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="0;url={{.Target}}">
-<title>Sagalore</title>
-<style>
-  body { font: 16px/1.45 sans-serif; margin: 2rem; max-width: 36rem; color: #1c1917; }
-  a { color: #1c1917; }
-</style>
-</head>
-<body>
-<h1>Sending you back…</h1>
-<p><a href="{{.Target}}">Continue</a> if the browser does not leave this page.</p>
-</body>
-</html>
-`))
-
-var restartTmpl = template.Must(template.New("restart").Parse(`<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sagalore</title>
-<style>
-  body { font: 16px/1.45 sans-serif; margin: 2rem; max-width: 36rem; color: #1c1917; }
-</style>
-</head>
-<body>
-<h1>This sign-in is no longer available</h1>
-<p>Go back to the app and start again.</p>
-</body>
-</html>
-`))
 
 func normalizeRedirects(in []string) ([]string, string, string) {
 	if len(in) == 0 {
