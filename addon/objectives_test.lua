@@ -358,4 +358,13 @@ steps, done = M.evaluate(runs, {
 }, { runs = { inside = true, count = 0 } }, false)
 assertTrue(not steps.runs.inside and steps.runs.count == 0, "solo cancels stay")
 
+assertTrue(M.goalHasProgress({ count = 1, need = 5 }) , "first rabbit is progress")
+assertTrue(not M.goalHasProgress({ count = 0, need = 5, beat = 1 }), "untouched goal is not progress")
+assertTrue(M.goalHasProgress({ done = true }), "a finished goal is progress")
+local bucket = { steps = {} }
+assertTrue(M.noteSagaStart(bucket, { rabbits = { count = 1, need = 5 } }, 1000), "first progress stamps the saga")
+assertTrue(bucket.started_at == 1000, "stamp is the first event")
+assertTrue(not M.noteSagaStart(bucket, { rabbits = { count = 2, need = 5 } }, 2000), "later progress keeps the stamp")
+assertTrue(bucket.started_at == 1000, "stamp does not move")
+
 print("objectives ok")

@@ -78,7 +78,12 @@ func (s *Server) listSagas(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getSaga(w http.ResponseWriter, r *http.Request) {
 	p := playerFrom(r)
 	id := r.PathValue("id")
-	if err := s.store.assertQuestOwner(r.Context(), id, p.ID); err != nil {
+	if err := s.store.assertQuestReader(r.Context(), id, p.ID); err != nil {
+		s.fail(w, err)
+		return
+	}
+	mode := strings.TrimSpace(r.URL.Query().Get("sort"))
+	if err := validateActivitySort(mode); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -86,6 +91,10 @@ func (s *Server) getSaga(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, err)
 		return
+	}
+	sortCompleters(out.CompletedBy, mode)
+	if mode != "" {
+		out.Card = buildActivityCard(out.CompletedBy)
 	}
 	out.Quest = s.withSignedCoverURL(withSagaImageURL(out.Quest))
 	writeJSON(w, http.StatusOK, out)

@@ -971,6 +971,57 @@ function M.evaluate(objectives, state, saved, ordered, sagaWhen)
     return steps, allDone
 end
 
+-- goalHasProgress is true once a goal has moved past "not started".
+-- A counted kill counts at the first credit, not when the count is full.
+function M.goalHasProgress(row)
+    if type(row) ~= "table" then
+        return false
+    end
+    if row.done or row.failed or row.inside then
+        return true
+    end
+    if (tonumber(row.count) or 0) > 0 then
+        return true
+    end
+    if (tonumber(row.beat) or 0) > 1 then
+        return true
+    end
+    if (tonumber(row.seen_at) or 0) > 0 then
+        return true
+    end
+    return false
+end
+
+-- noteSagaStart stamps bucket.started_at the first time any goal has progress.
+-- Later progress does not move the stamp. Returns true when it writes one.
+function M.noteSagaStart(bucket, steps, now)
+    if type(bucket) ~= "table" then
+        return false
+    end
+    if (tonumber(bucket.started_at) or 0) > 0 then
+        return false
+    end
+    if type(steps) ~= "table" then
+        return false
+    end
+    local stamped = false
+    for _, row in pairs(steps) do
+        if M.goalHasProgress(row) then
+            stamped = true
+            break
+        end
+    end
+    if not stamped then
+        return false
+    end
+    local at = tonumber(now) or 0
+    if at < 1 then
+        return false
+    end
+    bucket.started_at = at
+    return true
+end
+
 M.listed = listed
 SagaloreObjectives = M
 return M

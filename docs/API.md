@@ -40,6 +40,7 @@ Session or `gst_`:
 | `POST` | `/v1/groups` | Create. Caller becomes owner. |
 | `GET` | `/v1/groups` | Groups the account belongs to. |
 | `GET` | `/v1/groups/{id}/members` | Members of a group you belong to. |
+| `GET` | `/v1/groups/{id}/leaderboard?period=all\|month\|week\|today` | Ranked characters in a group you belong to. `period` defaults to `all`. |
 | `POST` | `/v1/groups/{id}/invites` | Owner. Body `{name, realm, battletag?}`. |
 | `GET` | `/v1/groups/{id}/invites?status=pending` | Owner or member. Pending outgoing invites: character `name`, `realm`, `invited_at`. Other `status` values are `400`. |
 | `DELETE` | `/v1/groups/{id}/invites/{inviteId}` | Owner revokes a pending invite. A member or outsider gets `403`. An accepted or declined invite is `409`. |
@@ -60,7 +61,11 @@ Session or `gst_`:
 
 `PATCH /v1/sagas/{id}` — the author. `changes` is required when the text changes. A cover-only upload does not bump the version.
 
-`POST /v1/complete` — the character's account must be a member of the saga's group.
+`POST /v1/complete` — the character's account must be a member of the saga's group. Optional `started_at` (RFC3339) is the addon clock when the first goal of that saga gained progress. The server stores `duration_sec` = `completed_at` - `started_at` when the start is not after the finish. Both times are addon-reported and are not checked against the game server. A second finish for the same character and saga stays `already_completed`. The table can hold more than one finish row so repeatable sagas can be added later; that behavior is not enabled.
+
+`GET /v1/sagas/{id}` is readable by any member of the saga's group. `?sort=completed_at` orders `completed_by` newest first. `?sort=completion_time` orders by `duration_sec` ascending, with missing durations last. The default order is oldest first.
+
+`GET /v1/sync` includes `duration_sec` on completions and `leaderboards` for every group the player belongs to, one entry per period (`all`, `month`, `week`, `today`). Periods are calendar windows in Europe/Oslo. The count is distinct sagas, per character, and only characters whose account is still in the group. There are no points.
 
 ## Ops
 

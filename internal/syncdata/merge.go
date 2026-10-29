@@ -51,6 +51,8 @@ type Completer struct {
 	Race        string `json:"race,omitempty"`
 	Class       string `json:"class,omitempty"`
 	CompletedAt string `json:"completed_at"`
+	StartedAt   string `json:"started_at,omitempty"`
+	DurationSec *int   `json:"duration_sec,omitempty"`
 	When        string `json:"when,omitempty"` // "dd mmmm yyyy hh:mm" Europe/Oslo
 }
 
@@ -164,7 +166,7 @@ func completersByQuest(sync contract.SyncResponse) map[string][]Completer {
 	type key struct{ quest, name, realm string }
 	seen := map[key]bool{}
 	out := map[string][]Completer{}
-	add := func(questID, name, realm, tag, displayName, race, class string, level int, at string) {
+	add := func(questID, name, realm, tag, displayName, race, class string, level int, at, started string, duration *int) {
 		name = strings.TrimSpace(name)
 		realm = strings.TrimSpace(realm)
 		tag = strings.TrimSpace(tag)
@@ -200,15 +202,27 @@ func completersByQuest(sync contract.SyncResponse) map[string][]Completer {
 					list[i].CompletedAt = at
 					list[i].When = FormatOsloWhen(at)
 				}
+				if list[i].StartedAt == "" && started != "" {
+					list[i].StartedAt = started
+				}
+				if list[i].DurationSec == nil && duration != nil {
+					n := *duration
+					list[i].DurationSec = &n
+				}
 				break
 			}
 			return
 		}
 		seen[k] = true
+		var copied *int
+		if duration != nil {
+			n := *duration
+			copied = &n
+		}
 		out[questID] = append(out[questID], Completer{
 			Character: name, Realm: realm, BattleTag: tag,
 			DisplayName: displayName, Level: level, Race: race, Class: class,
-			CompletedAt: at, When: FormatOsloWhen(at),
+			CompletedAt: at, StartedAt: started, DurationSec: copied, When: FormatOsloWhen(at),
 		})
 	}
 	known := map[string]contract.Character{}
@@ -220,10 +234,10 @@ func completersByQuest(sync contract.SyncResponse) map[string][]Completer {
 			continue
 		}
 		ch := known[p.CharacterID]
-		add(p.QuestID, ch.Name, ch.Realm, ch.BattleTag, "", ch.Race, ch.Class, ch.Level, p.CompletedAt)
+		add(p.QuestID, ch.Name, ch.Realm, ch.BattleTag, "", ch.Race, ch.Class, ch.Level, p.CompletedAt, p.StartedAt, p.DurationSec)
 	}
 	for _, c := range sync.Completions {
-		add(c.QuestID, c.Character, c.Realm, c.BattleTag, c.DisplayName, c.Race, c.Class, c.Level, c.CompletedAt)
+		add(c.QuestID, c.Character, c.Realm, c.BattleTag, c.DisplayName, c.Race, c.Class, c.Level, c.CompletedAt, c.StartedAt, c.DurationSec)
 	}
 	for id := range out {
 		sort.SliceStable(out[id], func(i, j int) bool {

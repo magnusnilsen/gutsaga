@@ -28,6 +28,10 @@ A `talk` step (older name `interact`) completes when the player opens that NPC's
 
 A new saga starts at version 1. Text edits require `changes` and bump the version. Completions keep the version the character had loaded.
 
-`GET /v1/sync` is what the companion writes into `SagaloreData.lua`. The addon reads it on `/reload`.
+`GET /v1/sync` is what the companion writes into `SagaloreData.lua`. The addon reads it on `/reload`. Sync includes `leaderboards` (one board per group and period) and `duration_sec` on each completion.
+
+`POST /v1/complete` accepts optional `started_at`. The addon sets that when the first goal gains progress and the companion forwards it. `duration_sec` in the response is `completed_at` minus `started_at`, in seconds, or omitted when the start is missing or later than the finish.
+
+`GET /v1/sagas/{id}?sort=completion_time` lists `completed_by` fastest first. `sort=completed_at` lists newest first. Any group member can read that saga. A missing `sort` stays oldest first.
 
 Covers: `PUT /v1/sagas/{id}/image`. The companion converts the PNG to TGA under `Interface/AddOns/Sagalore/media/`. Signed public URLs use `PUBLIC_BASE_URL` and `IMAGE_URL_SECRET`.

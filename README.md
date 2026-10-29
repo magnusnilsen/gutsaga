@@ -54,6 +54,14 @@ Membership is the account. Any member may create sagas in the group. The owner i
 
 Invites are addressed to a character. Accept joins that Battle.net account and marks the character participating. Decline sticks. Not now is a 12-hour snooze in SavedVariables.
 
+## Leaderboards
+
+A group leaderboard is how many sagas each character has completed. It is not points, and it only includes characters whose Battle.net account is in that group. `GET /v1/groups/{id}/leaderboard?period=all|month|week|today` ranks them. Periods use the Europe/Oslo calendar: today, the Monday-starting week, and the calendar month.
+
+The addon records `started_at` in SavedVariables when the first goal of a saga gains progress (the first rabbit of "drop 5 rabbits", not the fifth). The companion sends that time with the completion. The server stores `duration_sec`. Saga activity can be sorted by that duration or by newest completion. The addon shows both the leaderboard and the activity sort from `SagaloreData.lua`, which the companion writes from `GET /v1/sync`.
+
+Finish times are whatever the addon reported. They are not verified. Repeatable sagas are not implemented. The progress table can already store more than one finish per character and saga, and the API still keeps the first one.
+
 ## Personal tokens
 
 Players who only play never need a token. A long-lived `gst_` token is for external HTTP clients. `POST /v1/me/tokens` returns the raw token once. `DELETE /v1/me/tokens/{id}` revokes it. The tray can mint and revoke one.

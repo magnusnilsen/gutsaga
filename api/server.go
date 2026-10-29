@@ -86,6 +86,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/groups", s.withMember(s.createGroup))
 	mux.HandleFunc("GET /v1/groups", s.withPlayer(s.listGroups))
 	mux.HandleFunc("GET /v1/groups/{id}/members", s.withPlayer(s.listGroupMembers))
+	mux.HandleFunc("GET /v1/groups/{id}/leaderboard", s.withPlayer(s.groupLeaderboard))
 	mux.HandleFunc("GET /v1/groups/{id}/invites", s.withPlayer(s.listGroupInvites))
 	mux.HandleFunc("POST /v1/groups/{id}/invites", s.withMember(s.createInvite))
 	mux.HandleFunc("DELETE /v1/groups/{id}/invites/{inviteId}", s.withMember(s.revokeInvite))
@@ -985,6 +986,7 @@ func readCompletion(w http.ResponseWriter, r *http.Request) (contract.Completion
 		in.Race = r.FormValue("race")
 		in.Class = r.FormValue("class")
 		in.CompletedAt = r.FormValue("completed_at")
+		in.StartedAt = r.FormValue("started_at")
 		in.Instance = r.FormValue("instance")
 		if raw := strings.TrimSpace(r.FormValue("group_members")); raw != "" {
 			if err := json.Unmarshal([]byte(raw), &in.GroupMembers); err != nil {

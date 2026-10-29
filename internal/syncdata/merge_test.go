@@ -156,3 +156,31 @@ func TestFindCharacter(t *testing.T) {
 		t.Fatalf("%+v %v", c, ok)
 	}
 }
+
+func TestDurationAndLeaderboardLua(t *testing.T) {
+	fast := 90
+	sync := contract.SyncResponse{
+		Characters: []contract.Character{{ID: "c1", Name: "Magni", Realm: "Celebras", Level: 12}},
+		Quests:     []contract.Quest{{ID: "q1", Title: "Rabbits", Active: true, PartyQuest: true, Version: 1}},
+		Completions: []contract.QuestCompletion{{
+			QuestID: "q1", Character: "Magni", Realm: "Celebras", Level: 12,
+			CompletedAt: "2026-10-29T12:00:00Z", StartedAt: "2026-10-29T11:58:30Z", DurationSec: &fast,
+		}},
+		Leaderboards: []contract.Leaderboard{{
+			GroupID: "g1", GroupName: "Tutorial", Period: "week",
+			Entries: []contract.LeaderboardEntry{{
+				Rank: 1, Name: "Magni", Realm: "Celebras", Class: "Warrior", Race: "Dwarf",
+				Level: 12, Completed: 1, LastCompletedAt: "2026-10-29T12:00:00Z",
+			}},
+		}},
+		Groups: []contract.GroupSummary{{ID: "g1", Slug: "tutorial", Name: "Tutorial"}},
+	}
+	entries := Merge(sync)
+	if len(entries) != 1 || len(entries[0].CompletedBy) != 1 || entries[0].CompletedBy[0].DurationSec == nil || *entries[0].CompletedBy[0].DurationSec != 90 {
+		t.Fatalf("%+v", entries)
+	}
+	lua := WriteSyncLua(sync.BattleTag, "t", entries, "", "", sync.Groups, nil, sync.Characters, sync.Leaderboards)
+	if !strings.Contains(lua, "duration_sec = 90") || !strings.Contains(lua, `period = "week"`) || !strings.Contains(lua, `name = "Magni"`) {
+		t.Fatal(lua)
+	}
+}

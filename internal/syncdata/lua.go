@@ -96,7 +96,7 @@ func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, notice
 }
 
 // WriteSyncLua is WriteLuaFile plus groups, invites, and character participation.
-func WriteSyncLua(battletag, generatedAt string, entries []Entry, notice, noticeID string, groups []contract.GroupSummary, invites []contract.Invite, characters []contract.Character) string {
+func WriteSyncLua(battletag, generatedAt string, entries []Entry, notice, noticeID string, groups []contract.GroupSummary, invites []contract.Invite, characters []contract.Character, leaderboards []contract.Leaderboard) string {
 	body := WriteLuaFile(battletag, generatedAt, entries, notice, noticeID)
 	// WriteLuaFile closes the table. Replace the final closing brace with the extra sections.
 	const close = "}\n"
@@ -105,6 +105,7 @@ func WriteSyncLua(battletag, generatedAt string, entries []Entry, notice, notice
 	}
 	var extra strings.Builder
 	writeLuaGroups(&extra, groups, invites, characters)
+	writeLuaLeaderboards(&extra, leaderboards)
 	return strings.TrimSuffix(body, close) + extra.String() + close
 }
 
@@ -125,6 +126,25 @@ func writeLuaGroups(b *strings.Builder, groups []contract.GroupSummary, invites 
 			flag = "true"
 		}
 		fmt.Fprintf(b, "    { name = %s, realm = %s, participating = %s },\n", luaString(c.Name), luaString(c.Realm), flag)
+	}
+	b.WriteString("  },\n")
+}
+
+func writeLuaLeaderboards(b *strings.Builder, boards []contract.Leaderboard) {
+	b.WriteString("  leaderboards = {\n")
+	for _, board := range boards {
+		b.WriteString("    {\n")
+		fmt.Fprintf(b, "      group_id = %s,\n", luaString(board.GroupID))
+		fmt.Fprintf(b, "      group_name = %s,\n", luaString(board.GroupName))
+		fmt.Fprintf(b, "      period = %s,\n", luaString(board.Period))
+		b.WriteString("      entries = {\n")
+		for _, e := range board.Entries {
+			fmt.Fprintf(b, "        { rank = %d, name = %s, realm = %s, class = %s, race = %s, level = %d, completed = %d, last_completed_at = %s },\n",
+				e.Rank, luaString(e.Name), luaString(e.Realm), luaString(e.Class), luaString(e.Race),
+				e.Level, e.Completed, luaString(e.LastCompletedAt))
+		}
+		b.WriteString("      },\n")
+		b.WriteString("    },\n")
 	}
 	b.WriteString("  },\n")
 }
@@ -283,6 +303,12 @@ func luaCompleters(list []Completer) string {
 			luaString(c.Character), luaString(c.Realm), luaString(c.BattleTag),
 			c.Level, luaString(c.Race), luaString(c.Class),
 			luaString(c.CompletedAt), luaString(when))
+		if c.StartedAt != "" {
+			fmt.Fprintf(&b, ", started_at = %s", luaString(c.StartedAt))
+		}
+		if c.DurationSec != nil {
+			fmt.Fprintf(&b, ", duration_sec = %d", *c.DurationSec)
+		}
 		b.WriteString(" },\n")
 	}
 	b.WriteString("      }")

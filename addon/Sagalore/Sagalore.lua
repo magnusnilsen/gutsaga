@@ -657,6 +657,38 @@ local function formatOsloWhen(raw)
     return string.format("%02d %s %d %02d:%02d", t.day, month, t.year, t.hour, t.min)
 end
 
+SagaloreBoard = SagaloreBoard or {}
+SagaloreBoard.periodBtns = {}
+SagaloreBoard.groupBtns = {}
+SagaloreBoard.rows = {}
+SagaloreBoard.rows = {}
+
+function SagaloreBoard.formatDuration(sec)
+    sec = tonumber(sec)
+    if not sec or sec < 0 then
+        return ""
+    end
+    sec = math.floor(sec)
+    local h = math.floor(sec / 3600)
+    local m = math.floor((sec % 3600) / 60)
+    local s = sec % 60
+    if h > 0 then
+        return string.format("%dh %02dm", h, m)
+    end
+    if m > 0 then
+        return string.format("%dm %02ds", m, s)
+    end
+    return string.format("%ds", s)
+end
+
+function SagaloreBoard.sortMode()
+    initDB()
+    if SagaloreDB.activity_sort == "completion_time" then
+        return "completion_time"
+    end
+    return "completed_at"
+end
+
 local function activityList(entry)
     local out = {}
     local seen = {}
@@ -684,6 +716,17 @@ local function activityList(entry)
         if when == "" then
             when = formatOsloWhen(row.completed_at)
         end
+        local dur = tonumber(row.duration_sec)
+        if dur == nil then
+            local started = tonumber(row.started_at)
+            local doneAt = tonumber(row.completed_at)
+            if started and doneAt and doneAt >= started then
+                dur = doneAt - started
+            end
+        end
+        if dur and dur < 0 then
+            dur = nil
+        end
         table.insert(out, {
             when = when,
             character = character,
@@ -692,6 +735,7 @@ local function activityList(entry)
             race = plainString(row.race) or "",
             class = plainString(row.class) or "",
             at = at,
+            duration_sec = dur,
         })
     end
     if type(entry) == "table" and type(entry.completed_by) == "table" then
@@ -712,12 +756,23 @@ local function activityList(entry)
                 race = localDone.race or player.race,
                 class = localDone.class or player.class,
                 completed_at = localDone.completed_at,
+                started_at = localDone.started_at,
             })
         end
     end
+    local mode = SagaloreBoard.sortMode()
     table.sort(out, function(a, b)
-        if a.at ~= b.at then
-            return a.at < b.at
+        if mode == "completion_time" then
+            local ad, bd = a.duration_sec, b.duration_sec
+            local aNil, bNil = ad == nil, bd == nil
+            if aNil ~= bNil then
+                return not aNil
+            end
+            if not aNil and ad ~= bd then
+                return ad < bd
+            end
+        elseif a.at ~= b.at then
+            return a.at > b.at
         end
         return a.character < b.character
     end)
@@ -1821,6 +1876,9 @@ local function checkAll()
                         end
                     end
                 end
+                if SagaloreObjectives.noteSagaStart then
+                    SagaloreObjectives.noteSagaStart(bucket, steps, state.now)
+                end
                 bucket.steps = steps
                 local groupReady = true
                 if type(entry.group) == "table" and SagaloreObjectives.groupOK then
@@ -2053,8 +2111,396 @@ local function placeSectionHeader(header, y, label, expanded, onToggle)
     return y + 24
 end
 
+function SagaloreBoard.currentView()
+    initDB()
+    if SagaloreDB.view == "board" then
+        return "board"
+    end
+    return "log"
+end
+
+function SagaloreBoard.currentPeriod()
+    initDB()
+    local p = SagaloreDB.board_period
+    if p == "month" or p == "week" or p == "today" or p == "all" then
+        return p
+    end
+    return "all"
+end
+
+function SagaloreBoard.dataGroups()
+    local groups = SagaloreData and SagaloreData.groups
+    if type(groups) ~= "table" then
+        return {}
+    end
+    local out = {}
+    for i = 1, #groups do
+        if type(groups[i]) == "table" and type(groups[i].id) == "string" and groups[i].id ~= "" then
+            out[#out + 1] = groups[i]
+        end
+    end
+    return out
+end
+
+function SagaloreBoard.currentBoardGroup()
+    initDB()
+    local groups = SagaloreBoard.dataGroups()
+    local want = SagaloreDB.board_group
+    for i = 1, #groups do
+        if groups[i].id == want then
+            return groups[i]
+        end
+    end
+    return groups[1]
+end
+
+function SagaloreBoard.findLeaderboard(groupID, period)
+    local boards = SagaloreData and SagaloreData.leaderboards
+    if type(boards) ~= "table" or type(groupID) ~= "string" then
+        return nil
+    end
+    for i = 1, #boards do
+        local row = boards[i]
+        if type(row) == "table" and row.group_id == groupID and row.period == period then
+            return row
+        end
+    end
+    return nil
+end
+
+function SagaloreBoard.paintToggle(btn, on)
+    if not btn or not btn.GetFontString then
+        return
+    end
+    local fs = btn:GetFontString()
+    if not fs then
+        return
+    end
+    if on then
+        fs:SetTextColor(1, 0.85, 0.4)
+    else
+        fs:SetTextColor(1, 0.95, 0.8)
+    end
+end
+
+function SagaloreBoard.paintViewButtons()
+    local board = SagaloreBoard.currentView() == "board"
+    SagaloreBoard.paintToggle(SagaloreBoard.viewSagasBtn, not board)
+    SagaloreBoard.paintToggle(SagaloreBoard.viewBoardBtn, board)
+end
+
+function SagaloreBoard.hideBoardChrome()
+    for i = 1, #SagaloreBoard.periodBtns do
+        SagaloreBoard.periodBtns[i]:Hide()
+    end
+    for i = 1, #SagaloreBoard.groupBtns do
+        SagaloreBoard.groupBtns[i]:Hide()
+    end
+    for i = 1, #SagaloreBoard.rows do
+        SagaloreBoard.rows[i]:Hide()
+    end
+    if SagaloreBoard.emptyFS then
+        SagaloreBoard.emptyFS:Hide()
+    end
+end
+
+function SagaloreBoard.showLogChrome()
+    SagaloreBoard.hideBoardChrome()
+    if searchBox then
+        searchBox:Show()
+    end
+    if statusDrop then
+        statusDrop:Show()
+    end
+    if groupDrop then
+        groupDrop:Show()
+    end
+    if creatorDrop then
+        creatorDrop:Show()
+    end
+end
+
+function SagaloreBoard.hideLogLists()
+    if sectionOpen then
+        sectionOpen:Hide()
+    end
+    if sectionDone then
+        sectionDone:Hide()
+    end
+    for i = 1, #rows do
+        rows[i]:Hide()
+    end
+    for i = 1, #goalRows do
+        goalRows[i]:Hide()
+    end
+    for i = 1, #activityRows do
+        activityRows[i]:Hide()
+    end
+    if detailGoalsHeader then
+        detailGoalsHeader:Hide()
+    end
+    if detailActivityHeader then
+        detailActivityHeader:Hide()
+    end
+    if SagaloreBoard.activitySortBtn then
+        SagaloreBoard.activitySortBtn:Hide()
+    end
+    if detailFS then
+        detailFS:SetText("")
+    end
+    if detailImage then
+        detailImage:Hide()
+    end
+    if detailMeta then
+        detailMeta:Hide()
+    end
+    if searchBox then
+        searchBox:Hide()
+    end
+    if statusDrop then
+        statusDrop:Hide()
+    end
+    if groupDrop then
+        groupDrop:Hide()
+    end
+    if creatorDrop then
+        creatorDrop:Hide()
+    end
+end
+
+function SagaloreBoard.ensureBoardRow(i)
+    local row = SagaloreBoard.rows[i]
+    if row then
+        return row
+    end
+    row = CreateFrame("Frame", nil, detailChild)
+    row:SetHeight(36)
+    local nameFS = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    nameFS:SetPoint("TOPLEFT", 0, 0)
+    nameFS:SetJustifyH("LEFT")
+    nameFS:SetTextColor(INK.r, INK.g, INK.b)
+    local subFS = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    subFS:SetPoint("TOPLEFT", nameFS, "BOTTOMLEFT", 0, -2)
+    subFS:SetJustifyH("LEFT")
+    subFS:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+    row.nameFS = nameFS
+    row.subFS = subFS
+    SagaloreBoard.rows[i] = row
+    return row
+end
+
+function SagaloreBoard.ensureGroupBtn(i)
+    local btn = SagaloreBoard.groupBtns[i]
+    if btn then
+        return btn
+    end
+    btn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
+    btn:SetSize(200, 22)
+    btn:SetScript("OnClick", function(self)
+        initDB()
+        SagaloreDB.board_group = self.groupID
+        refresh()
+    end)
+    SagaloreBoard.groupBtns[i] = btn
+    return btn
+end
+
+function SagaloreBoard.refreshBoard()
+    if not detailTitle or not detailChild then
+        return
+    end
+    SagaloreBoard.hideLogLists()
+    SagaloreBoard.paintViewButtons()
+    local period = SagaloreBoard.currentPeriod()
+    local groups = SagaloreBoard.dataGroups()
+    local selected = SagaloreBoard.currentBoardGroup()
+    local y = 10
+    if #groups > 1 then
+        for i = 1, #groups do
+            local btn = SagaloreBoard.ensureGroupBtn(i)
+            btn.groupID = groups[i].id
+            btn:SetText(groups[i].name or groups[i].slug or L("ui.group"))
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", listPanel, "TOPLEFT", 12, -y)
+            btn:Show()
+            SagaloreBoard.paintToggle(btn, selected and selected.id == groups[i].id)
+            y = y + 26
+        end
+    end
+    for i = #groups + 1, #SagaloreBoard.groupBtns do
+        SagaloreBoard.groupBtns[i]:Hide()
+    end
+    if #groups <= 1 then
+        for i = 1, #SagaloreBoard.groupBtns do
+            SagaloreBoard.groupBtns[i]:Hide()
+        end
+    end
+    local periodOrder = { "all", "month", "week", "today" }
+    local periodKey = {
+        all = "ui.period_all",
+        month = "ui.period_month",
+        week = "ui.period_week",
+        today = "ui.period_today",
+    }
+    for i = 1, #SagaloreBoard.periodBtns do
+        local btn = SagaloreBoard.periodBtns[i]
+        local key = periodOrder[i]
+        btn.period = key
+        btn:SetText(L(periodKey[key] or key))
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", listPanel, "TOPLEFT", 12, -y)
+        btn:Show()
+        SagaloreBoard.paintToggle(btn, key == period)
+        y = y + 26
+    end
+
+    local width = 340
+    detailTitle:SetText(L("ui.leaderboard"))
+    detailTitle:SetTextColor(INK.r, INK.g, INK.b)
+    detailTitle:SetWidth(width)
+    detailTitle:Show()
+    local detailY = (detailTitle:GetStringHeight() or 24) + 8
+    local subtitle = ""
+    if selected then
+        subtitle = selected.name or selected.slug or ""
+    end
+    if subtitle ~= "" then
+        subtitle = subtitle .. " · "
+    end
+    subtitle = subtitle .. L(periodKey[period] or "ui.period_all")
+    detailMeta:SetText(subtitle)
+    detailMeta:SetTextColor(INK_MUTED.r, INK_MUTED.g, INK_MUTED.b)
+    detailMeta:SetWidth(width)
+    detailMeta:ClearAllPoints()
+    detailMeta:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+    detailMeta:Show()
+    detailY = detailY + (detailMeta:GetStringHeight() or 16) + 12
+
+    local entries = {}
+    local board = selected and SagaloreBoard.findLeaderboard(selected.id, period) or nil
+    if type(board) == "table" and type(board.entries) == "table" then
+        entries = board.entries
+    end
+    if #entries == 0 then
+        if SagaloreBoard.emptyFS then
+            SagaloreBoard.emptyFS:ClearAllPoints()
+            SagaloreBoard.emptyFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+            SagaloreBoard.emptyFS:SetWidth(width)
+            SagaloreBoard.emptyFS:SetText(L("ui.board_empty"))
+            SagaloreBoard.emptyFS:Show()
+            detailY = detailY + (SagaloreBoard.emptyFS:GetStringHeight() or 16) + 8
+        end
+    elseif SagaloreBoard.emptyFS then
+        SagaloreBoard.emptyFS:Hide()
+    end
+    for i = 1, #entries do
+        local e = entries[i]
+        local row = SagaloreBoard.ensureBoardRow(i)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        row:SetWidth(width)
+        row:Show()
+        local rank = tonumber(e.rank) or i
+        local name = plainString(e.name) or ""
+        row.nameFS:SetWidth(width)
+        row.nameFS:SetText(string.format("%d. %s", rank, name))
+        local bits = { string.format(L("ui.board_count"), tonumber(e.completed) or 0) }
+        local who = ""
+        local race = plainString(e.race) or ""
+        local className = plainString(e.class) or ""
+        local level = tonumber(e.level) or 0
+        if level > 0 then
+            who = "Level " .. tostring(level)
+        end
+        if race ~= "" then
+            if who ~= "" then
+                who = who .. " "
+            end
+            who = who .. race
+        end
+        if className ~= "" then
+            if who ~= "" then
+                who = who .. " "
+            end
+            who = who .. className
+        end
+        if who ~= "" then
+            bits[#bits + 1] = who
+        end
+        local realm = plainString(e.realm) or ""
+        if realm ~= "" then
+            bits[#bits + 1] = realm
+        end
+        local when = formatOsloWhen(e.last_completed_at)
+        if when ~= "" then
+            bits[#bits + 1] = when
+        end
+        row.subFS:SetWidth(width)
+        row.subFS:SetText(table.concat(bits, " · "))
+        local h = (row.nameFS:GetStringHeight() or 14) + (row.subFS:GetStringHeight() or 12) + 8
+        row:SetHeight(h)
+        detailY = detailY + h + 8
+    end
+    for i = #entries + 1, #SagaloreBoard.rows do
+        SagaloreBoard.rows[i]:Hide()
+    end
+    detailChild:SetHeight(math.max(detailY + 8, 10))
+    if detailScroll and detailScroll.UpdateScrollChildRect then
+        detailScroll:UpdateScrollChildRect()
+    end
+    if listChild then
+        listChild:SetHeight(10)
+    end
+    if updateMinimapUnread then
+        updateMinimapUnread()
+    end
+end
+
+-- Globals, not upvalues. refresh is already at Lua 5.1's upvalue cap.
+SagaloreBoard = SagaloreBoard or {}
+
+function SagaloreBoard.begin()
+    if SagaloreBoard.currentView() == "board" then
+        SagaloreBoard.refreshBoard()
+        return false
+    end
+    SagaloreBoard.showLogChrome()
+    SagaloreBoard.paintViewButtons()
+    return true
+end
+
+function SagaloreBoard.placeActivitySort(y, width)
+    local headerW = width
+    local headerH = 20
+    if SagaloreBoard.activitySortBtn then
+        headerW = width - 108
+        if headerW < 80 then
+            headerW = 80
+        end
+        if SagaloreBoard.sortMode() == "completion_time" then
+            SagaloreBoard.activitySortBtn:SetText(L("ui.sort_fastest"))
+        else
+            SagaloreBoard.activitySortBtn:SetText(L("ui.sort_newest"))
+        end
+        SagaloreBoard.activitySortBtn:ClearAllPoints()
+        SagaloreBoard.activitySortBtn:SetPoint("TOPRIGHT", detailChild, "TOPRIGHT", 0, -y)
+        SagaloreBoard.activitySortBtn:Show()
+        headerH = 22
+    end
+    return headerW, headerH
+end
+
+function SagaloreBoard.hideActivitySort()
+    if SagaloreBoard.activitySortBtn then
+        SagaloreBoard.activitySortBtn:Hide()
+    end
+end
+
 refresh = function()
     if not built then
+        return
+    end
+    if not SagaloreBoard.begin() then
         return
     end
     loadFilters()
@@ -2381,11 +2827,17 @@ refresh = function()
             detailActivityHeader:Show()
             detailActivityHeader:ClearAllPoints()
             detailActivityHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-            detailActivityHeader:SetWidth(width)
+            local headerW, sortH = SagaloreBoard.placeActivitySort(detailY, width)
+            detailActivityHeader:SetWidth(headerW)
             detailActivityHeader:SetTextColor(INK.r, INK.g, INK.b)
-            detailY = detailY + (detailActivityHeader:GetStringHeight() or 20) + 10
+            local headerH = detailActivityHeader:GetStringHeight() or 20
+            if sortH > headerH then
+                headerH = sortH
+            end
+            detailY = detailY + headerH + 10
         else
             detailActivityHeader:Hide()
+            SagaloreBoard.hideActivitySort()
         end
     end
     for i, act in ipairs(activities) do
@@ -2399,6 +2851,14 @@ refresh = function()
                 row.userFS:Hide()
             end
             local whenText = act.when or ""
+            local durText = SagaloreBoard.formatDuration(act.duration_sec)
+            if durText ~= "" then
+                if whenText ~= "" then
+                    whenText = whenText .. " · " .. durText
+                else
+                    whenText = durText
+                end
+            end
             local charText = act.character or ""
             local line = charText
             if line ~= "" then
@@ -2605,6 +3065,13 @@ finishQuest = function(entry, group)
         race = player.race,
         class = player.class,
     }
+    local bucket = SagaloreDB.objectives and SagaloreDB.objectives[entry.saga_id]
+    if type(bucket) == "table" then
+        local started = tonumber(bucket.started_at) or 0
+        if started > 0 then
+            row.started_at = started
+        end
+    end
     if type(entry.group) == "table" and type(group) == "table" then
         row.group_members = encodeMembers(group.members)
         row.instance = placeLabel(entry.group, group)
@@ -2976,6 +3443,25 @@ local function build()
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
 
+    SagaloreBoard.viewSagasBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    SagaloreBoard.viewSagasBtn:SetSize(100, 22)
+    SagaloreBoard.viewSagasBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 24, -36)
+    SagaloreBoard.viewSagasBtn:SetText(L("ui.sagas"))
+    SagaloreBoard.viewSagasBtn:SetScript("OnClick", function()
+        initDB()
+        SagaloreDB.view = "log"
+        refresh()
+    end)
+    SagaloreBoard.viewBoardBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    SagaloreBoard.viewBoardBtn:SetSize(120, 22)
+    SagaloreBoard.viewBoardBtn:SetPoint("LEFT", SagaloreBoard.viewSagasBtn, "RIGHT", 6, 0)
+    SagaloreBoard.viewBoardBtn:SetText(L("ui.leaderboard"))
+    SagaloreBoard.viewBoardBtn:SetScript("OnClick", function()
+        initDB()
+        SagaloreDB.view = "board"
+        refresh()
+    end)
+
     local drag = CreateFrame("Frame", nil, frame)
     drag:SetPoint("TOPLEFT", frame, "TOPLEFT", 56, 10)
     drag:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -46, 10)
@@ -3017,6 +3503,19 @@ local function build()
     }, GOLD)
     if listPanel.SetBackdropColor then
         listPanel:SetBackdropColor(0.07, 0.05, 0.03, 0.92)
+    end
+
+    local periodOrder = { "all", "month", "week", "today" }
+    for i = 1, #periodOrder do
+        local btn = CreateFrame("Button", nil, listPanel, "UIPanelButtonTemplate")
+        btn:SetSize(200, 22)
+        btn:SetScript("OnClick", function(self)
+            initDB()
+            SagaloreDB.board_period = self.period
+            refresh()
+        end)
+        btn:Hide()
+        SagaloreBoard.periodBtns[i] = btn
     end
 
     if UIDropDownMenu_Initialize then
@@ -3173,6 +3672,25 @@ local function build()
     detailActivityHeader:SetText(L("ui.activity"))
     detailActivityHeader:SetTextColor(INK.r, INK.g, INK.b)
     detailActivityHeader:Hide()
+    SagaloreBoard.activitySortBtn = CreateFrame("Button", nil, detailChild, "UIPanelButtonTemplate")
+    SagaloreBoard.activitySortBtn:SetSize(100, 22)
+    SagaloreBoard.activitySortBtn:SetText(L("ui.sort_newest"))
+    SagaloreBoard.activitySortBtn:Hide()
+    SagaloreBoard.activitySortBtn:SetScript("OnClick", function()
+        initDB()
+        if SagaloreBoard.sortMode() == "completion_time" then
+            SagaloreDB.activity_sort = "completed_at"
+        else
+            SagaloreDB.activity_sort = "completion_time"
+        end
+        refresh()
+    end)
+    SagaloreBoard.emptyFS = detailChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    SagaloreBoard.emptyFS:SetJustifyH("LEFT")
+    SagaloreBoard.emptyFS:SetJustifyV("TOP")
+    SagaloreBoard.emptyFS:SetWordWrap(true)
+    SagaloreBoard.emptyFS:SetTextColor(INK.r, INK.g, INK.b)
+    SagaloreBoard.emptyFS:Hide()
     pcall(function()
         detailFS:SetScript("OnHyperlinkClick", onGoalLinkClick)
         detailFS:SetScript("OnHyperlinkEnter", onGoalLinkEnter)

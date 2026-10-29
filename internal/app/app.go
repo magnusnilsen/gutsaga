@@ -295,7 +295,7 @@ func (a *App) pullSync(ctx context.Context) error {
 			entries[i].ImageAspect = ar
 		}
 	}
-	body := syncdata.WriteSyncLua(sync.BattleTag, sync.GeneratedAt, entries, notice, noticeID, sync.Groups, sync.Invites, sync.Characters)
+	body := syncdata.WriteSyncLua(sync.BattleTag, sync.GeneratedAt, entries, notice, noticeID, sync.Groups, sync.Invites, sync.Characters, sync.Leaderboards)
 	path := filepath.Join(addonDir, "SagaloreData.lua")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -451,7 +451,13 @@ func (a *App) pollSavedVars() {
 			Race: c.Race, Class: c.Class, Level: c.Level, CompletedAt: c.At.UTC().Format(time.RFC3339),
 			Instance: c.Instance, GroupMembers: c.GroupMembers,
 		}
+		if !c.Started.IsZero() {
+			item.StartedAt = c.Started.UTC().Format(time.RFC3339)
+		}
 		ok := a.Queue.Enqueue(item)
+		if !ok && item.StartedAt != "" {
+			a.Queue.SetStartedAt(key, item.StartedAt)
+		}
 		if !ok && len(c.GroupMembers) > 0 && !a.Queue.SetGroup(key, c.Instance, c.GroupMembers) {
 			item.Key = "group\n" + key
 			ok = a.Queue.Enqueue(item)
@@ -642,8 +648,8 @@ func (a *App) send(ctx context.Context, item queue.Item) error {
 	_, err := a.Client.Complete(ctx, contract.CompletionRequest{
 		CharacterID: item.CharacterID, QuestID: item.QuestID, QuestVersion: item.QuestVersion,
 		BattleTag: tag, Level: item.Level, Race: item.Race, Class: item.Class,
-		CompletedAt: item.CompletedAt,
-		Instance:    item.Instance, GroupMembers: item.GroupMembers,
+		CompletedAt: item.CompletedAt, StartedAt: item.StartedAt,
+		Instance: item.Instance, GroupMembers: item.GroupMembers,
 	}, nil)
 	if err != nil {
 		return err

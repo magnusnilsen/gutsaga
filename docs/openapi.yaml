@@ -193,12 +193,49 @@ paths:
           description: created
         "403":
           description: not a member
-  /v1/sync:
+  /v1/groups/{id}/leaderboard:
     get:
-      summary: Sagas, progress, and completions for the caller's groups
+      summary: Ranked characters by sagas completed in this group
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+        - in: query
+          name: period
+          schema: {type: string, enum: [all, month, week, today], default: all}
       responses:
         "200":
-          description: sync
+          description: group_id, period, and ranked entries (name, realm, class, race, level, completed, last_completed_at)
+        "400":
+          description: period is not all, month, week, or today
+        "403":
+          description: caller is not a member
+  /v1/sagas/{id}:
+    get:
+      summary: One saga, including completed_by. Any group member.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+        - in: query
+          name: sort
+          schema: {type: string, enum: [completed_at, completion_time]}
+          description: completed_at is newest first. completion_time is shortest duration first, nulls last. Omit for oldest first.
+      responses:
+        "200":
+          description: saga detail with duration_sec on completed_by
+        "400":
+          description: sort is not recognized
+        "403":
+          description: caller is not a member of the saga's group
+  /v1/sync:
+    get:
+      summary: Sagas, progress, completions, and leaderboards for the caller's groups
+      responses:
+        "200":
+          description: sync, including duration_sec and leaderboards
   /v1/me/tokens:
     post:
       summary: Mint a gst_ token. Returned once.
