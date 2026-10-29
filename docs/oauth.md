@@ -64,7 +64,9 @@ PKCE is required for public and confidential clients.
 
 If the browser has no consent cookie, the server redirects to Battle.net. After Battle.net returns, the server sets an HttpOnly cookie on `/oauth` for 15 minutes and shows the consent page. The cookie value starts with `goc_`. It is not a `gss_` session and the API rejects it. The companion poll cannot read that login. The consent form includes a CSRF token bound to that cookie and the authorization request. The page sends `Referrer-Policy: same-origin`. `POST /oauth/authorize` requires the CSRF token and an `Origin` equal to `PUBLIC_BASE_URL`. A missing `Origin`, or the value `null`, is accepted only when `Sec-Fetch-Site` is `same-origin`.
 
-The consent page shows the client name, the BattleTag, and the redirect URI. Allow redirects to the client with `code`, `state`, and `iss` (the issuer). Deny redirects with `error=access_denied`. An unknown `client_id` or a redirect URI that was not registered is a JSON error and does not redirect.
+The consent page shows the client name, the BattleTag, and the redirect URI. Its `Content-Security-Policy` `form-action` is `'self'` plus the redirect URI's origin (scheme only, for a private-use URI). Chromium applies `form-action` to every hop of a form POST, so a 302 from Allow straight to another origin is dropped and the button looks like it did nothing. The decision therefore answers `303` to `/oauth/continue`, a same-origin page that says it is sending the browser back and then navigates to the client. Allow arrives there with `code`, `state`, and `iss` (the issuer). Deny arrives with `error=access_denied`.
+
+A second Allow with the same consent cookie and CSRF token, within two minutes, redirects to the same code and state. The code can still be exchanged only once. A different CSRF token is rejected. An unknown or already-used authorization request is an HTML page that tells the player to go back to the app and start again. An unknown `client_id` or a redirect URI that was not registered is a JSON error and does not redirect.
 
 The authorization code starts with `gso_`, expires in 10 minutes, and works once. The code is stored as a hash.
 
