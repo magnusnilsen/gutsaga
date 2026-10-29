@@ -778,6 +778,72 @@ func TestOAuthConsentCSRF(t *testing.T) {
 	}
 }
 
+func TestOAuthConsentOrigin(t *testing.T) {
+	srv, ts := oauthServer(t)
+	_, consent := oauthDevSession(t, ts, srv.store)
+	redirectURI := "http://127.0.0.1/callback"
+	client := registerOAuthClient(t, ts, map[string]any{
+		"client_name": "Board", "redirect_uris": []string{redirectURI},
+	})
+	clientID := client["client_id"].(string)
+
+	policy, requestID, csrf := openOAuthConsent(t, ts, clientID, redirectURI, consent)
+	if policy == "no-referrer" || policy != "same-origin" {
+		t.Fatalf("consent Referrer-Policy %q", policy)
+	}
+
+	rejected := []struct{ origin, site string }{
+		{"https://evil.example", "cross-site"},
+		{"null", "cross-site"},
+		{"", "cross-site"},
+		{"null", "same-site"},
+		{"null", ""},
+		{"", ""},
+	}
+	for _, tc := range rejected {
+		resp := postConsentDecision(t, ts.URL+"/oauth/authorize", url.Values{
+			"request": {requestID}, "decision": {"approve"}, "csrf": {csrf},
+		}, consent, tc.origin, tc.site)
+		var body map[string]string
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden || body["error_description"] != "origin is not allowed" {
+			t.Fatalf("origin %q site %q %+v %d", tc.origin, tc.site, body, resp.StatusCode)
+		}
+	}
+
+	noCSRF := postConsentDecision(t, ts.URL+"/oauth/authorize", url.Values{
+		"request": {requestID}, "decision": {"approve"},
+	}, consent, "null", "same-origin")
+	var csrfBody map[string]string
+	_ = json.NewDecoder(noCSRF.Body).Decode(&csrfBody)
+	noCSRF.Body.Close()
+	if noCSRF.StatusCode != http.StatusForbidden || csrfBody["error_description"] != "csrf token does not match this sign-in" {
+		t.Fatalf("null origin without csrf %+v %d", csrfBody, noCSRF.StatusCode)
+	}
+
+	issuer := postConsentDecision(t, ts.URL+"/oauth/authorize", url.Values{
+		"request": {requestID}, "decision": {"approve"}, "csrf": {csrf},
+	}, consent, ts.URL, "")
+	issuerLoc, _ := url.Parse(issuer.Header.Get("Location"))
+	issuer.Body.Close()
+	if issuer.StatusCode != http.StatusFound || issuerLoc.Query().Get("code") == "" {
+		t.Fatalf("issuer origin %d %s", issuer.StatusCode, issuer.Header.Get("Location"))
+	}
+
+	for _, origin := range []string{"null", ""} {
+		_, requestID, csrf = openOAuthConsent(t, ts, clientID, redirectURI, consent)
+		accepted := postConsentDecision(t, ts.URL+"/oauth/authorize", url.Values{
+			"request": {requestID}, "decision": {"approve"}, "csrf": {csrf},
+		}, consent, origin, "same-origin")
+		loc, _ := url.Parse(accepted.Header.Get("Location"))
+		accepted.Body.Close()
+		if accepted.StatusCode != http.StatusFound || loc.Query().Get("code") == "" {
+			t.Fatalf("origin %q same-origin %d %s", origin, accepted.StatusCode, accepted.Header.Get("Location"))
+		}
+	}
+}
+
 func TestOAuthRegisterRateLimitAndCleanup(t *testing.T) {
 	srv, ts := oauthServer(t)
 	redirect := map[string]any{"client_name": "Flood", "redirect_uris": []string{"https://example.com/cb"}}
@@ -1120,6 +1186,47 @@ func tokenForm(t *testing.T, ts *httptest.Server, form url.Values) oauthTokenRes
 func postForm(t *testing.T, rawURL string, form url.Values) *http.Response {
 	t.Helper()
 	resp, err := http.PostForm(rawURL, form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
+func openOAuthConsent(t *testing.T, ts *httptest.Server, clientID, redirectURI, consent string) (policy, requestID, csrf string) {
+	t.Helper()
+	_, challenge, err := pkcePair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := oauthGet(t, ts, authorizeQuery(clientID, redirectURI, challenge, "origin-state", ""), consent, true)
+	defer page.Body.Close()
+	html, _ := io.ReadAll(page.Body)
+	if page.StatusCode != http.StatusOK {
+		t.Fatalf("consent page %d %s", page.StatusCode, html)
+	}
+	return page.Header.Get("Referrer-Policy"), oauthRequestID(t, string(html)), oauthCSRF(t, string(html))
+}
+
+func postConsentDecision(t *testing.T, rawURL string, form url.Values, session, origin, secFetchSite string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, rawURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if origin != "" {
+		req.Header.Set("Origin", origin)
+	}
+	if secFetchSite != "" {
+		req.Header.Set("Sec-Fetch-Site", secFetchSite)
+	}
+	if session != "" {
+		req.AddCookie(&http.Cookie{Name: oauthCookieName, Value: session})
+	}
+	client := &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
