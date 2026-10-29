@@ -51,7 +51,7 @@ GET /v1/ws is the player WebSocket (same bearer as /v1/sync).
 OAuth 2.1 for external clients (PKCE, discovery, dynamic registration):
   /.well-known/oauth-authorization-server
   /.well-known/oauth-protected-resource
-  /oauth/register  /oauth/authorize  /oauth/token  /oauth/revoke
+  /oauth/register  /oauth/authorize  /oauth/continue  /oauth/token  /oauth/revoke
   Access tokens are gst_ and work on the API. Refresh tokens are gsr_.
 
 Environment:

@@ -204,7 +204,7 @@ func (s *Server) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.CleanupOAuth(r.Context())
 	if requestID := strings.TrimSpace(r.URL.Query().Get("request")); requestID != "" {
 		if validUUID(requestID) != nil {
-			writeOAuthError(w, http.StatusBadRequest, "invalid_request", "unknown authorization request")
+			s.renderOAuthRestart(w)
 			return
 		}
 		s.oauthResume(w, r, requestID)
@@ -264,7 +264,7 @@ func (s *Server) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, _, loggedIn := s.playerFromOAuthCookie(r); !loggedIn {
-		s.redirectOAuthToBattleNet(w, r, requestID)
+		s.redirectOAuthToBattleNet(w, r, requestID, false)
 		return
 	}
 	s.oauthResume(w, r, requestID)
@@ -273,7 +273,7 @@ func (s *Server) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 func (s *Server) oauthResume(w http.ResponseWriter, r *http.Request, requestID string) {
 	row, expired, err := s.store.OAuthRequest(r.Context(), requestID)
 	if errors.Is(err, ErrNotFound) {
-		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "unknown authorization request")
+		s.renderOAuthRestart(w)
 		return
 	}
 	if err != nil {
@@ -292,7 +292,7 @@ func (s *Server) oauthResume(w http.ResponseWriter, r *http.Request, requestID s
 	}
 	player, consent, ok := s.playerFromOAuthCookie(r)
 	if !ok {
-		s.redirectOAuthToBattleNet(w, r, requestID)
+		s.redirectOAuthToBattleNet(w, r, requestID, false)
 		return
 	}
 	s.showConsent(w, r, client, player, row, consent)
@@ -314,12 +314,12 @@ func (s *Server) oauthAuthorizeDecision(w http.ResponseWriter, r *http.Request) 
 	}
 	requestID := strings.TrimSpace(r.PostForm.Get("request"))
 	if validUUID(requestID) != nil {
-		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "unknown authorization request")
+		s.renderOAuthRestart(w)
 		return
 	}
 	row, expired, err := s.store.OAuthRequest(r.Context(), requestID)
 	if errors.Is(err, ErrNotFound) {
-		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "unknown authorization request")
+		s.replayApprove(w, r, requestID)
 		return
 	}
 	if err != nil {
@@ -328,12 +328,12 @@ func (s *Server) oauthAuthorizeDecision(w http.ResponseWriter, r *http.Request) 
 	}
 	if expired {
 		_ = s.store.DeleteOAuthRequest(r.Context(), requestID)
-		oauthRedirectError(w, r, row.RedirectURI, row.State, s.oauthIssuer(), "invalid_request", "authorization request expired")
+		s.oauthConsentError(w, r, row.RedirectURI, row.State, "invalid_request", "authorization request expired")
 		return
 	}
 	player, consent, ok := s.playerFromOAuthCookie(r)
 	if !ok {
-		s.redirectOAuthToBattleNet(w, r, requestID)
+		s.redirectOAuthToBattleNet(w, r, requestID, true)
 		return
 	}
 	if !oauthCSRFOK(row, consent, r.PostForm.Get("csrf")) {
@@ -346,18 +346,22 @@ func (s *Server) oauthAuthorizeDecision(w http.ResponseWriter, r *http.Request) 
 			s.writeOAuthStoreErr(w, err)
 			return
 		}
-		oauthRedirectError(w, r, row.RedirectURI, row.State, s.oauthIssuer(), "access_denied", "the request was denied")
+		s.oauthConsentError(w, r, row.RedirectURI, row.State, "access_denied", "the request was denied")
 	case "approve":
 		raw, issued, err := s.store.IssueOAuthCode(r.Context(), requestID, player.ID)
+		if errors.Is(err, errOAuthRequestExpired) {
+			s.oauthConsentError(w, r, issued.RedirectURI, issued.State, "invalid_request", "authorization request expired")
+			return
+		}
 		if errors.Is(err, ErrNotFound) {
-			oauthRedirectError(w, r, row.RedirectURI, row.State, s.oauthIssuer(), "invalid_request", "authorization request expired")
+			s.replayApprove(w, r, requestID)
 			return
 		}
 		if err != nil {
 			s.writeOAuthStoreErr(w, err)
 			return
 		}
-		oauthRedirectCode(w, r, issued.RedirectURI, issued.State, raw, s.oauthIssuer())
+		s.oauthConsentCode(w, r, issued.RedirectURI, issued.State, raw)
 	default:
 		client, err := s.store.OAuthClient(r.Context(), row.ClientID)
 		if err != nil {
@@ -383,7 +387,7 @@ func (s *Server) showConsent(w http.ResponseWriter, r *http.Request, client oaut
 	})
 }
 
-func (s *Server) redirectOAuthToBattleNet(w http.ResponseWriter, r *http.Request, requestID string) {
+func (s *Server) redirectOAuthToBattleNet(w http.ResponseWriter, r *http.Request, requestID string, handoff bool) {
 	loc, err := s.beginBnetLogin(r.Context(), requestID)
 	if errors.Is(err, errBnetNotConfigured) {
 		writeOAuthError(w, http.StatusServiceUnavailable, "server_error", "BNET_CLIENT_ID and PUBLIC_BASE_URL are required")
@@ -393,8 +397,37 @@ func (s *Server) redirectOAuthToBattleNet(w http.ResponseWriter, r *http.Request
 		s.writeOAuthStoreErr(w, err)
 		return
 	}
+	if handoff {
+		s.oauthHandoff(w, r, loc)
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, loc, http.StatusFound)
+}
+
+// replayApprove repeats an Allow that already issued a code. The same consent
+// session and CSRF token get the same code and state until the replay window
+// ends. A different CSRF token is rejected. Anything else is an HTML page.
+func (s *Server) replayApprove(w http.ResponseWriter, r *http.Request, requestID string) {
+	if r.PostForm.Get("decision") != "approve" {
+		s.renderOAuthRestart(w)
+		return
+	}
+	replay, err := s.store.OAuthApproveReplay(r.Context(), requestID)
+	if errors.Is(err, ErrNotFound) {
+		s.renderOAuthRestart(w)
+		return
+	}
+	if err != nil {
+		s.writeOAuthStoreErr(w, err)
+		return
+	}
+	_, consent, ok := s.playerFromOAuthCookie(r)
+	if !ok || !oauthReplayCSRF(replay, consent, r.PostForm.Get("csrf")) {
+		writeOAuthError(w, http.StatusForbidden, "invalid_request", "csrf token does not match this sign-in")
+		return
+	}
+	s.oauthConsentCode(w, r, replay.RedirectURI, replay.State, replay.Code)
 }
 
 func (s *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
@@ -607,7 +640,10 @@ func (s *Server) renderConsent(w http.ResponseWriter, view consentView) {
 	// same-origin keeps the consent POST's Origin equal to the issuer.
 	// no-referrer makes browsers send Origin: null, which fails the check below.
 	w.Header().Set("Referrer-Policy", "same-origin")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'")
+	// form-action lists the client origin because Chromium applies that
+	// directive to every hop of a form POST, including a cross-origin 302.
+	// The decision still returns a same-origin 303 so the chain never has to.
+	w.Header().Set("Content-Security-Policy", consentCSP(view.RedirectURI))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 	if err := consentTmpl.Execute(w, view); err != nil {
@@ -616,11 +652,52 @@ func (s *Server) renderConsent(w http.ResponseWriter, view consentView) {
 }
 
 func oauthCSRFOK(row oauthRequestRow, consent, csrf string) bool {
-	if row.CSRFHash == "" || row.ConsentSessionHash == "" || consent == "" || csrf == "" {
+	return oauthHashesOK(row.ConsentSessionHash, row.CSRFHash, consent, csrf)
+}
+
+func oauthReplayCSRF(replay oauthApproveReplay, consent, csrf string) bool {
+	return oauthHashesOK(replay.ConsentSessionHash, replay.CSRFHash, consent, csrf)
+}
+
+func oauthHashesOK(consentHash, csrfHash, consent, csrf string) bool {
+	if consentHash == "" || csrfHash == "" || consent == "" || csrf == "" {
 		return false
 	}
-	return subtleConstantTimeString(hashKey(consent), row.ConsentSessionHash) == 1 &&
-		subtleConstantTimeString(hashKey(csrf), row.CSRFHash) == 1
+	return subtleConstantTimeString(hashKey(consent), consentHash) == 1 &&
+		subtleConstantTimeString(hashKey(csrf), csrfHash) == 1
+}
+
+func consentCSP(redirectURI string) string {
+	action := "form-action 'self'"
+	if src, ok := oauthFormActionSource(redirectURI); ok {
+		action += " " + src
+	}
+	return "default-src 'none'; style-src 'unsafe-inline'; " + action + "; base-uri 'none'"
+}
+
+// oauthFormActionSource is the CSP source for a registered redirect URI.
+// http and https use the origin, including a non-default port. Any other
+// allowed scheme is a scheme source so a private-use URI still matches.
+func oauthFormActionSource(redirectURI string) (string, bool) {
+	u, err := url.Parse(redirectURI)
+	if err != nil || u.Scheme == "" || u.Fragment != "" || u.User != nil {
+		return "", false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if !oauthScheme.MatchString(scheme) {
+		return "", false
+	}
+	switch scheme {
+	case "javascript", "data", "file", "blob", "vbscript", "about":
+		return "", false
+	case "http", "https":
+		if u.Host == "" || strings.ContainsAny(u.Host, " \t;,'\"\\") {
+			return "", false
+		}
+		return scheme + "://" + u.Host, true
+	default:
+		return scheme + ":", true
+	}
 }
 
 // oauthOriginOK allows a consent decision from this issuer. A same-origin form
@@ -713,34 +790,58 @@ func oauthHTTPStatus(code string) int {
 }
 
 func oauthRedirectError(w http.ResponseWriter, r *http.Request, redirectURI, state, issuer, code, desc string) {
-	u, err := url.Parse(redirectURI)
-	if err != nil || u.Scheme == "" {
+	target, ok := oauthErrorURL(redirectURI, state, issuer, code, desc)
+	if !ok {
 		writeOAuthError(w, http.StatusBadRequest, code, desc)
 		return
 	}
-	q := u.Query()
-	q.Set("error", code)
-	q.Set("error_description", desc)
-	if state != "" {
-		q.Set("state", state)
-	}
-	if issuer != "" {
-		q.Set("iss", issuer)
-	}
-	u.RawQuery = q.Encode()
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	http.Redirect(w, r, u.String(), http.StatusFound)
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
-func oauthRedirectCode(w http.ResponseWriter, r *http.Request, redirectURI, state, code, issuer string) {
-	u, err := url.Parse(redirectURI)
-	if err != nil || u.Scheme == "" {
+func (s *Server) oauthConsentError(w http.ResponseWriter, r *http.Request, redirectURI, state, code, desc string) {
+	target, ok := oauthErrorURL(redirectURI, state, s.oauthIssuer(), code, desc)
+	if !ok {
+		writeOAuthError(w, http.StatusBadRequest, code, desc)
+		return
+	}
+	s.oauthHandoff(w, r, target)
+}
+
+func (s *Server) oauthConsentCode(w http.ResponseWriter, r *http.Request, redirectURI, state, code string) {
+	target, ok := oauthCodeURL(redirectURI, state, s.oauthIssuer(), code)
+	if !ok {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "redirect_uri is invalid")
 		return
 	}
-	q := u.Query()
+	s.oauthHandoff(w, r, target)
+}
+
+func oauthErrorURL(redirectURI, state, issuer, code, desc string) (string, bool) {
+	q := url.Values{}
+	q.Set("error", code)
+	q.Set("error_description", desc)
+	return oauthRedirectURL(redirectURI, state, issuer, q)
+}
+
+func oauthCodeURL(redirectURI, state, issuer, code string) (string, bool) {
+	q := url.Values{}
 	q.Set("code", code)
+	return oauthRedirectURL(redirectURI, state, issuer, q)
+}
+
+func oauthRedirectURL(redirectURI, state, issuer string, extra url.Values) (string, bool) {
+	u, err := url.Parse(redirectURI)
+	if err != nil || u.Scheme == "" {
+		return "", false
+	}
+	q := u.Query()
+	for key, values := range extra {
+		for _, value := range values {
+			q.Set(key, value)
+		}
+	}
 	if state != "" {
 		q.Set("state", state)
 	}
@@ -748,10 +849,102 @@ func oauthRedirectCode(w http.ResponseWriter, r *http.Request, redirectURI, stat
 		q.Set("iss", issuer)
 	}
 	u.RawQuery = q.Encode()
+	return u.String(), true
+}
+
+// oauthHandoff answers a consent POST with 303 to a same-origin page. Chromium
+// enforces form-action on the redirect chain, so a 302 from this POST to the
+// client's redirect URI is dropped and Allow looks like it did nothing.
+func (s *Server) oauthHandoff(w http.ResponseWriter, r *http.Request, target string) {
+	if s.oauthIssuer() == "" {
+		writeOAuthError(w, http.StatusServiceUnavailable, "server_error", "PUBLIC_BASE_URL is required")
+		return
+	}
+	ticket, err := newToken("goh_")
+	if err != nil {
+		s.writeOAuthStoreErr(w, err)
+		return
+	}
+	if err := s.store.PutOAuthHandoff(r.Context(), ticket, target); err != nil {
+		s.writeOAuthStoreErr(w, err)
+		return
+	}
+	loc := s.oauthIssuer() + "/oauth/continue?ticket=" + url.QueryEscape(ticket)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	http.Redirect(w, r, u.String(), http.StatusFound)
+	http.Redirect(w, r, loc, http.StatusSeeOther)
 }
+
+func (s *Server) oauthContinue(w http.ResponseWriter, r *http.Request) {
+	target, err := s.store.OAuthHandoff(r.Context(), r.URL.Query().Get("ticket"))
+	if errors.Is(err, ErrNotFound) {
+		s.renderOAuthRestart(w)
+		return
+	}
+	if err != nil {
+		s.writeOAuthStoreErr(w, err)
+		return
+	}
+	writeOAuthPage(w, http.StatusOK, oauthStaticCSP, handoffTmpl, handoffView{Target: template.URL(target)})
+}
+
+func (s *Server) renderOAuthRestart(w http.ResponseWriter) {
+	writeOAuthPage(w, http.StatusBadRequest, oauthStaticCSP, restartTmpl, nil)
+}
+
+const oauthStaticCSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'"
+
+func writeOAuthPage(w http.ResponseWriter, status int, csp string, tmpl *template.Template, data any) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Security-Policy", csp)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(status)
+	if err := tmpl.Execute(w, data); err != nil {
+		slog.Error("oauth page", "err", err)
+	}
+}
+
+type handoffView struct {
+	Target template.URL
+}
+
+var handoffTmpl = template.Must(template.New("handoff").Parse(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="0;url={{.Target}}">
+<title>Sagalore</title>
+<style>
+  body { font: 16px/1.45 sans-serif; margin: 2rem; max-width: 36rem; color: #1c1917; }
+  a { color: #1c1917; }
+</style>
+</head>
+<body>
+<h1>Sending you back…</h1>
+<p><a href="{{.Target}}">Continue</a> if the browser does not leave this page.</p>
+</body>
+</html>
+`))
+
+var restartTmpl = template.Must(template.New("restart").Parse(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sagalore</title>
+<style>
+  body { font: 16px/1.45 sans-serif; margin: 2rem; max-width: 36rem; color: #1c1917; }
+</style>
+</head>
+<body>
+<h1>This sign-in is no longer available</h1>
+<p>Go back to the app and start again.</p>
+</body>
+</html>
+`))
 
 func normalizeRedirects(in []string) ([]string, string, string) {
 	if len(in) == 0 {

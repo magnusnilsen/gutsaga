@@ -56,6 +56,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("OPTIONS /oauth/register", s.oauthOptions)
 	mux.HandleFunc("GET /oauth/authorize", s.oauthAuthorize)
 	mux.HandleFunc("POST /oauth/authorize", s.oauthAuthorizeDecision)
+	mux.HandleFunc("GET /oauth/continue", s.oauthContinue)
 	mux.HandleFunc("POST /oauth/token", s.oauthToken)
 	mux.HandleFunc("OPTIONS /oauth/token", s.oauthOptions)
 	mux.HandleFunc("POST /oauth/revoke", s.oauthRevoke)

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"html"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -413,10 +414,9 @@ func TestOAuthConfidentialClientAndDeny(t *testing.T) {
 	denyResp := postFormNoFollow(t, ts.URL+"/oauth/authorize", url.Values{
 		"request": {requestID}, "decision": {"deny"}, "csrf": {oauthCSRF(t, string(body))},
 	}, session, ts.URL)
-	denyLoc, _ := url.Parse(denyResp.Header.Get("Location"))
-	denyResp.Body.Close()
-	if denyResp.StatusCode != http.StatusFound || denyLoc.Query().Get("error") != "access_denied" || denyLoc.Query().Get("state") != "deny-state" {
-		t.Fatalf("deny %d %s", denyResp.StatusCode, denyResp.Header.Get("Location"))
+	denyLoc := oauthDecisionTarget(t, ts, denyResp)
+	if denyLoc.Query().Get("error") != "access_denied" || denyLoc.Query().Get("state") != "deny-state" {
+		t.Fatalf("deny %s", denyLoc)
 	}
 
 	code := approveOAuth(t, ts, clientID, redirectURI, session, verifier, challenge, "ok", "")
@@ -586,13 +586,9 @@ func TestOAuthBattleNetLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	approve.Body.Close()
-	loc, err := url.Parse(approve.Header.Get("Location"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if approve.StatusCode != http.StatusFound || loc.Query().Get("state") != "bnet-state" || loc.Query().Get("iss") != ts.URL {
-		t.Fatalf("return %d %s", approve.StatusCode, approve.Header.Get("Location"))
+	loc := oauthDecisionTarget(t, ts, approve)
+	if loc.Query().Get("state") != "bnet-state" || loc.Query().Get("iss") != ts.URL || loc.Query().Get("code") == "" {
+		t.Fatalf("return %s", loc)
 	}
 	tokens := exchangeOAuthCode(t, ts, client["client_id"].(string), "", "", redirectURI, loc.Query().Get("code"), verifier)
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/v1/sync", nil)
@@ -771,10 +767,9 @@ func TestOAuthConsentCSRF(t *testing.T) {
 	ok := postFormNoFollow(t, ts.URL+"/oauth/authorize", url.Values{
 		"request": {requestID}, "decision": {"deny"}, "csrf": {csrf},
 	}, consent, ts.URL)
-	loc, _ := url.Parse(ok.Header.Get("Location"))
-	ok.Body.Close()
-	if ok.StatusCode != http.StatusFound || loc.Query().Get("error") != "access_denied" {
-		t.Fatalf("matching csrf %d %s", ok.StatusCode, ok.Header.Get("Location"))
+	loc := oauthDecisionTarget(t, ts, ok)
+	if loc.Query().Get("error") != "access_denied" {
+		t.Fatalf("matching csrf %s", loc)
 	}
 }
 
@@ -825,10 +820,12 @@ func TestOAuthConsentOrigin(t *testing.T) {
 	issuer := postConsentDecision(t, ts.URL+"/oauth/authorize", url.Values{
 		"request": {requestID}, "decision": {"approve"}, "csrf": {csrf},
 	}, consent, ts.URL, "")
-	issuerLoc, _ := url.Parse(issuer.Header.Get("Location"))
-	issuer.Body.Close()
-	if issuer.StatusCode != http.StatusFound || issuerLoc.Query().Get("code") == "" {
-		t.Fatalf("issuer origin %d %s", issuer.StatusCode, issuer.Header.Get("Location"))
+	if issuer.StatusCode == http.StatusForbidden {
+		t.Fatalf("issuer origin %d", issuer.StatusCode)
+	}
+	issuerLoc := oauthDecisionTarget(t, ts, issuer)
+	if issuerLoc.Query().Get("code") == "" {
+		t.Fatalf("issuer origin %s", issuerLoc)
 	}
 
 	for _, origin := range []string{"null", ""} {
@@ -836,11 +833,187 @@ func TestOAuthConsentOrigin(t *testing.T) {
 		accepted := postConsentDecision(t, ts.URL+"/oauth/authorize", url.Values{
 			"request": {requestID}, "decision": {"approve"}, "csrf": {csrf},
 		}, consent, origin, "same-origin")
-		loc, _ := url.Parse(accepted.Header.Get("Location"))
-		accepted.Body.Close()
-		if accepted.StatusCode != http.StatusFound || loc.Query().Get("code") == "" {
-			t.Fatalf("origin %q same-origin %d %s", origin, accepted.StatusCode, accepted.Header.Get("Location"))
+		if accepted.StatusCode == http.StatusForbidden {
+			t.Fatalf("origin %q %d", origin, accepted.StatusCode)
 		}
+		loc := oauthDecisionTarget(t, ts, accepted)
+		if loc.Query().Get("code") == "" {
+			t.Fatalf("origin %q same-origin %s", origin, loc)
+		}
+	}
+}
+
+func TestOAuthFormActionSource(t *testing.T) {
+	cases := []struct{ raw, want string }{
+		{"http://127.0.0.1/callback", "http://127.0.0.1"},
+		{"http://127.0.0.1:43821/callback", "http://127.0.0.1:43821"},
+		{"http://localhost:3000/cb", "http://localhost:3000"},
+		{"http://[::1]/cb", "http://[::1]"},
+		{"https://example.com/cb", "https://example.com"},
+		{"https://example.com:8443/cb", "https://example.com:8443"},
+		{"com.example.app://callback", "com.example.app:"},
+	}
+	for _, tc := range cases {
+		got, ok := oauthFormActionSource(tc.raw)
+		if !ok || got != tc.want {
+			t.Errorf("%s -> %q ok=%v", tc.raw, got, ok)
+		}
+	}
+	if _, ok := oauthFormActionSource("javascript:alert(1)"); ok {
+		t.Fatal("javascript was accepted as a form-action source")
+	}
+}
+
+func TestOAuthConsentHandoff(t *testing.T) {
+	srv, ts := oauthServer(t)
+	_, consent := oauthDevSession(t, ts, srv.store)
+	redirectURI := "http://127.0.0.1/callback"
+	appURI := "com.example.app://callback"
+	client := registerOAuthClient(t, ts, map[string]any{
+		"client_name":   "Board",
+		"redirect_uris": []string{redirectURI, appURI},
+	})
+	clientID := client["client_id"].(string)
+
+	verifier, challenge, err := pkcePair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := oauthGet(t, ts, authorizeQuery(clientID, redirectURI, challenge, "nav-state", ""), consent, true)
+	raw, _ := io.ReadAll(page.Body)
+	page.Body.Close()
+	if page.StatusCode != http.StatusOK {
+		t.Fatalf("consent %d %s", page.StatusCode, raw)
+	}
+	csp := page.Header.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "default-src 'none'") || strings.Contains(csp, "script-src") {
+		t.Fatalf("csp %s", csp)
+	}
+	if got := cspFormAction(csp); got != "form-action 'self' http://127.0.0.1" {
+		t.Fatalf("form-action %q", csp)
+	}
+
+	appPage := oauthGet(t, ts, authorizeQuery(clientID, appURI, pkceChallenge(t), "app-state", ""), consent, true)
+	appRaw, _ := io.ReadAll(appPage.Body)
+	appPage.Body.Close()
+	if got := cspFormAction(appPage.Header.Get("Content-Security-Policy")); got != "form-action 'self' com.example.app:" {
+		t.Fatalf("app form-action %q", appPage.Header.Get("Content-Security-Policy"))
+	}
+	appResp := postFormNoFollow(t, ts.URL+"/oauth/authorize", url.Values{
+		"request": {oauthRequestID(t, string(appRaw))}, "decision": {"approve"}, "csrf": {oauthCSRF(t, string(appRaw))},
+	}, consent, ts.URL)
+	appLoc := oauthDecisionTarget(t, ts, appResp)
+	if appLoc.Scheme != "com.example.app" || !strings.HasPrefix(appLoc.Query().Get("code"), "gso_") || appLoc.Query().Get("state") != "app-state" {
+		t.Fatalf("app return %s", appLoc)
+	}
+
+	requestID := oauthRequestID(t, string(raw))
+	csrf := oauthCSRF(t, string(raw))
+	approve := func() *url.URL {
+		t.Helper()
+		resp := postFormNoFollow(t, ts.URL+"/oauth/authorize", url.Values{
+			"request": {requestID}, "decision": {"approve"}, "csrf": {csrf},
+		}, consent, ts.URL)
+		return oauthDecisionTarget(t, ts, resp)
+	}
+	first := approve()
+	code := first.Query().Get("code")
+	if !strings.HasPrefix(code, "gso_") || first.Query().Get("state") != "nav-state" || first.Query().Get("iss") != ts.URL {
+		t.Fatalf("first %s", first)
+	}
+	second := approve()
+	if second.Query().Get("code") != code || second.Query().Get("state") != "nav-state" {
+		t.Fatalf("replay %s want code %s", second, code)
+	}
+	var codes int
+	if err := testPool.QueryRow(context.Background(), `SELECT count(*) FROM oauth_codes`).Scan(&codes); err != nil {
+		t.Fatal(err)
+	}
+	if codes != 2 {
+		t.Fatalf("issued %d codes", codes)
+	}
+
+	wrong := postFormNoFollow(t, ts.URL+"/oauth/authorize", url.Values{
+		"request": {requestID}, "decision": {"approve"}, "csrf": {"different-token"},
+	}, consent, ts.URL)
+	var wrongBody map[string]string
+	_ = json.NewDecoder(wrong.Body).Decode(&wrongBody)
+	wrong.Body.Close()
+	if wrong.StatusCode != http.StatusForbidden || wrongBody["error_description"] != "csrf token does not match this sign-in" {
+		t.Fatalf("different csrf %+v %d", wrongBody, wrong.StatusCode)
+	}
+	other, err := srv.store.IssueConsentSession(context.Background(), playerIDFromConsent(t, srv, consent))
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSession := postFormNoFollow(t, ts.URL+"/oauth/authorize", url.Values{
+		"request": {requestID}, "decision": {"approve"}, "csrf": {csrf},
+	}, other, ts.URL)
+	var otherBody map[string]string
+	_ = json.NewDecoder(otherSession.Body).Decode(&otherBody)
+	otherSession.Body.Close()
+	if otherSession.StatusCode != http.StatusForbidden || otherBody["error_description"] != "csrf token does not match this sign-in" {
+		t.Fatalf("different session %+v %d", otherBody, otherSession.StatusCode)
+	}
+
+	exchangeOAuthCode(t, ts, clientID, "", "", redirectURI, code, verifier)
+	replayed := tokenForm(t, ts, url.Values{
+		"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {redirectURI},
+		"client_id": {clientID}, "code_verifier": {verifier},
+	})
+	if replayed.Error != "invalid_grant" {
+		t.Fatalf("second exchange %+v", replayed)
+	}
+	again := approve()
+	if again.Query().Get("code") != code {
+		t.Fatalf("replay after exchange %s", again)
+	}
+	if err := testPool.QueryRow(context.Background(), `SELECT count(*) FROM oauth_codes`).Scan(&codes); err != nil {
+		t.Fatal(err)
+	}
+	if codes != 2 {
+		t.Fatalf("replay issued a new code, count %d", codes)
+	}
+
+	if _, err := testPool.Exec(context.Background(), `
+		UPDATE oauth_approve_replays SET expires_at = now() - interval '1 minute' WHERE request_id=$1`, requestID); err != nil {
+		t.Fatal(err)
+	}
+	stale := postFormNoFollow(t, ts.URL+"/oauth/authorize", url.Values{
+		"request": {requestID}, "decision": {"approve"}, "csrf": {csrf},
+	}, consent, ts.URL)
+	assertOAuthRestartPage(t, stale)
+	unknown := postFormNoFollow(t, ts.URL+"/oauth/authorize", url.Values{
+		"request": {"11111111-1111-1111-1111-111111111111"}, "decision": {"approve"}, "csrf": {csrf},
+	}, consent, ts.URL)
+	assertOAuthRestartPage(t, unknown)
+	missing, err := http.Get(ts.URL + "/oauth/continue?ticket=missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertOAuthRestartPage(t, missing)
+}
+
+func cspFormAction(csp string) string {
+	for _, part := range strings.Split(csp, ";") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "form-action") {
+			return part
+		}
+	}
+	return ""
+}
+
+func assertOAuthRestartPage(t *testing.T, resp *http.Response) {
+	t.Helper()
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	text := string(body)
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("restart %d %s %s", resp.StatusCode, resp.Header.Get("Content-Type"), text)
+	}
+	if !strings.Contains(text, "Go back to the app and start again.") || strings.Contains(text, "error_description") {
+		t.Fatalf("restart body %s", text)
 	}
 }
 
@@ -1103,19 +1276,77 @@ func approveOAuth(t *testing.T, ts *httptest.Server, clientID, redirectURI, sess
 	resp := postFormNoFollow(t, ts.URL+"/oauth/authorize", url.Values{
 		"request": {requestID}, "decision": {"approve"}, "csrf": {csrf},
 	}, session, ts.URL)
-	defer resp.Body.Close()
-	loc, err := url.Parse(resp.Header.Get("Location"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusFound || loc.Query().Get("code") == "" || loc.Query().Get("state") != state || loc.Query().Get("iss") == "" {
-		t.Fatalf("approve %d %s", resp.StatusCode, resp.Header.Get("Location"))
+	loc := oauthDecisionTarget(t, ts, resp)
+	if loc.Query().Get("code") == "" || loc.Query().Get("state") != state || loc.Query().Get("iss") == "" {
+		t.Fatalf("approve %s", loc)
 	}
 	if !strings.HasPrefix(loc.Query().Get("code"), "gso_") {
 		t.Fatalf("code %s", loc.Query().Get("code"))
 	}
 	return loc.Query().Get("code")
 }
+
+func oauthDecisionTarget(t *testing.T, ts *httptest.Server, resp *http.Response) *url.URL {
+	t.Helper()
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlBody := string(body)
+	switch resp.StatusCode {
+	case http.StatusSeeOther:
+		handoff, err := url.Parse(resp.Header.Get("Location"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		issuer, err := url.Parse(ts.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if handoff.Scheme != issuer.Scheme || handoff.Host != issuer.Host || handoff.Path != "/oauth/continue" || handoff.Query().Get("ticket") == "" {
+			t.Fatalf("handoff %s", resp.Header.Get("Location"))
+		}
+		if strings.Contains(resp.Header.Get("Location"), "code=") {
+			t.Fatalf("code in handoff url %s", resp.Header.Get("Location"))
+		}
+		page, err := http.Get(resp.Header.Get("Location"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pageBody, err := io.ReadAll(page.Body)
+		page.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.StatusCode != http.StatusOK {
+			t.Fatalf("continue %d %s", page.StatusCode, pageBody)
+		}
+		htmlBody = string(pageBody)
+	case http.StatusOK:
+	default:
+		t.Fatalf("decision %d %s %s", resp.StatusCode, resp.Header.Get("Location"), body)
+	}
+	if !strings.Contains(htmlBody, "Sending you back") {
+		t.Fatalf("interstitial %s", htmlBody)
+	}
+	return oauthHandoffTarget(t, htmlBody)
+}
+
+func oauthHandoffTarget(t *testing.T, page string) *url.URL {
+	t.Helper()
+	m := oauthHandoffLink.FindStringSubmatch(page)
+	if len(m) != 2 || !strings.Contains(page, `http-equiv="refresh"`) {
+		t.Fatalf("handoff page %s", page)
+	}
+	target, err := url.Parse(html.UnescapeString(m[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return target
+}
+
+var oauthHandoffLink = regexp.MustCompile(`href="([^"]+)"`)
 
 var oauthRequestPattern = regexp.MustCompile(`name="request" value="([^"]+)"`)
 var oauthCSRFPattern = regexp.MustCompile(`name="csrf" value="([^"]+)"`)

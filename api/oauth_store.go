@@ -11,12 +11,19 @@ import (
 )
 
 const (
-	oauthScopePlayer = "player"
-	oauthAccessTTL   = time.Hour
-	oauthRefreshTTL  = 30 * 24 * time.Hour
-	oauthCodeTTL     = 10 * time.Minute
-	oauthRequestTTL  = 15 * time.Minute
+	oauthScopePlayer      = "player"
+	oauthAccessTTL        = time.Hour
+	oauthRefreshTTL       = 30 * 24 * time.Hour
+	oauthCodeTTL          = 10 * time.Minute
+	oauthRequestTTL       = 15 * time.Minute
+	oauthApproveReplayTTL = 2 * time.Minute
+	oauthHandoffTTL       = 2 * time.Minute
 )
+
+// errOAuthRequestExpired means the authorization request was locked and deleted
+// because it had already expired. A missing row is ErrNotFound instead, so a
+// repeat Allow can look for a replay of the code.
+var errOAuthRequestExpired = errors.New("oauth authorization request expired")
 
 type oauthFailure struct {
 	Code string
@@ -59,6 +66,14 @@ type oauthRequestRow struct {
 	Challenge          string
 	Scope              string
 	Resource           string
+	CSRFHash           string
+	ConsentSessionHash string
+}
+
+type oauthApproveReplay struct {
+	Code               string
+	RedirectURI        string
+	State              string
 	CSRFHash           string
 	ConsentSessionHash string
 }
@@ -221,7 +236,7 @@ func (s *Store) IssueOAuthCode(ctx context.Context, requestID, playerID string) 
 		if err := tx.Commit(ctx); err != nil {
 			return "", oauthRequestRow{}, err
 		}
-		return "", row, ErrNotFound
+		return "", row, errOAuthRequestExpired
 	}
 	raw, err := newToken("gso_")
 	if err != nil {
@@ -233,10 +248,62 @@ func (s *Store) IssueOAuthCode(ctx context.Context, requestID, playerID string) 
 		hashKey(raw), row.ClientID, playerID, row.RedirectURI, row.Challenge, row.Scope, row.Resource, int(oauthCodeTTL.Seconds())); err != nil {
 		return "", oauthRequestRow{}, err
 	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO oauth_approve_replays
+			(request_id, code, redirect_uri, state, csrf_hash, consent_session_hash, expires_at)
+		VALUES ($1,$2,$3,$4,$5,$6, now() + ($7 * interval '1 second'))`,
+		requestID, raw, row.RedirectURI, row.State, row.CSRFHash, row.ConsentSessionHash, int(oauthApproveReplayTTL.Seconds())); err != nil {
+		return "", oauthRequestRow{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", oauthRequestRow{}, err
 	}
 	return raw, row, nil
+}
+
+func (s *Store) OAuthApproveReplay(ctx context.Context, requestID string) (oauthApproveReplay, error) {
+	if err := validUUID(requestID); err != nil {
+		return oauthApproveReplay{}, ErrNotFound
+	}
+	var replay oauthApproveReplay
+	var expired bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT code, redirect_uri, state, csrf_hash, consent_session_hash, (expires_at <= now())
+		FROM oauth_approve_replays WHERE request_id=$1`, requestID).Scan(
+		&replay.Code, &replay.RedirectURI, &replay.State, &replay.CSRFHash, &replay.ConsentSessionHash, &expired)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return oauthApproveReplay{}, ErrNotFound
+	}
+	if err != nil {
+		return oauthApproveReplay{}, err
+	}
+	if expired {
+		_, _ = s.pool.Exec(ctx, `DELETE FROM oauth_approve_replays WHERE request_id=$1`, requestID)
+		return oauthApproveReplay{}, ErrNotFound
+	}
+	return replay, nil
+}
+
+func (s *Store) PutOAuthHandoff(ctx context.Context, ticket, target string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO oauth_handoffs (ticket_hash, target, expires_at)
+		VALUES ($1,$2, now() + ($3 * interval '1 second'))`,
+		hashKey(ticket), target, int(oauthHandoffTTL.Seconds()))
+	return err
+}
+
+func (s *Store) OAuthHandoff(ctx context.Context, ticket string) (string, error) {
+	if ticket == "" {
+		return "", ErrNotFound
+	}
+	var target string
+	err := s.pool.QueryRow(ctx, `
+		SELECT target FROM oauth_handoffs
+		WHERE ticket_hash=$1 AND expires_at > now()`, hashKey(ticket)).Scan(&target)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return target, err
 }
 
 func (s *Store) RedeemOAuthCode(ctx context.Context, client oauthClientRecord, in oauthCodeGrant) (oauthTokens, error) {
@@ -503,6 +570,8 @@ func (s *Store) AllowOAuthRegistration(ctx context.Context, ip string) (bool, er
 func (s *Store) CleanupOAuth(ctx context.Context) error {
 	statements := []string{
 		`DELETE FROM oauth_requests WHERE expires_at < now()`,
+		`DELETE FROM oauth_approve_replays WHERE expires_at < now()`,
+		`DELETE FROM oauth_handoffs WHERE expires_at < now()`,
 		`DELETE FROM oauth_codes WHERE expires_at < now() AND used_at IS NULL`,
 		`DELETE FROM oauth_codes WHERE used_at IS NOT NULL AND used_at < now() - interval '1 day'`,
 		`DELETE FROM oauth_refresh_tokens
