@@ -8,17 +8,18 @@ import "time"
 // inactive quests that this player has no progress on). Locks is the
 // prerequisite gate for each of this player's characters.
 type SyncResponse struct {
-	BattleTag   string            `json:"battletag"`
-	Email       string            `json:"email,omitempty"`
-	DisplayName string            `json:"display_name,omitempty"`
-	GeneratedAt string            `json:"generated_at"`
-	Characters  []Character       `json:"characters"`
-	Quests      []Quest           `json:"sagas"`
-	Progress    []Progress        `json:"progress"`
-	Completions []QuestCompletion `json:"completions,omitempty"`
-	Locks       []SagaLock        `json:"locks"`
-	Groups      []GroupSummary    `json:"groups"`
-	Invites     []Invite          `json:"invites"`
+	BattleTag    string            `json:"battletag"`
+	Email        string            `json:"email,omitempty"`
+	DisplayName  string            `json:"display_name,omitempty"`
+	GeneratedAt  string            `json:"generated_at"`
+	Characters   []Character       `json:"characters"`
+	Quests       []Quest           `json:"sagas"`
+	Progress     []Progress        `json:"progress"`
+	Completions  []QuestCompletion `json:"completions,omitempty"`
+	Locks        []SagaLock        `json:"locks"`
+	Groups       []GroupSummary    `json:"groups"`
+	Invites      []Invite          `json:"invites"`
+	Leaderboards []Leaderboard     `json:"leaderboards,omitempty"`
 }
 
 // QuestCompletion is one character who has finished a saga. Sync includes
@@ -33,6 +34,32 @@ type QuestCompletion struct {
 	Race        string `json:"race,omitempty"`
 	Class       string `json:"class,omitempty"`
 	CompletedAt string `json:"completed_at,omitempty"`
+	StartedAt   string `json:"started_at,omitempty"`
+	// DurationSec is completed_at - started_at in seconds. Nil when the addon
+	// did not report a start, or the start is after the finish.
+	DurationSec *int `json:"duration_sec,omitempty"`
+}
+
+// Leaderboard is one period of saga completions for characters in a group.
+// Rank is 1-based. Completed is the number of distinct sagas finished in the
+// period, not the number of finish rows.
+type Leaderboard struct {
+	GroupID   string             `json:"group_id"`
+	GroupName string             `json:"group_name,omitempty"`
+	Period    string             `json:"period"`
+	Entries   []LeaderboardEntry `json:"entries"`
+}
+
+// LeaderboardEntry is one character on a group leaderboard.
+type LeaderboardEntry struct {
+	Rank            int    `json:"rank"`
+	Name            string `json:"name"`
+	Realm           string `json:"realm"`
+	Class           string `json:"class,omitempty"`
+	Race            string `json:"race,omitempty"`
+	Level           int    `json:"level"`
+	Completed       int    `json:"completed"`
+	LastCompletedAt string `json:"last_completed_at,omitempty"`
 }
 
 type Character struct {
@@ -83,6 +110,8 @@ type Progress struct {
 	QuestVersion  int    `json:"saga_version"`
 	Status        string `json:"status"`
 	CompletedAt   string `json:"completed_at,omitempty"`
+	StartedAt     string `json:"started_at,omitempty"`
+	DurationSec   *int   `json:"duration_sec,omitempty"`
 	ScreenshotURL string `json:"screenshot_url,omitempty"`
 }
 
@@ -97,6 +126,7 @@ type CompletionRequest struct {
 	Race             string        `json:"race,omitempty"`
 	Class            string        `json:"class,omitempty"`
 	CompletedAt      string        `json:"completed_at,omitempty"`
+	StartedAt        string        `json:"started_at,omitempty"`
 	ScreenshotBase64 string        `json:"screenshot_base64,omitempty"`
 	Instance         string        `json:"instance,omitempty"`
 	GroupMembers     []GroupMember `json:"group_members,omitempty"`
@@ -115,6 +145,8 @@ type CompletionResponse struct {
 	CharacterLevel    int           `json:"character_level,omitempty"`
 	QuestTitle        string        `json:"saga_title,omitempty"`
 	QuestVersion      int           `json:"saga_version,omitempty"`
+	StartedAt         string        `json:"started_at,omitempty"`
+	DurationSec       *int          `json:"duration_sec,omitempty"`
 	Objectives        []Objective   `json:"objectives,omitempty"`
 	ObjectivesOrdered bool          `json:"objectives_ordered,omitempty"`
 	GroupCredited     []GroupCredit `json:"group_credited,omitempty"`
@@ -243,6 +275,8 @@ type QuestCompleter struct {
 	Race        string `json:"race,omitempty"`
 	BattleTag   string `json:"battletag,omitempty"`
 	CompletedAt string `json:"completed_at"`
+	StartedAt   string `json:"started_at,omitempty"`
+	DurationSec *int   `json:"duration_sec,omitempty"`
 	When        string `json:"when,omitempty"`
 }
 

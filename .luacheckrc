@@ -11,6 +11,7 @@ globals = {
     "SagaloreLanguage",
     "Sagalore_L",
     "SagaloreMigrate",
+    "SagaloreBoard",
     "SLASH_SAGALORE1",
     "SLASH_SAGALORE2",
     "SlashCmdList",

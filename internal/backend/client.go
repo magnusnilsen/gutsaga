@@ -206,6 +206,9 @@ func (c *Client) Complete(ctx context.Context, req contract.CompletionRequest, i
 		"level":        strconv.Itoa(req.Level),
 		"completed_at": req.CompletedAt,
 	}
+	if req.StartedAt != "" {
+		fields["started_at"] = req.StartedAt
+	}
 	if req.Race != "" {
 		fields["race"] = req.Race
 	}

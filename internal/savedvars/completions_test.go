@@ -15,6 +15,7 @@ SagaloreDB = {
 ["version"] = 3,
 ["level"] = 2,
 ["completed_at"] = 1792698415,
+["started_at"] = 1792698000,
 ["realm"] = "Celebras",
 ["race"] = "Dwarf",
 ["class"] = "Hunter",
@@ -47,8 +48,8 @@ SagaloreDB = {
 	if !strings.Contains(got[0].QuestID, "4cc34091") {
 		t.Fatalf("%s", got[0].QuestID)
 	}
-	if got[0].At.Unix() != 1792698415 {
-		t.Fatalf("at %v", got[0].At)
+	if got[0].At.Unix() != 1792698415 || got[0].Started.Unix() != 1792698000 {
+		t.Fatalf("at %v started %v", got[0].At, got[0].Started)
 	}
 	if got[0].Instance != "The Deadmines" || len(got[0].GroupMembers) != 2 || got[0].GroupMembers[1].Name != "Mira" || got[0].GroupMembers[1].Level != 17 {
 		t.Fatalf("group %+v", got[0].GroupMembers)

@@ -24,6 +24,7 @@ type Completion struct {
 	Class        string
 	Level        int
 	At           time.Time
+	Started      time.Time
 	Path         string
 	Instance     string
 	GroupMembers []contract.GroupMember
@@ -32,7 +33,7 @@ type Completion struct {
 var (
 	completionBlock = regexp.MustCompile(`(?s)\["([0-9a-fA-F-]{36})"\]\s*=\s*\{(.*?)\},`)
 	fieldString     = regexp.MustCompile(`\["(saga_id|character|realm|race|class|group_members|instance)"\]\s*=\s*"([^"]*)"`)
-	fieldNumber     = regexp.MustCompile(`\["(version|level|completed_at)"\]\s*=\s*(-?\d+)`)
+	fieldNumber     = regexp.MustCompile(`\["(version|level|completed_at|started_at)"\]\s*=\s*(-?\d+)`)
 )
 
 // ListSagaloreFiles returns SavedVariables files for this flavor.
@@ -135,6 +136,10 @@ func ParseCompletions(path string, body string) []Completion {
 			case "completed_at":
 				if n > 0 {
 					c.At = time.Unix(n, 0).UTC()
+				}
+			case "started_at":
+				if n > 0 {
+					c.Started = time.Unix(n, 0).UTC()
 				}
 			}
 		}

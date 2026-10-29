@@ -27,6 +27,7 @@ type Item struct {
 	CharacterID    string                 `json:"character_id,omitempty"`
 	Level          int                    `json:"level,omitempty"`
 	CompletedAt    string                 `json:"completed_at,omitempty"`
+	StartedAt      string                 `json:"started_at,omitempty"`
 	Instance       string                 `json:"instance,omitempty"`
 	GroupMembers   []contract.GroupMember `json:"group_members,omitempty"`
 	ScreenshotPath string                 `json:"screenshot_path,omitempty"`
@@ -124,6 +125,25 @@ func (q *Queue) Enqueue(item Item) bool {
 	}
 	q.items = append(q.items, item)
 	return true
+}
+
+// SetStartedAt fills a start time on a completion that is still queued.
+// It returns false when that key is not waiting or already has a start.
+func (q *Queue) SetStartedAt(key, started string) bool {
+	started = strings.TrimSpace(started)
+	if key == "" || started == "" {
+		return false
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for i := range q.items {
+		if q.items[i].Key != key || q.items[i].StartedAt != "" {
+			continue
+		}
+		q.items[i].StartedAt = started
+		return true
+	}
+	return false
 }
 
 // SetGroup attaches a roster to a completion that is still queued.

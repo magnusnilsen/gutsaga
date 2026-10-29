@@ -1113,12 +1113,13 @@ func (s *Store) GetQuest(ctx context.Context, id string) (contract.QuestDetail, 
 func (s *Store) listQuestCompleters(ctx context.Context, questID string) ([]contract.QuestCompleter, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.name, c.realm, COALESCE(c.class, ''), COALESCE(c.race, ''), c.level,
-			COALESCE(p.battletag, ''), pr.completed_at, COALESCE(pr.level_at_completion, 0)
+			COALESCE(p.battletag, ''), pr.completed_at, pr.started_at, pr.duration_sec,
+			COALESCE(pr.level_at_completion, 0)
 		FROM progress pr
 		JOIN characters c ON c.id = pr.character_id
 		JOIN players p ON p.id = c.player_id
 		WHERE pr.quest_id=$1 AND pr.status='completed'
-		ORDER BY pr.completed_at ASC`, questID)
+		ORDER BY pr.completed_at ASC NULLS LAST, c.name, c.realm`, questID)
 	if err != nil {
 		return nil, err
 	}
@@ -1127,14 +1128,18 @@ func (s *Store) listQuestCompleters(ctx context.Context, questID string) ([]cont
 	for rows.Next() {
 		var c contract.QuestCompleter
 		var completedAt time.Time
+		var startedAt sql.NullTime
+		var duration sql.NullInt32
 		var levelAt int
-		if err := rows.Scan(&c.Character, &c.Realm, &c.Class, &c.Race, &c.Level, &c.BattleTag, &completedAt, &levelAt); err != nil {
+		if err := rows.Scan(&c.Character, &c.Realm, &c.Class, &c.Race, &c.Level, &c.BattleTag, &completedAt, &startedAt, &duration, &levelAt); err != nil {
 			return nil, err
 		}
 		if levelAt > 0 {
 			c.Level = levelAt
 		}
 		c.CompletedAt = contract.FormatTime(completedAt.UTC())
+		c.StartedAt = formatNullTime(startedAt)
+		c.DurationSec = durationPtr(duration)
 		c.When = syncdata.FormatOsloWhen(c.CompletedAt)
 		out = append(out, c)
 	}
@@ -1201,6 +1206,12 @@ func buildActivityCard(completers []contract.QuestCompleter) *contract.QuestCard
 			}
 			detail += c.Realm
 		}
+		if c.DurationSec != nil {
+			if detail != "" {
+				detail += " · "
+			}
+			detail += formatDuration(*c.DurationSec)
+		}
 		card.Rows = append(card.Rows, contract.QuestCardRow{
 			ID:    fmt.Sprintf("done-%d", i+1),
 			Group: "Aktivitet",
@@ -1259,7 +1270,8 @@ func (s *Store) ListQuests(ctx context.Context, characterID string) ([]contract.
 	if charKnown {
 		prows, err := s.pool.Query(ctx, `
 			SELECT quest_id::text, quest_version, status, completed_at
-			FROM progress WHERE character_id=$1`, characterID)
+			FROM progress WHERE character_id=$1
+			ORDER BY completed_at ASC NULLS LAST`, characterID)
 		if err != nil {
 			return nil, err
 		}
@@ -1372,10 +1384,12 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 		return contract.SyncResponse{}, err
 	}
 	prows, err := s.pool.Query(ctx, `
-		SELECT p.quest_id::text, p.character_id::text, p.quest_version, p.status, p.completed_at, p.discord_url
+		SELECT p.quest_id::text, p.character_id::text, p.quest_version, p.status,
+			p.completed_at, p.started_at, p.duration_sec, p.discord_url
 		FROM progress p
 		JOIN characters c ON c.id = p.character_id
-		WHERE c.player_id=$1`, playerID)
+		WHERE c.player_id=$1
+		ORDER BY p.completed_at ASC NULLS LAST`, playerID)
 	if err != nil {
 		return contract.SyncResponse{}, err
 	}
@@ -1383,14 +1397,17 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	var progress []contract.Progress
 	for prows.Next() {
 		var p contract.Progress
-		var completed sql.NullTime
+		var completed, started sql.NullTime
+		var duration sql.NullInt32
 		var discordURL string
-		if err := prows.Scan(&p.QuestID, &p.CharacterID, &p.QuestVersion, &p.Status, &completed, &discordURL); err != nil {
+		if err := prows.Scan(&p.QuestID, &p.CharacterID, &p.QuestVersion, &p.Status, &completed, &started, &duration, &discordURL); err != nil {
 			return contract.SyncResponse{}, err
 		}
 		if completed.Valid {
 			p.CompletedAt = contract.FormatTime(completed.Time)
 		}
+		p.StartedAt = formatNullTime(started)
+		p.DurationSec = durationPtr(duration)
 		if discordURL != "" {
 			p.ScreenshotURL = discordURL
 		}
@@ -1410,6 +1427,10 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	if locks == nil {
 		locks = []contract.SagaLock{}
 	}
+	boards, err := s.LeaderboardsForPlayer(ctx, playerID)
+	if err != nil {
+		return contract.SyncResponse{}, err
+	}
 	groups, err := s.GroupsForPlayer(ctx, playerID)
 	if err != nil {
 		return contract.SyncResponse{}, err
@@ -1427,7 +1448,7 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	return contract.SyncResponse{
 		BattleTag: tag, GeneratedAt: contract.FormatTime(time.Now()),
 		Characters: chars, Quests: quests, Progress: progress, Completions: completions, Locks: locks,
-		Groups: groups, Invites: invites,
+		Groups: groups, Invites: invites, Leaderboards: boards,
 	}, nil
 }
 
@@ -1443,7 +1464,7 @@ func (s *Store) sagaCompletions(ctx context.Context, questIDs []string) ([]contr
 		SELECT p.quest_id::text, c.name, COALESCE(c.realm, ''), COALESCE(pl.battletag, ''),
 			COALESCE(NULLIF(TRIM(pl.display_name), ''), ''),
 			COALESCE(p.level_at_completion, c.level), COALESCE(c.race, ''), COALESCE(c.class, ''),
-			p.completed_at
+			p.completed_at, p.started_at, p.duration_sec
 		FROM progress p
 		JOIN characters c ON c.id = p.character_id
 		JOIN players pl ON pl.id = c.player_id
@@ -1461,9 +1482,10 @@ func (s *Store) sagaCompletions(ctx context.Context, questIDs []string) ([]contr
 	out := []contract.QuestCompletion{}
 	for rows.Next() {
 		var c contract.QuestCompletion
-		var completed sql.NullTime
+		var completed, started sql.NullTime
+		var duration sql.NullInt32
 		if err := rows.Scan(&c.QuestID, &c.Character, &c.Realm, &c.BattleTag, &c.DisplayName,
-			&c.Level, &c.Race, &c.Class, &completed); err != nil {
+			&c.Level, &c.Race, &c.Class, &completed, &started, &duration); err != nil {
 			return nil, err
 		}
 		if !want[c.QuestID] || strings.TrimSpace(c.Character) == "" {
@@ -1472,6 +1494,8 @@ func (s *Store) sagaCompletions(ctx context.Context, questIDs []string) ([]contr
 		if completed.Valid {
 			c.CompletedAt = contract.FormatTime(completed.Time)
 		}
+		c.StartedAt = formatNullTime(started)
+		c.DurationSec = durationPtr(duration)
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -1524,6 +1548,10 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 			return contract.CompletionResponse{}, fmt.Errorf("%w: completed_at", ErrInvalid)
 		}
 		completedAt = t.UTC()
+	}
+	startedAt, duration, durationOut, err := completionTiming(completedAt, in.StartedAt)
+	if err != nil {
+		return contract.CompletionResponse{}, err
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -1615,8 +1643,15 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 
 	var existingID string
 	var existingVersion int
-	err = tx.QueryRow(ctx, `SELECT id::text, quest_version FROM progress WHERE character_id=$1 AND quest_id=$2`, in.CharacterID, in.QuestID).Scan(&existingID, &existingVersion)
+	err = tx.QueryRow(ctx, `
+		SELECT id::text, quest_version FROM progress
+		WHERE character_id=$1 AND quest_id=$2
+		ORDER BY completed_at ASC NULLS LAST
+		LIMIT 1`, in.CharacterID, in.QuestID).Scan(&existingID, &existingVersion)
 	if err == nil {
+		if err := fillStarted(ctx, tx, existingID, startedAt, duration); err != nil {
+			return contract.CompletionResponse{}, err
+		}
 		var storedTitle, storedGroup string
 		_ = tx.QueryRow(ctx, `
 			SELECT title, COALESCE(group_rule::text, '')
@@ -1679,16 +1714,25 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 	}
 	var progressID string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO progress (character_id, quest_id, quest_version, status, completed_at, level_at_completion, screenshot_id)
-		VALUES ($1,$2,$3,'completed',$4,$5,$6)
-		ON CONFLICT (character_id, quest_id) DO NOTHING
+		INSERT INTO progress (character_id, quest_id, quest_version, status, completed_at, started_at, duration_sec, level_at_completion, screenshot_id)
+		SELECT $1,$2,$3,'completed',$4,$5,$6,$7,$8
+		WHERE NOT EXISTS (
+			SELECT 1 FROM progress WHERE character_id=$1 AND quest_id=$2
+		)
 		RETURNING id::text`,
-		in.CharacterID, in.QuestID, in.QuestVersion, completedAt, level, screenshot).Scan(&progressID)
+		in.CharacterID, in.QuestID, in.QuestVersion, completedAt, startedAt, duration, level, screenshot).Scan(&progressID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		if screenshot != nil {
 			_, _ = tx.Exec(ctx, `DELETE FROM screenshots WHERE id=$1`, screenshot)
 		}
-		_ = tx.QueryRow(ctx, `SELECT id::text, quest_version FROM progress WHERE character_id=$1 AND quest_id=$2`, in.CharacterID, in.QuestID).Scan(&existingID, &existingVersion)
+		_ = tx.QueryRow(ctx, `
+			SELECT id::text, quest_version FROM progress
+			WHERE character_id=$1 AND quest_id=$2
+			ORDER BY completed_at ASC NULLS LAST
+			LIMIT 1`, in.CharacterID, in.QuestID).Scan(&existingID, &existingVersion)
+		if err := fillStarted(ctx, tx, existingID, startedAt, duration); err != nil {
+			return contract.CompletionResponse{}, err
+		}
 		var credits []contract.GroupCredit
 		if groupOK {
 			credits, err = creditGroup(ctx, tx, in.QuestID, existingVersion, snapTitle, in.CharacterID, name, completedAt, members)
@@ -1731,13 +1775,18 @@ func (s *Store) Complete(ctx context.Context, playerID string, in contract.Compl
 	if levelShown <= 0 {
 		levelShown = storedLevel
 	}
-	return contract.CompletionResponse{
+	resp := contract.CompletionResponse{
 		Allowed: true, Completed: true, LogWritten: true, ProgressID: progressID,
 		CharacterName: name, CharacterRace: raceName, CharacterClass: className, CharacterLevel: levelShown,
 		QuestTitle: snapTitle, QuestVersion: in.QuestVersion,
 		Objectives: snapObjectives, ObjectivesOrdered: snapOrdered,
 		GroupCredited: credits,
-	}, nil
+	}
+	if startedAt != nil {
+		resp.StartedAt = contract.FormatTime(startedAt.(time.Time))
+		resp.DurationSec = durationOut
+	}
+	return resp, nil
 }
 
 // creditGroup inserts one idempotent completion per other character in the roster.
@@ -1789,8 +1838,10 @@ func creditGroup(ctx context.Context, tx querier, questID string, questVersion i
 		}
 		err = tx.QueryRow(ctx, `
 			INSERT INTO progress (character_id, quest_id, quest_version, status, completed_at, level_at_completion)
-			VALUES ($1,$2,$3,'completed',$4,$5)
-			ON CONFLICT (character_id, quest_id) DO NOTHING
+			SELECT $1,$2,$3,'completed',$4,$5
+			WHERE NOT EXISTS (
+				SELECT 1 FROM progress WHERE character_id=$1 AND quest_id=$2
+			)
 			RETURNING id::text`,
 			id, questID, questVersion, completedAt, level).Scan(&progressID)
 		if errors.Is(err, pgx.ErrNoRows) {
