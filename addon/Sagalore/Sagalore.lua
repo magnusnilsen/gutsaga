@@ -56,8 +56,6 @@ local goalRows = {}
 local activityRows = {}
 local INK = { r = 0.22, g = 0.12, b = 0.04 }
 local INK_MUTED = { r = 0.42, g = 0.35, b = 0.25 }
--- Darker secondary ink for leaderboard rows (INK_MUTED washes out on parchment).
-local INK_BOARD = { r = 0.30, g = 0.20, b = 0.10 }
 local lastDetailID
 local selectedID
 local built = false

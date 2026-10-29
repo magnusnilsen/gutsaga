@@ -101,6 +101,12 @@ read_globals = {
     "UIDropDownMenu_SetText",
     "UIDropDownMenu_SetWidth",
     "UIDropDownMenu_JustifyText",
+    "UIDROPDOWNMENU_OPEN_MENU",
+    "CloseDropDownMenus",
+    "WorldFrame",
+    "PanelTemplates_SetTab",
+    "PanelTemplates_SetNumTabs",
+    "PanelTemplates_TabResize",
 }
 exclude_files = {
     "addon/Sagalore/SagaloreData.lua",
