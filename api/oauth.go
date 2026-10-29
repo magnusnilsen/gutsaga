@@ -308,7 +308,7 @@ func (s *Server) oauthAuthorizeDecision(w http.ResponseWriter, r *http.Request) 
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "invalid form")
 		return
 	}
-	if !oauthOriginOK(s.oauthIssuer(), r.Header.Get("Origin")) {
+	if !oauthOriginOK(s.oauthIssuer(), r.Header.Get("Origin"), r.Header.Get("Sec-Fetch-Site")) {
 		writeOAuthError(w, http.StatusForbidden, "invalid_request", "origin is not allowed")
 		return
 	}
@@ -604,7 +604,9 @@ var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
 func (s *Server) renderConsent(w http.ResponseWriter, view consentView) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	// same-origin keeps the consent POST's Origin equal to the issuer.
+	// no-referrer makes browsers send Origin: null, which fails the check below.
+	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
@@ -621,9 +623,15 @@ func oauthCSRFOK(row oauthRequestRow, consent, csrf string) bool {
 		subtleConstantTimeString(hashKey(csrf), row.CSRFHash) == 1
 }
 
-func oauthOriginOK(issuer, origin string) bool {
-	if issuer == "" || origin == "" {
+// oauthOriginOK allows a consent decision from this issuer. A same-origin form
+// can omit Origin or send the literal "null" when a referrer policy withheld it.
+// Sec-Fetch-Site: same-origin covers that case. The CSRF token is checked separately.
+func oauthOriginOK(issuer, origin, secFetchSite string) bool {
+	if issuer == "" {
 		return false
+	}
+	if origin == "" || origin == "null" {
+		return secFetchSite == "same-origin"
 	}
 	got, err := url.Parse(origin)
 	want, err2 := url.Parse(issuer)

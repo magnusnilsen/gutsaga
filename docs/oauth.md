@@ -62,7 +62,7 @@ Send the browser to `GET /oauth/authorize`.
 
 PKCE is required for public and confidential clients.
 
-If the browser has no consent cookie, the server redirects to Battle.net. After Battle.net returns, the server sets an HttpOnly cookie on `/oauth` for 15 minutes and shows the consent page. The cookie value starts with `goc_`. It is not a `gss_` session and the API rejects it. The companion poll cannot read that login. The consent form includes a CSRF token bound to that cookie and the authorization request. `POST /oauth/authorize` requires the token and an `Origin` equal to `PUBLIC_BASE_URL`.
+If the browser has no consent cookie, the server redirects to Battle.net. After Battle.net returns, the server sets an HttpOnly cookie on `/oauth` for 15 minutes and shows the consent page. The cookie value starts with `goc_`. It is not a `gss_` session and the API rejects it. The companion poll cannot read that login. The consent form includes a CSRF token bound to that cookie and the authorization request. The page sends `Referrer-Policy: same-origin`. `POST /oauth/authorize` requires the CSRF token and an `Origin` equal to `PUBLIC_BASE_URL`. A missing `Origin`, or the value `null`, is accepted only when `Sec-Fetch-Site` is `same-origin`.
 
 The consent page shows the client name, the BattleTag, and the redirect URI. Allow redirects to the client with `code`, `state`, and `iss` (the issuer). Deny redirects with `error=access_denied`. An unknown `client_id` or a redirect URI that was not registered is a JSON error and does not redirect.
 
