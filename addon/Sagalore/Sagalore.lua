@@ -367,7 +367,13 @@ local function currentEntries()
         if type(entry) == "table" and same(entry.character, player.name) then
             local realm = entry.realm
             if type(realm) ~= "string" or realm == "" or player.realm == "" or same(realm, player.realm) then
-                table.insert(out, entry)
+                local visible = true
+                if type(SagaloreInvite) == "table" and type(SagaloreInvite.entryVisible) == "function" then
+                    visible = SagaloreInvite.entryVisible(SagaloreDB, entry)
+                end
+                if visible then
+                    table.insert(out, entry)
+                end
             end
         end
     end
@@ -3071,6 +3077,10 @@ refresh = function()
             detailFS:SetText(L("ui.login_character"))
         elseif type(SagaloreData) ~= "table" or type(SagaloreData.entries) ~= "table" or #SagaloreData.entries == 0 then
             detailFS:SetText(L("ui.no_sagas"))
+        elseif #currentEntries() == 0
+            and type(SagaloreInvite) == "table" and type(SagaloreInvite.onlyPersonalGroups) == "function"
+            and SagaloreInvite.onlyPersonalGroups(SagaloreData) then
+            detailFS:SetText(L("ui.ask_invite"))
         else
             detailFS:SetText(string.format(L("ui.no_sagas_for"), player.name))
         end
@@ -4643,11 +4653,21 @@ showInviteDialog = function(prompt)
         f.later = button("", 110)
         f.accept:SetScript("OnClick", function()
             if f.inviteID then
+                local groupName = f.inviteGroup or ""
                 emitInvite("accept", f.inviteID)
-                if type(SagaloreInvite) == "table" and type(SagaloreInvite.markAnswered) == "function" then
+                if type(SagaloreInvite) == "table" then
                     initDB()
-                    SagaloreInvite.markAnswered(SagaloreDB, f.inviteID)
+                    if type(SagaloreInvite.markAccepted) == "function" then
+                        SagaloreInvite.markAccepted(SagaloreDB, f.inviteID)
+                    end
+                    if type(SagaloreInvite.markAnswered) == "function" then
+                        SagaloreInvite.markAnswered(SagaloreDB, f.inviteID)
+                    end
                 end
+                if groupName ~= "" and DEFAULT_CHAT_FRAME then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227Sagalore:|r " .. string.format(L("invite.accepted"), groupName))
+                end
+                refresh()
             end
             finishInviteDialog(f)
         end)
@@ -4683,6 +4703,7 @@ showInviteDialog = function(prompt)
     inviteFrame.decline:SetText(L("invite.decline"))
     inviteFrame.later:SetText(L("invite.later"))
     inviteFrame.inviteID = prompt.id
+    inviteFrame.inviteGroup = prompt.group or ""
     shownInvite = prompt.id
     inviteFrame:Show()
 end
@@ -4692,6 +4713,9 @@ maybeInvite = function()
         return
     end
     initDB()
+    if type(SagaloreInvite.reconcileAnswered) == "function" then
+        SagaloreInvite.reconcileAnswered(SagaloreDB, SagaloreData)
+    end
     local prompt = SagaloreInvite.prompt(SagaloreDB, player, SagaloreData, unixNow())
     if not prompt then
         return
