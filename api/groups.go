@@ -137,11 +137,11 @@ func (s *Store) ListGroupMembers(ctx context.Context, playerID, groupID string) 
 
 func (s *Store) GroupsForPlayer(ctx context.Context, playerID string) ([]contract.GroupSummary, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT g.id::text, g.slug, g.name, g.locale, gm.role, COALESCE(g.owner_player_id::text, '')
+		SELECT g.id::text, g.slug, g.name, g.locale, gm.role, COALESCE(g.owner_player_id::text, ''), g.personal
 		FROM groups g
 		JOIN group_members gm ON gm.group_id = g.id
 		WHERE gm.player_id=$1
-		ORDER BY g.name`, playerID)
+		ORDER BY g.personal DESC, g.name`, playerID)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +149,7 @@ func (s *Store) GroupsForPlayer(ctx context.Context, playerID string) ([]contrac
 	var out []contract.GroupSummary
 	for rows.Next() {
 		var g contract.GroupSummary
-		if err := rows.Scan(&g.ID, &g.Slug, &g.Name, &g.Locale, &g.Role, &g.OwnerID); err != nil {
+		if err := rows.Scan(&g.ID, &g.Slug, &g.Name, &g.Locale, &g.Role, &g.OwnerID, &g.Personal); err != nil {
 			return nil, err
 		}
 		out = append(out, g)
@@ -198,6 +198,13 @@ func (s *Store) CreateGroup(ctx context.Context, playerID, slug, name, locale st
 func (s *Store) CreateInvite(ctx context.Context, playerID, groupID, name, realm, battletag string) (contract.Invite, error) {
 	if err := validUUID(groupID); err != nil {
 		return contract.Invite{}, err
+	}
+	personal, err := s.groupIsPersonal(ctx, groupID)
+	if err != nil {
+		return contract.Invite{}, err
+	}
+	if personal {
+		return contract.Invite{}, fmt.Errorf("%w: personal group", ErrForbidden)
 	}
 	role, err := s.memberRole(ctx, groupID, playerID)
 	if err != nil {
@@ -461,6 +468,13 @@ func (s *Store) answerInvite(ctx context.Context, playerID, inviteID, status str
 func (s *Store) LeaveGroup(ctx context.Context, playerID, groupID string) error {
 	if err := validUUID(groupID); err != nil {
 		return err
+	}
+	personal, err := s.groupIsPersonal(ctx, groupID)
+	if err != nil {
+		return err
+	}
+	if personal {
+		return fmt.Errorf("%w: personal group", ErrForbidden)
 	}
 	role, err := s.memberRole(ctx, groupID, playerID)
 	if err != nil {

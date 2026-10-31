@@ -1332,6 +1332,9 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 		}
 		return contract.SyncResponse{}, err
 	}
+	if err := s.EnsurePersonalGroup(ctx, playerID); err != nil {
+		return contract.SyncResponse{}, err
+	}
 	chars, err := scanCharactersMust(ctx, s.pool, characterSelect+` WHERE c.player_id=$1 ORDER BY c.name, c.realm`, playerID)
 	if err != nil {
 		return contract.SyncResponse{}, err
@@ -1339,8 +1342,61 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	if chars == nil {
 		chars = []contract.Character{}
 	}
+	invites, err := s.SyncInvites(ctx, playerID)
+	if err != nil {
+		return contract.SyncResponse{}, err
+	}
+	if invites == nil {
+		invites = []contract.Invite{}
+	}
+	pendingByGroup := map[string]string{}
+	for _, inv := range invites {
+		if inv.Kind != "join" || inv.GroupID == "" {
+			continue
+		}
+		if _, ok := pendingByGroup[inv.GroupID]; !ok {
+			pendingByGroup[inv.GroupID] = inv.ID
+		}
+	}
+	memberGroups := map[string]bool{}
+	grows, err := s.pool.Query(ctx, `SELECT group_id::text FROM group_members WHERE player_id=$1`, playerID)
+	if err != nil {
+		return contract.SyncResponse{}, err
+	}
+	for grows.Next() {
+		var id string
+		if err := grows.Scan(&id); err != nil {
+			grows.Close()
+			return contract.SyncResponse{}, err
+		}
+		memberGroups[id] = true
+	}
+	if err := grows.Err(); err != nil {
+		grows.Close()
+		return contract.SyncResponse{}, err
+	}
+	grows.Close()
 	rows, err := s.pool.Query(ctx, questSelect+`
-		WHERE q.group_id IN (SELECT group_id FROM group_members WHERE player_id=$1)
+		WHERE q.group_id IN (
+			SELECT group_id FROM group_members WHERE player_id=$1
+			UNION
+			SELECT i.group_id FROM group_invites i
+			JOIN players p ON p.id=$1
+			WHERE i.status='pending'
+			AND NOT EXISTS (
+				SELECT 1 FROM group_members gm
+				WHERE gm.group_id=i.group_id AND gm.player_id=p.id
+			)
+			AND (
+				EXISTS (
+					SELECT 1 FROM characters c
+					WHERE c.player_id=p.id
+					AND lower(c.name)=lower(i.character_name)
+					AND lower(c.realm)=lower(i.realm)
+				)
+				OR (i.battletag IS NOT NULL AND i.battletag <> '' AND lower(i.battletag)=lower(COALESCE(p.battletag, '')))
+			)
+		)
 		AND (q.active OR q.id IN (
 			SELECT p.quest_id FROM progress p
 			JOIN characters c ON c.id = p.character_id
@@ -1353,13 +1409,22 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	defer rows.Close()
 	var quests []contract.Quest
 	var ids []string
+	var memberIDs []string
 	for rows.Next() {
 		q, err := scanQuest(rows.Scan)
 		if err != nil {
 			return contract.SyncResponse{}, err
 		}
+		if !memberGroups[q.GroupID] {
+			if inviteID := pendingByGroup[q.GroupID]; inviteID != "" {
+				q.PendingInviteID = inviteID
+			}
+		}
 		quests = append(quests, q)
 		ids = append(ids, q.ID)
+		if memberGroups[q.GroupID] {
+			memberIDs = append(memberIDs, q.ID)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return contract.SyncResponse{}, err
@@ -1419,7 +1484,7 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	if err := prows.Err(); err != nil {
 		return contract.SyncResponse{}, err
 	}
-	completions, err := s.sagaCompletions(ctx, ids)
+	completions, err := s.sagaCompletions(ctx, memberIDs)
 	if err != nil {
 		return contract.SyncResponse{}, err
 	}
@@ -1435,15 +1500,8 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	if err != nil {
 		return contract.SyncResponse{}, err
 	}
-	invites, err := s.SyncInvites(ctx, playerID)
-	if err != nil {
-		return contract.SyncResponse{}, err
-	}
 	if groups == nil {
 		groups = []contract.GroupSummary{}
-	}
-	if invites == nil {
-		invites = []contract.Invite{}
 	}
 	return contract.SyncResponse{
 		BattleTag: tag, GeneratedAt: contract.FormatTime(time.Now()),
