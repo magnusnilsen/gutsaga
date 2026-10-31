@@ -34,15 +34,19 @@ local sectionOpen
 local sectionDone
 local listPanel
 local detailPanel
+-- Color tables are packed so Classic Era stays under Lua 5.1's 200-local limit
+-- for the main chunk (FrameXML: "main function has more than 200 local variables").
 local GOLD = { r = 0.99, g = 0.93, b = 0.59 }
 local LOCKED_TITLE = { r = 0.45, g = 0.42, b = 0.38 }
 local LOCKED_SUB = { r = 0.40, g = 0.37, b = 0.34 }
 -- Fallback difficulty colors when GetQuestDifficultyColor is missing.
-local DIFF_YELLOW = { r = 1.00, g = 1.00, b = 0.00 }
-local DIFF_RED = { r = 1.00, g = 0.10, b = 0.10 }
-local DIFF_ORANGE = { r = 1.00, g = 0.50, b = 0.25 }
-local DIFF_GREEN = { r = 0.25, g = 0.75, b = 0.25 }
-local DIFF_GRAY = { r = 0.50, g = 0.50, b = 0.50 }
+local DIFF = {
+    YELLOW = { r = 1.00, g = 1.00, b = 0.00 },
+    RED = { r = 1.00, g = 0.10, b = 0.10 },
+    ORANGE = { r = 1.00, g = 0.50, b = 0.25 },
+    GREEN = { r = 0.25, g = 0.75, b = 0.25 },
+    GRAY = { r = 0.50, g = 0.50, b = 0.50 },
+}
 local listChild
 local listScroll
 local detailFS
@@ -346,7 +350,7 @@ end
 local function difficultyColor(minLevel, playerLevel)
     local level = tonumber(minLevel)
     if not level or level < 1 then
-        return DIFF_YELLOW
+        return DIFF.YELLOW
     end
     local pl = tonumber(playerLevel) or 1
     if GetQuestDifficultyColor then
@@ -357,11 +361,11 @@ local function difficultyColor(minLevel, playerLevel)
     end
     local diff = level - pl
     if diff >= 5 then
-        return DIFF_RED
+        return DIFF.RED
     elseif diff >= 3 then
-        return DIFF_ORANGE
+        return DIFF.ORANGE
     elseif diff >= -2 then
-        return DIFF_YELLOW
+        return DIFF.YELLOW
     end
     local greenRange = 5
     if GetQuestGreenRange then
@@ -371,9 +375,9 @@ local function difficultyColor(minLevel, playerLevel)
         end
     end
     if -diff <= greenRange then
-        return DIFF_GREEN
+        return DIFF.GREEN
     end
-    return DIFF_GRAY
+    return DIFF.GRAY
 end
 
 local function currentEntries()

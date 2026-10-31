@@ -59,7 +59,8 @@ Environment:
   ADMIN_TOKEN                  ops only: seed is a command; HTTP hard-delete of a saga or a group
   BNET_CLIENT_ID               Battle.net OAuth client id
   BNET_CLIENT_SECRET           Battle.net OAuth client secret (stays on the API)
-  PUBLIC_BASE_URL              public origin, also the OAuth redirect base (no trailing slash)
+  PUBLIC_BASE_URL              public API origin, also the OAuth redirect base (no trailing slash)
+  LANDING_DIR                  optional path to web/ (serves / and /assets); Docker sets /web
   IMAGE_URL_SECRET             HMAC secret for signed cover URLs (openssl rand -hex 32)
   IMAGE_URL_TTL                signed URL lifetime (Go duration, default 1h)
   PORT                         listen port (default 8080)
