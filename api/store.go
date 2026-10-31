@@ -1163,7 +1163,7 @@ func buildGoalsMarkdown(q contract.Quest) string {
 		b.WriteString(fmt.Sprintf("%d. %s", i+1, text))
 	}
 	if b.Len() == 0 {
-		return "(ingen mål)"
+		return "(no goals)"
 	}
 	return b.String()
 }
@@ -1172,17 +1172,17 @@ func buildGoalsMarkdown(q contract.Quest) string {
 func buildActivityCard(completers []contract.QuestCompleter) *contract.QuestCard {
 	card := &contract.QuestCard{
 		Columns: []contract.QuestCardColumn{
-			{ID: "character", Label: "Karakter", Fill: true, Bold: true},
-			{ID: "detail", Label: "Detaljer", Fill: true},
-			{ID: "when", Label: "Når"},
+			{ID: "character", Label: "Character", Fill: true, Bold: true},
+			{ID: "detail", Label: "Details", Fill: true},
+			{ID: "when", Label: "When"},
 		},
 	}
 	if len(completers) == 0 {
 		card.Rows = []contract.QuestCardRow{{
 			ID:    "done-none",
-			Group: "Aktivitet",
+			Group: "Activity",
 			Cells: map[string]any{
-				"character": "Ingen har fullført ennå",
+				"character": "No one has completed this yet",
 				"detail":    "",
 				"when":      "",
 			},
@@ -1192,7 +1192,7 @@ func buildActivityCard(completers []contract.QuestCompleter) *contract.QuestCard
 	for i, c := range completers {
 		who := c.Character
 		if who != "" {
-			who += " fullførte"
+			who += " completed"
 		}
 		detail := ""
 		if c.Class != "" && c.Level > 0 {
@@ -1214,7 +1214,7 @@ func buildActivityCard(completers []contract.QuestCompleter) *contract.QuestCard
 		}
 		card.Rows = append(card.Rows, contract.QuestCardRow{
 			ID:    fmt.Sprintf("done-%d", i+1),
-			Group: "Aktivitet",
+			Group: "Activity",
 			Cells: map[string]any{
 				"character": who,
 				"detail":    detail,
@@ -2032,10 +2032,10 @@ func (s *Store) SetLevel(ctx context.Context, playerID string, in contract.Level
 	if _, err := tx.Exec(ctx, `UPDATE characters SET level=$2, updated_at=now() WHERE id=$1`, in.CharacterID, in.Level); err != nil {
 		return contract.LevelResponse{}, err
 	}
-	body := fmt.Sprintf("%s nådde nivå %d.", name, in.Level)
+	body := fmt.Sprintf("%s reached level %d.", name, in.Level)
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO adventure_log (player_id, character_id, type, title, body)
-		VALUES ($1,$2,'level',$3,$4)`, playerID, in.CharacterID, fmt.Sprintf("Nivå %d", in.Level), body); err != nil {
+		VALUES ($1,$2,'level',$3,$4)`, playerID, in.CharacterID, fmt.Sprintf("Level %d", in.Level), body); err != nil {
 		return contract.LevelResponse{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

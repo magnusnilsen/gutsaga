@@ -226,7 +226,7 @@ func run(opts options) int {
 		if trayMenu != nil {
 			refreshUpdate(trayMenu, application, log)
 		}
-		_ = notify.Show("Sagalore", "Ny versjon "+tag+" — start på nytt for å oppdatere")
+		_ = notify.Show("Sagalore", "New version "+tag+" — restart to update")
 	}
 	if isTerminal(os.Stdin) {
 		application.Prompt = func() (string, error) {

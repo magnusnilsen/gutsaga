@@ -591,21 +591,21 @@ end
 
 local function formatDescription(text)
     if type(text) ~= "string" or text == "" then
-        return "Ingen"
+        return L("ui.none")
     end
     text = text:gsub("\r\n", "\n"):gsub("\r", "\n")
     text = text:gsub("\\n", "\n")
     text = text:gsub("[ \t]+\n", "\n"):gsub("\n[ \t]+", "\n")
     text = text:match("^%s*(.-)%s*$") or text
     if text == "" then
-        return "Ingen"
+        return L("ui.none")
     end
     return text
 end
 
-local NO_MONTHS = {
-    "januar", "februar", "mars", "april", "mai", "juni",
-    "juli", "august", "september", "oktober", "november", "desember",
+local EN_MONTHS = {
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
 }
 
 local function isLeapYear(y)
@@ -681,7 +681,7 @@ local function formatOsloWhen(raw)
     if not t then
         return ""
     end
-    local month = NO_MONTHS[t.month] or ""
+    local month = EN_MONTHS[t.month] or ""
     return string.format("%02d %s %d %02d:%02d", t.day, month, t.year, t.hour, t.min)
 end
 
@@ -917,7 +917,7 @@ end
 local function creatorName(entry)
     local by = entry and entry.created_by
     if type(by) ~= "string" or by == "" then
-        return "Ukjent"
+        return L("ui.unknown")
     end
     -- Personal starters are stamped Sagalore#0000 in the API.
     if string.lower(by) == "sagalore#0000" then
@@ -953,7 +953,7 @@ end
 local function listTitle(entry)
     local title = entry.title or "Saga"
     if entryIsGroup(entry) then
-        title = title .. " (Gruppe)"
+        title = title .. L("ui.group_suffix")
     end
     return title
 end
@@ -1610,12 +1610,13 @@ local function objectiveLines(entry)
             end
         end
         local label
+        local goalText = obj.text or L("ui.goal")
         if done and mem == "hold" then
-            label = pad .. (obj.text or "Mål") .. " (nå)"
+            label = pad .. string.format(L("ui.goal_now"), goalText)
         elseif done then
-            label = pad .. (obj.text or "Mål") .. " (Fullført)"
+            label = pad .. string.format(L("ui.goal_done"), goalText)
         else
-            label = pad .. applyItemLink(obj.text or "Mål", obj)
+            label = pad .. applyItemLink(goalText, obj)
             local groupedKill = obj.type == "kill" and type(obj.group) == "table" and obj.group.level
             if obj.type == "collect" or obj.type == "item" or (obj.type == "kill" and not groupedKill) or obj.type == "instance_run" then
                 local need = tonumber(obj.count) or 1
@@ -1644,7 +1645,7 @@ local function objectiveLines(entry)
                 label = string.format("%s (%d/%d)", label, have, need)
             end
             if obj.type == "sequence" and step.failed then
-                label = label .. " (feilet)"
+                label = label .. L("ui.failed")
             end
             if obj.type == "kill" and type(obj.group) == "table" and obj.group.level then
                 local roster = readGroup and readGroup() or {}
@@ -1659,7 +1660,7 @@ local function objectiveLines(entry)
                     end
                 end
                 local need = tonumber(obj.group.size) or total
-                label = label .. string.format(" (%d/%d nivå %d)", have, need, level)
+                label = label .. string.format(L("ui.kill_group_level"), have, need, level)
             end
             label = label .. timeHint(obj.when, done, clocks)
         end
@@ -1672,7 +1673,7 @@ local function objectiveLines(entry)
                 if type(b) == "table" then
                     local beatDone = (not failed) and (done or i < beat)
                     local current = (not failed) and (not done) and i == beat
-                    local beatLabel = b.text or "Del"
+                    local beatLabel = b.text or L("ui.part")
                     if current and remain > 0 then
                         beatLabel = beatLabel .. string.format(" (%ds)", remain)
                     end
@@ -1695,7 +1696,7 @@ local function objectiveLines(entry)
     end
     if type(entry.when) == "table" and SagaloreObjectives and SagaloreObjectives.timeOpen then
         local open = SagaloreObjectives.timeOpen(entry.when, clocks)
-        table.insert(lines, { done = open, text = "Tid" .. timeHint(entry.when, open, clocks) })
+        table.insert(lines, { done = open, text = L("ui.time") .. timeHint(entry.when, open, clocks) })
     end
     if type(entry.group) == "table" and tonumber(entry.group.size) and readGroup and SagaloreObjectives and SagaloreObjectives.groupOK then
         local group = readGroup()
@@ -1706,12 +1707,12 @@ local function objectiveLines(entry)
                 have = have + 1
             end
         end
-        local label = string.format("Sammen med gruppa (%d/%d)", have, tonumber(entry.group.size))
+        local label = string.format(L("ui.with_group"), have, tonumber(entry.group.size))
         if entry.group.min_level then
-            label = label .. string.format(", nivå %d+", minLevel)
+            label = label .. string.format(L("ui.min_level"), minLevel)
         end
         if type(entry.group.instance) == "string" and entry.group.instance ~= "" then
-            label = label .. " i " .. entry.group.instance
+            label = label .. string.format(L("ui.in_instance"), entry.group.instance)
         end
         table.insert(lines, { done = SagaloreObjectives.groupOK(entry.group, group), text = label })
     end
@@ -2085,7 +2086,7 @@ local function checkAll()
     checking = false
     if not ok and err ~= lastCheckError then
         lastCheckError = err
-        chat("[Sagalore] feil: " .. tostring(err))
+        chat("[Sagalore] " .. string.format(L("ui.error"), tostring(err)))
     elseif ok then
         lastCheckError = ""
     end
@@ -3068,7 +3069,7 @@ refresh = function()
     local rowIndex = 0
     local selectedRowY = nil
 
-    listY = placeSectionHeader(sectionOpen, listY, "Ikke startet (" .. #openList .. ")", openExpanded, function()
+    listY = placeSectionHeader(sectionOpen, listY, string.format("%s (%d)", L("ui.not_started"), #openList), openExpanded, function()
         setSectionExpanded("open", not openExpanded)
         refresh()
     end)
@@ -3103,7 +3104,7 @@ refresh = function()
     end
 
     listY = listY + 6
-    listY = placeSectionHeader(sectionDone, listY, "Fullførte (" .. #doneList .. ")", doneExpanded, function()
+    listY = placeSectionHeader(sectionDone, listY, string.format("%s (%d)", L("ui.completed_section"), #doneList), doneExpanded, function()
         setSectionExpanded("done", not doneExpanded)
         refresh()
     end)
@@ -3668,7 +3669,7 @@ finishQuest = function(entry, group)
     refresh()
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         DEFAULT_CHAT_FRAME:AddMessage(
-            "|cffc9a227Sagalore|r: Fullført. Discord etter |cffffffff/reload|r."
+            "|cffc9a227Sagalore|r: " .. L("ui.complete_reload")
         )
         local n = #unlocked
         if n > 3 then

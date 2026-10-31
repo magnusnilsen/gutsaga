@@ -128,7 +128,7 @@ func TestSagaChains(t *testing.T) {
 	resp, err = player.do(http.MethodPost, "/v1/complete", contract.CompletionRequest{
 		CharacterID: magni.ID, QuestID: second.ID, QuestVersion: 1, BattleTag: "Magnus#2231", Level: 12,
 	}, &denied)
-	if err != nil || resp.StatusCode != http.StatusConflict || denied.Error != "locked" || denied.Message != "Låst: fullfør Kapittel 1 først" {
+	if err != nil || resp.StatusCode != http.StatusConflict || denied.Error != "locked" || denied.Message != "Locked: finish Kapittel 1 first" {
 		t.Fatalf("locked complete %d %+v %v", statusOf(resp), denied, err)
 	}
 

@@ -85,13 +85,13 @@ func TestSagaAuthorAndCompleters(t *testing.T) {
 	if entries[0].CompletedBy[0].BattleTag != "Magnus#2231" || entries[0].CompletedBy[0].Class != "Warrior" {
 		t.Fatalf("identity %+v", entries[0].CompletedBy[0])
 	}
-	if entries[0].CompletedBy[0].When != "22 oktober 2026 19:00" {
+	if entries[0].CompletedBy[0].When != "22 October 2026 19:00" {
 		t.Fatalf("when %+v", entries[0].CompletedBy[0])
 	}
 	lua := WriteLua("", "t", entries)
 	if !strings.Contains(lua, `created_by = "Sagalore#0000"`) || !strings.Contains(lua, `character = "Mira"`) ||
 		!strings.Contains(lua, `battletag = "Magnus#2231"`) || !strings.Contains(lua, `class = "Warrior"`) ||
-		!strings.Contains(lua, `when = "22 oktober 2026 19:00"`) {
+		!strings.Contains(lua, `when = "22 October 2026 19:00"`) {
 		t.Fatal(lua)
 	}
 }

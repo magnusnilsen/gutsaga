@@ -52,7 +52,7 @@ func Run(ctx context.Context, tooltip string, items []Item, onReady func(*Menu))
 		}
 		systray.AddSeparator()
 
-		m.updateItem = systray.AddMenuItem("Ny versjon — start på nytt", "Last ned er klar")
+		m.updateItem = systray.AddMenuItem("New version — restart", "Download is ready")
 		m.updateItem.Hide()
 		go func() {
 			for range m.updateItem.ClickedCh {
@@ -65,7 +65,7 @@ func Run(ctx context.Context, tooltip string, items []Item, onReady func(*Menu))
 			}
 		}()
 
-		m.autoItem = systray.AddMenuItemCheckbox("Automatiske oppdateringer", "Sjekk GitHub og last ned i bakgrunnen", false)
+		m.autoItem = systray.AddMenuItemCheckbox("Automatic updates", "Check GitHub and download in the background", false)
 		go func() {
 			for range m.autoItem.ClickedCh {
 				var next bool
@@ -146,9 +146,9 @@ func (m *Menu) SetPendingUpdate(tag string, onRestart func()) {
 		m.updateItem.Hide()
 		return
 	}
-	title := "Ny versjon " + tag + " — start på nytt"
+	title := "New version " + tag + " — restart"
 	m.updateItem.SetTitle(title)
-	m.updateItem.SetTooltip("Last ned er klar. Start Sagalore på nytt for å oppdatere")
+	m.updateItem.SetTooltip("Download is ready. Restart Sagalore to update")
 	m.updateItem.Show()
 }
 
@@ -179,12 +179,12 @@ func (m *Menu) SetAuthAction(loggedIn bool, onClick func()) {
 		return
 	}
 	if loggedIn {
-		m.auth.SetTitle("Logg ut")
+		m.auth.SetTitle("Log out")
 		m.auth.SetTooltip("Log out of Sagalore on this computer")
 		return
 	}
 	m.auth.SetTitle("Log in with Battle.net")
-	m.auth.SetTooltip("Åpne nettleseren og logg inn")
+	m.auth.SetTooltip("Open the browser and log in")
 }
 
 // SetStatus refreshes the grayed-out account line.
@@ -195,19 +195,19 @@ func (m *Menu) SetStatus(s Status) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	user := stringsOr(s.User, "Ikke innlogget")
+	user := stringsOr(s.User, "Not logged in")
 	m.user.SetTitle(user)
 	m.user.SetTooltip(user)
 }
 
-// SetVersion sets the disabled companion version line (e.g. "Versjon 0.1.3").
+// SetVersion sets the disabled companion version line (e.g. "Version 0.1.3").
 func (m *Menu) SetVersion(v string) {
 	if m == nil || m.version == nil {
 		return
 	}
-	title := "Versjon"
+	title := "Version"
 	if v != "" {
-		title = "Versjon " + v
+		title = "Version " + v
 	}
 	m.version.SetTitle(title)
 	m.version.SetTooltip(title)

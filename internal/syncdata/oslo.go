@@ -17,12 +17,12 @@ func init() {
 	osloLoc = loc
 }
 
-var norwegianMonths = [...]string{
-	"", "januar", "februar", "mars", "april", "mai", "juni",
-	"juli", "august", "september", "oktober", "november", "desember",
+var englishMonths = [...]string{
+	"", "January", "February", "March", "April", "May", "June",
+	"July", "August", "September", "October", "November", "December",
 }
 
-// FormatOsloWhen renders a completion time as "dd mmmm yyyy hh:mm" in Europe/Oslo.
+// FormatOsloWhen renders a completion time as "dd Month yyyy hh:mm" in Europe/Oslo.
 // Accepts RFC3339 (API sync) or a unix-seconds string/int from the addon.
 func FormatOsloWhen(raw string) string {
 	raw = strings.TrimSpace(raw)
@@ -40,6 +40,6 @@ func FormatOsloWhen(raw string) string {
 		return ""
 	}
 	local := t.In(osloLoc)
-	month := norwegianMonths[int(local.Month())]
+	month := englishMonths[int(local.Month())]
 	return fmt.Sprintf("%02d %s %d %02d:%02d", local.Day(), month, local.Year(), local.Hour(), local.Minute())
 }

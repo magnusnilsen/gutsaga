@@ -46,7 +46,7 @@ type App struct {
 	mu         sync.Mutex
 	loginMu    sync.Mutex
 	loginTried bool
-	signedOut  bool // user chose Logg ut; do not open the browser until they log in again
+	signedOut  bool // user chose Log out; do not open the browser until they log in again
 	notice     string
 	noticeID   string
 	// Notify shows the desktop banner. Tests set it. Nil uses the OS.
