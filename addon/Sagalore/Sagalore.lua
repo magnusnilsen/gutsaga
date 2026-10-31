@@ -308,6 +308,18 @@ local function emitCharacter()
     end
     lastCharacterLine = line
     chat(line)
+    -- Classic Era chat logging does not capture AddMessage. Queue the same
+    -- snapshot for the companion via SavedVariables (flushed on /reload).
+    initDB()
+    SagaloreDB.pending_character = {
+        name = player.name,
+        realm = player.realm or "",
+        level = player.level,
+        race = player.race or "",
+        class = player.class or "",
+        battletag = player.battletag or "",
+        at = unixNow(),
+    }
 end
 
 local function isComplete(entry)
@@ -364,15 +376,19 @@ local function currentEntries()
         return out
     end
     for _, entry in ipairs(SagaloreData.entries) do
-        if type(entry) == "table" and same(entry.character, player.name) then
-            local realm = entry.realm
-            if type(realm) ~= "string" or realm == "" or player.realm == "" or same(realm, player.realm) then
-                local visible = true
-                if type(SagaloreInvite) == "table" and type(SagaloreInvite.entryVisible) == "function" then
-                    visible = SagaloreInvite.entryVisible(SagaloreDB, entry)
-                end
-                if visible then
-                    table.insert(out, entry)
+        if type(entry) == "table" then
+            -- "*" is a provisional sync row before the companion has upserted this character.
+            local forMe = same(entry.character, player.name) or entry.character == "*"
+            if forMe then
+                local realm = entry.realm
+                if type(realm) ~= "string" or realm == "" or player.realm == "" or same(realm, player.realm) or entry.character == "*" then
+                    local visible = true
+                    if type(SagaloreInvite) == "table" and type(SagaloreInvite.entryVisible) == "function" then
+                        visible = SagaloreInvite.entryVisible(SagaloreDB, entry)
+                    end
+                    if visible then
+                        table.insert(out, entry)
+                    end
                 end
             end
         end

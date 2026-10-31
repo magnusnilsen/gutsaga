@@ -79,8 +79,15 @@ func Merge(sync contract.SyncResponse) []Entry {
 		titles[q.ID] = q.Title
 	}
 	completers := completersByQuest(sync)
+	chars := sync.Characters
+	// Before the addon has reported a character (common right after Battle.net
+	// login on Classic Era), still emit party sagas so Personal starters show
+	// on the first /reload. The addon treats character "*" as "any toon".
+	if len(chars) == 0 && len(sync.Quests) > 0 {
+		chars = []contract.Character{{Name: "*", Level: 1000, Participating: true}}
+	}
 	var out []Entry
-	for _, ch := range sync.Characters {
+	for _, ch := range chars {
 		for _, q := range sync.Quests {
 			p, has := progress[ch.ID+"\n"+q.ID]
 			completed := has && p.Status == "completed"

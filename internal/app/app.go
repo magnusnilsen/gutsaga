@@ -438,13 +438,15 @@ func (a *App) pollChat() {
 
 // pollSavedVars enqueues completions the addon wrote locally. On Classic Era,
 // AddMessage lines never reach WoWChatLog.txt, so this is the reliable path.
-// It also applies /sagalore and /sl reset requests and invite answers from SavedVariables.
+// It also applies /sagalore and /sl reset requests, invite answers, and the
+// pending character snapshot from SavedVariables.
 func (a *App) pollSavedVars() {
 	if a.WowDir == "" {
 		return
 	}
 	a.pollPendingResets()
 	a.pollPendingInvites()
+	a.pollPendingCharacter()
 	list, err := savedvars.ReadCompletions(a.WowDir)
 	if err != nil {
 		return
@@ -541,6 +543,29 @@ func (a *App) pollPendingInvites() {
 		})
 		if ok {
 			a.Log.Info("lest invite fra SavedVariables", "action", inv.Action, "id", inv.ID)
+		}
+	}
+}
+
+// pollPendingCharacter enqueues CHARACTER upserts from SagaloreDB.pending_character.
+func (a *App) pollPendingCharacter() {
+	list, err := savedvars.ReadPendingCharacters(a.WowDir)
+	if err != nil || len(list) == 0 {
+		return
+	}
+	for _, ch := range list {
+		level := ch.Level
+		if level < 1 {
+			level = 1
+		}
+		key := queue.CharacterKey(ch.Name, ch.Realm, level, ch.Race, ch.Class, ch.BattleTag)
+		ok := a.Queue.Enqueue(queue.Item{
+			Kind: "character", Key: key,
+			Character: ch.Name, Realm: ch.Realm, Level: level,
+			Race: ch.Race, Class: ch.Class, BattleTag: ch.BattleTag,
+		})
+		if ok {
+			a.Log.Info("lest character fra SavedVariables", "character", ch.Name, "realm", ch.Realm)
 		}
 	}
 }

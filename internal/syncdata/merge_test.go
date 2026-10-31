@@ -184,3 +184,15 @@ func TestDurationAndLeaderboardLua(t *testing.T) {
 		t.Fatal(lua)
 	}
 }
+
+func TestMergeProvisionalCharacterWhenNoneReported(t *testing.T) {
+	sync := contract.SyncResponse{
+		Quests: []contract.Quest{
+			{ID: "q1", Title: "Say hello", Active: true, PartyQuest: true, Version: 1},
+		},
+	}
+	entries := Merge(sync)
+	if len(entries) != 1 || entries[0].Character != "*" || entries[0].QuestID != "q1" {
+		t.Fatalf("%+v", entries)
+	}
+}
