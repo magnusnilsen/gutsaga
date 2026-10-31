@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/backend"
-	"github.com/magnusnilsen/gutsaga/internal/config"
+	"github.com/sagalore/sagalore/internal/backend"
+	"github.com/sagalore/sagalore/internal/config"
 )
 
 func TestNeedsLoginAndRemind(t *testing.T) {
@@ -65,7 +65,6 @@ func TestEnsureLoginTimeoutReminds(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("SAGALORE_DEV_TOKEN", "")
 	_ = os.Unsetenv("SAGALORE_DEV_TOKEN")
-	_ = os.Unsetenv("OURSAGAS_DEV_TOKEN")
 	a := &App{
 		Config: config.Config{APIBaseURL: srv.URL, Client: "forever"},
 		Client: &backend.Client{BaseURL: srv.URL, HTTP: srv.Client()},

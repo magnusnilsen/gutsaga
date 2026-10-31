@@ -13,15 +13,15 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/jackc/pgx/v5"
-	"github.com/magnusnilsen/gutsaga/internal/contract"
-	"github.com/magnusnilsen/gutsaga/internal/realtime"
+	"github.com/sagalore/sagalore/internal/contract"
+	"github.com/sagalore/sagalore/internal/realtime"
 )
 
 func TestRealtimeTwoInstances(t *testing.T) {
 	resetDB(t)
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://gutsaga:gutsaga@127.0.0.1:5432/gutsaga_test?sslmode=disable"
+		dsn = "postgres://sagalore:sagalore@127.0.0.1:5432/sagalore_test?sslmode=disable"
 	}
 	hub1 := realtime.NewHub()
 	hub2 := realtime.NewHub()

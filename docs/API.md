@@ -2,7 +2,7 @@
 
 Players sign in with Battle.net. The companion session is `gss_` and lasts 30 days. External clients use a personal token `gst_`. `ADMIN_TOKEN` is ops only.
 
-The Go module path is still `github.com/magnusnilsen/gutsaga` until the public snapshot. Paths stay `/v1/sagas`.
+The Go module path is still `github.com/sagalore/sagalore` until the public snapshot. Paths stay `/v1/sagas`.
 
 ## Login
 
@@ -74,7 +74,7 @@ Session or `gst_`:
 | `DELETE` | `/v1/admin/sagas/{id}` | Hard-delete one saga. |
 | `DELETE` | `/v1/admin/groups/{id}` | Delete the group and its sagas. |
 
-Seed runs from `gutsaga-api seed` or `make dev`. It does not run on server boot.
+Seed runs from `sagalore-api seed` or `make dev`. It does not run on server boot.
 
 ## Errors
 

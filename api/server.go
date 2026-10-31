@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
-	"github.com/magnusnilsen/gutsaga/internal/discord"
-	"github.com/magnusnilsen/gutsaga/internal/realtime"
-	"github.com/magnusnilsen/gutsaga/internal/screenshot"
+	"github.com/sagalore/sagalore/internal/contract"
+	"github.com/sagalore/sagalore/internal/discord"
+	"github.com/sagalore/sagalore/internal/realtime"
+	"github.com/sagalore/sagalore/internal/screenshot"
 )
 
 type Notifier interface {
@@ -280,7 +280,7 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 }
 
 // deleteProgress clears API progress for the signed-in player so a local
-// /gutsaga reset is not undone by the next companion sync.
+// /sagalore reset is not undone by the next companion sync.
 // Optional query saga_id limits to one saga; omit it to clear all.
 func (s *Server) deleteProgress(w http.ResponseWriter, r *http.Request) {
 	p := playerFrom(r)

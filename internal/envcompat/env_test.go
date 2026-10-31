@@ -2,24 +2,14 @@ package envcompat
 
 import "testing"
 
-func TestGetPrefersSagaloreAndFallsBack(t *testing.T) {
-	t.Setenv("SAGALORE_DEV_TOKEN", "new")
-	t.Setenv("OURSAGAS_DEV_TOKEN", "old")
-	if got := Get("SAGALORE_DEV_TOKEN"); got != "new" {
-		t.Fatalf("prefer new, got %q", got)
+func TestGet(t *testing.T) {
+	t.Setenv("SAGALORE_DEV_TOKEN", "token")
+	if got := Get("SAGALORE_DEV_TOKEN"); got != "token" {
+		t.Fatalf("got %q", got)
 	}
-	t.Setenv("SAGALORE_DEV_TOKEN", "")
-	if got := Get("SAGALORE_DEV_TOKEN"); got != "old" {
-		t.Fatalf("fallback, got %q", got)
-	}
-	t.Setenv("OURSAGAS_DEV_TOKEN", "  ")
+	t.Setenv("SAGALORE_DEV_TOKEN", "  ")
 	if got := Get("SAGALORE_DEV_TOKEN"); got != "" {
 		t.Fatalf("blank, got %q", got)
-	}
-	t.Setenv("SAGALORE_BOOTSTRAP_GROUP", "")
-	t.Setenv("OURSAGAS_BOOTSTRAP_GROUP", "tutorial:Tutorial")
-	if got := Get("SAGALORE_BOOTSTRAP_GROUP"); got != "tutorial:Tutorial" {
-		t.Fatalf("bootstrap fallback, got %q", got)
 	}
 	t.Setenv("DATABASE_URL", "postgres://local")
 	if got := Get("DATABASE_URL"); got != "postgres://local" {

@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 // ErrLocked is a new completion of a saga whose prerequisites are not done.

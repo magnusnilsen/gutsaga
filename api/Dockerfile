@@ -6,13 +6,13 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/gutsaga-api ./api
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/sagalore-api ./api
 
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/gutsaga-api /gutsaga-api
+COPY --from=build /out/sagalore-api /sagalore-api
 COPY --from=build /src/web /web
 ENV PORT=8080
 ENV LANDING_DIR=/web
 EXPOSE 8080
 USER nonroot:nonroot
-ENTRYPOINT ["/gutsaga-api"]
+ENTRYPOINT ["/sagalore-api"]

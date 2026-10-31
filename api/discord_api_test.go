@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
-	"github.com/magnusnilsen/gutsaga/internal/discord"
+	"github.com/sagalore/sagalore/internal/contract"
+	"github.com/sagalore/sagalore/internal/discord"
 )
 
 func TestAdminDiscordNotices(t *testing.T) {

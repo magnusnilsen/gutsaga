@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/config"
-	"github.com/magnusnilsen/gutsaga/internal/contract"
-	"github.com/magnusnilsen/gutsaga/internal/envcompat"
-	"github.com/magnusnilsen/gutsaga/internal/install"
-	"github.com/magnusnilsen/gutsaga/internal/notify"
+	"github.com/sagalore/sagalore/internal/config"
+	"github.com/sagalore/sagalore/internal/contract"
+	"github.com/sagalore/sagalore/internal/envcompat"
+	"github.com/sagalore/sagalore/internal/install"
+	"github.com/sagalore/sagalore/internal/notify"
 )
 
 // errLoginTimedOut is returned when the browser flow runs out of time. The
@@ -94,7 +94,7 @@ func (a *App) LoggedIn() bool {
 	return a.Config.Token() != ""
 }
 
-// Login uses SAGALORE_DEV_TOKEN when it is set (OURSAGAS_DEV_TOKEN still works).
+// Login uses SAGALORE_DEV_TOKEN when it is set.
 // Otherwise it opens the browser on the API Battle.net start URL and polls
 // until the API stores a session.
 func (a *App) Login(ctx context.Context) error {

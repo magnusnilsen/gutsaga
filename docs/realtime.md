@@ -38,7 +38,7 @@ A second completion of the same character and saga does not insert a row and doe
 
 ## Several API processes
 
-Migration `007_realtime_notify.sql` installs triggers. On commit they `pg_notify('gutsaga_events', …)`. Each API process holds **one dedicated connection** (`application_name = gutsaga-realtime`) and `LISTEN`s. A pooled connection would be reused and drop the subscription.
+Migration `007_realtime_notify.sql` installs triggers. On commit they `pg_notify('sagalore_events', …)`. Each API process holds **one dedicated connection** (`application_name = sagalore-realtime`) and `LISTEN`s. A pooled connection would be reused and drop the subscription.
 
 Railway can run more than one replica. No sticky sessions: the replica that committed the saga and the replica that holds the player's socket can be different. Both hear the notify. Each replica fans the event out only to the sockets it accepted.
 
@@ -46,7 +46,7 @@ A new write path in `api/` does not need to call Go code. Bumping `quests.versio
 
 ```sql
 SELECT pg_notify(
-  'gutsaga_events',
+  'sagalore_events',
   '{"type":"saga.updated","saga_id":"<uuid>","version":2}'
 );
 ```
@@ -81,7 +81,7 @@ Source: [Public networking specs and limits](https://docs.railway.com/networking
 ## Tests
 
 ```bash
-export DATABASE_URL=postgres://gutsaga:gutsaga@127.0.0.1:5432/gutsaga_test?sslmode=disable
+export DATABASE_URL=postgres://sagalore:sagalore@127.0.0.1:5432/sagalore_test?sslmode=disable
 go test ./internal/realtime ./internal/syncdata ./internal/notify ./internal/app ./api
 ```
 

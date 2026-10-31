@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/magnusnilsen/gutsaga/internal/wowpath"
+	"github.com/sagalore/sagalore/internal/wowpath"
 )
 
 func osName() string   { return runtime.GOOS }
@@ -64,12 +64,12 @@ func installZip(wowDir string, body []byte) error {
 }
 
 // addonZipRel is the path inside Interface/AddOns/Sagalore. The release zip
-// is rooted at Sagalore/ (older zips at OurSagas/). Generated data files are
+// is rooted at Sagalore/. Generated data files are
 // skipped so an update does not wipe the synced saga list.
 func addonZipRel(name string) (string, bool) {
 	name = filepath.ToSlash(name)
 	name = strings.TrimPrefix(name, "./")
-	for _, prefix := range []string{"Sagalore/", "OurSagas/"} {
+	for _, prefix := range []string{"Sagalore/"} {
 		if strings.HasPrefix(name, prefix) {
 			name = strings.TrimPrefix(name, prefix)
 			break
@@ -79,7 +79,7 @@ func addonZipRel(name string) (string, bool) {
 		return "", false
 	}
 	base := filepath.Base(name)
-	if base == "SagaloreData.lua" || base == "OurSagasData.lua" {
+	if base == "SagaloreData.lua" {
 		return "", false
 	}
 	clean := filepath.Clean(filepath.FromSlash(name))

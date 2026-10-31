@@ -15,20 +15,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/backend"
-	"github.com/magnusnilsen/gutsaga/internal/chatlog"
-	"github.com/magnusnilsen/gutsaga/internal/config"
-	"github.com/magnusnilsen/gutsaga/internal/contract"
-	"github.com/magnusnilsen/gutsaga/internal/i18n"
-	"github.com/magnusnilsen/gutsaga/internal/install"
-	"github.com/magnusnilsen/gutsaga/internal/notify"
-	"github.com/magnusnilsen/gutsaga/internal/queue"
-	"github.com/magnusnilsen/gutsaga/internal/savedvars"
-	"github.com/magnusnilsen/gutsaga/internal/screenshot"
-	"github.com/magnusnilsen/gutsaga/internal/syncdata"
-	"github.com/magnusnilsen/gutsaga/internal/update"
-	"github.com/magnusnilsen/gutsaga/internal/version"
-	"github.com/magnusnilsen/gutsaga/internal/wowpath"
+	"github.com/sagalore/sagalore/internal/backend"
+	"github.com/sagalore/sagalore/internal/chatlog"
+	"github.com/sagalore/sagalore/internal/config"
+	"github.com/sagalore/sagalore/internal/contract"
+	"github.com/sagalore/sagalore/internal/i18n"
+	"github.com/sagalore/sagalore/internal/install"
+	"github.com/sagalore/sagalore/internal/notify"
+	"github.com/sagalore/sagalore/internal/queue"
+	"github.com/sagalore/sagalore/internal/savedvars"
+	"github.com/sagalore/sagalore/internal/screenshot"
+	"github.com/sagalore/sagalore/internal/syncdata"
+	"github.com/sagalore/sagalore/internal/update"
+	"github.com/sagalore/sagalore/internal/version"
+	"github.com/sagalore/sagalore/internal/wowpath"
 )
 
 type App struct {
@@ -237,9 +237,6 @@ func (a *App) bootstrap(ctx context.Context) error {
 		}
 		if err := install.WriteLanguage(a.WowDir, "en"); err != nil {
 			a.Log.Warn("could not write addon language", "err", err)
-		}
-		if err := savedvars.CopyObjectiveChecks(a.WowDir); err != nil {
-			a.Log.Warn("could not copy objective checks", "err", err)
 		}
 	}
 	if a.Client.APIKey == "" {
@@ -486,7 +483,7 @@ func (a *App) pollSavedVars() {
 	}
 }
 
-// pollPendingResets deletes API progress for /gutsaga wipe|reset after /reload
+// pollPendingResets deletes API progress for /sagalore wipe|reset after /reload
 // wrote SagaloreDB.pending_resets. Without this, the next sync brings completed
 // status back and the local wipe looks broken.
 func (a *App) pollPendingResets() {
@@ -839,7 +836,7 @@ func (a *App) updateDir() string {
 	}
 	dir, err := config.Dir()
 	if err != nil {
-		return filepath.Join(os.TempDir(), "gutsaga-updates")
+		return filepath.Join(os.TempDir(), "sagalore-updates")
 	}
 	return filepath.Join(dir, "updates", "pending")
 }

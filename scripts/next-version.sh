@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Print the next GutSaga release version (no leading v).
+# Print the next Sagalore release version (no leading v).
 # Reuses a semver tag already on HEAD. Otherwise bumps the latest vX.Y.Z:
 # major on BREAKING CHANGE / feat!: / fix!:, minor on feat:, else patch.
 # First release is 0.1.0.

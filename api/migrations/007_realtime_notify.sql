@@ -1,13 +1,13 @@
 -- Push channel for companion WebSockets.
--- Any API instance can LISTEN on gutsaga_events. NOTIFY runs at commit,
+-- Any API instance can LISTEN on sagalore_events. NOTIFY runs at commit,
 -- so a player connected to another replica still hears the change.
 -- Image-only updates do not mention version or active, so they do not fire.
 -- A new write path should bump quests.version (UpdateQuest already does) or
--- SELECT pg_notify('gutsaga_events', '{"type":"saga.updated","saga_id":"…","version":N}').
+-- SELECT pg_notify('sagalore_events', '{"type":"saga.updated","saga_id":"…","version":N}').
 
-CREATE OR REPLACE FUNCTION gutsaga_notify_event() RETURNS trigger
+CREATE OR REPLACE FUNCTION sagalore_notify_event() RETURNS trigger
 LANGUAGE plpgsql
-AS $gutsaga$
+AS $sagalore$
 DECLARE
     ev_type text;
     saga uuid;
@@ -49,7 +49,7 @@ BEGIN
     END IF;
 
     PERFORM pg_notify(
-        'gutsaga_events',
+        'sagalore_events',
         json_strip_nulls(json_build_object(
             'type', ev_type,
             'saga_id', saga,
@@ -59,19 +59,19 @@ BEGIN
     );
     RETURN NULL;
 END;
-$gutsaga$;
+$sagalore$;
 
-DROP TRIGGER IF EXISTS gutsaga_quests_notify ON quests;
-CREATE TRIGGER gutsaga_quests_notify
+DROP TRIGGER IF EXISTS sagalore_quests_notify ON quests;
+CREATE TRIGGER sagalore_quests_notify
     AFTER INSERT OR UPDATE OF version, active ON quests
-    FOR EACH ROW EXECUTE FUNCTION gutsaga_notify_event();
+    FOR EACH ROW EXECUTE FUNCTION sagalore_notify_event();
 
-DROP TRIGGER IF EXISTS gutsaga_progress_notify ON progress;
-CREATE TRIGGER gutsaga_progress_notify
+DROP TRIGGER IF EXISTS sagalore_progress_notify ON progress;
+CREATE TRIGGER sagalore_progress_notify
     AFTER INSERT ON progress
-    FOR EACH ROW EXECUTE FUNCTION gutsaga_notify_event();
+    FOR EACH ROW EXECUTE FUNCTION sagalore_notify_event();
 
-DROP TRIGGER IF EXISTS gutsaga_level_notify ON characters;
-CREATE TRIGGER gutsaga_level_notify
+DROP TRIGGER IF EXISTS sagalore_level_notify ON characters;
+CREATE TRIGGER sagalore_level_notify
     AFTER UPDATE OF level ON characters
-    FOR EACH ROW EXECUTE FUNCTION gutsaga_notify_event();
+    FOR EACH ROW EXECUTE FUNCTION sagalore_notify_event();

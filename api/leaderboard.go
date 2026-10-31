@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/magnusnilsen/gutsaga/internal/contract"
-	"github.com/magnusnilsen/gutsaga/internal/syncdata"
+	"github.com/sagalore/sagalore/internal/contract"
+	"github.com/sagalore/sagalore/internal/syncdata"
 )
 
 // leaderboardNow is the clock for period windows. Tests replace it.

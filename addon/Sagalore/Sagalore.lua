@@ -6,7 +6,6 @@
 -- objectives_ordered is true on the saga.
 
 local PREFIX = "Sagalore"
-local LEGACY_PREFIX = "OurSagas"
 -- Same URL as internal/app DefaultCreateSagasURL (copyable EditBox in the log).
 local CREATE_SAGAS_URL = "https://app.smia.io/m/sagalore"
 
@@ -153,9 +152,6 @@ local function sendAddon(prefix, message, channel)
 end
 
 local function initDB()
-    if type(SagaloreMigrate) == "table" and type(SagaloreMigrate.apply) == "function" then
-        SagaloreDB = SagaloreMigrate.apply(SagaloreDB, OurSagasDB)
-    end
     if type(SagaloreDB) ~= "table" then
         SagaloreDB = {}
     end
@@ -5028,7 +5024,6 @@ events:SetScript("OnEvent", function(_, event, ...)
         end
         initDB()
         registerPrefix(PREFIX)
-        registerPrefix(LEGACY_PREFIX)
         installEmoteHook()
         installInteractHook()
         return
@@ -5183,7 +5178,7 @@ events:SetScript("OnEvent", function(_, event, ...)
     end
     if event == "CHAT_MSG_ADDON" then
         local prefix, message, _, sender = ...
-        if (prefix ~= PREFIX and prefix ~= LEGACY_PREFIX) or type(sender) ~= "string" then
+        if prefix ~= PREFIX or type(sender) ~= "string" then
             return
         end
         local msg = plainString(message)

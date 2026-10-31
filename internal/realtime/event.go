@@ -8,7 +8,7 @@ import "encoding/json"
 
 // Channel is the Postgres NOTIFY channel. Payload is an Event, at most a few
 // hundred bytes (NOTIFY's limit is 8000).
-const Channel = "gutsaga_events"
+const Channel = "sagalore_events"
 
 const (
 	TypeCreated   = "saga.created"

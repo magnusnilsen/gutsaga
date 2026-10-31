@@ -5,7 +5,7 @@
     "dockerfilePath": "api/Dockerfile"
   },
   "deploy": {
-    "startCommand": "/gutsaga-api",
+    "startCommand": "/sagalore-api",
     "healthcheckPath": "/healthz",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",

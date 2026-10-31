@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/config"
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/config"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 func TestHandleLineFlushPostsQuestVersion(t *testing.T) {

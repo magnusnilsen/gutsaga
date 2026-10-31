@@ -8,7 +8,7 @@ Railway is one place you can run the API. It is not required. This repository in
 docker compose up --build -d
 ```
 
-The API listens on port 8080. Compose is for local development and a single host. Set real secrets outside the checked-in defaults. The known dev secrets are rejected unless `SAGALORE_ALLOW_DEV_SECRETS=1`. Each `SAGALORE_*` variable below still accepts the previous `OURSAGAS_*` name when the new one is unset.
+The API listens on port 8080. Compose is for local development and a single host. Set real secrets outside the checked-in defaults. The known dev secrets are rejected unless `SAGALORE_ALLOW_DEV_SECRETS=1`.
 
 ## Environment
 
@@ -38,12 +38,12 @@ go run ./cmd/sagalore --api-url https://sagalore.example.com
 Official release binaries bake the public URL with:
 
 ```bash
--X github.com/magnusnilsen/gutsaga/internal/version.DefaultAPIBaseURL=${SAGALORE_API_URL}
+-X github.com/sagalore/sagalore/internal/version.DefaultAPIBaseURL=${SAGALORE_API_URL}
 ```
 
-`SAGALORE_API_URL` is a GitHub Actions variable on the official repository. The workflow also reads the previous variable `OURSAGAS_API_URL` when the new one is empty. If both are empty, the companion says `--api-url` or `SAGALORE_API_URL` is required.
+`SAGALORE_API_URL` is a GitHub Actions variable on the official repository. If it is empty, the companion says `--api-url` or `SAGALORE_API_URL` is required.
 
-Set `update.repo` to your fork, or disable updates, if you are not running the official builds. The module path stays `github.com/magnusnilsen/gutsaga`.
+Set `update.repo` to your fork, or disable updates, if you are not running the official builds. The module path stays `github.com/sagalore/sagalore`.
 
 ## Create a group and a saga
 

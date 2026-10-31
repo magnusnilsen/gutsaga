@@ -12,8 +12,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/magnusnilsen/gutsaga/internal/config"
-	"github.com/magnusnilsen/gutsaga/internal/update"
+	"github.com/sagalore/sagalore/internal/config"
+	"github.com/sagalore/sagalore/internal/update"
 )
 
 func discardLog() *slog.Logger {
@@ -25,7 +25,7 @@ func TestOfferUpdateStagesAndNotifiesOnce(t *testing.T) {
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/repos/magnusnilsen/gutsaga/releases/latest":
+		case r.URL.Path == "/repos/sagalore/sagalore/releases/latest":
 			fmt.Fprintf(w, `{"tag_name":"v9.9.9","assets":[{"name":%q,"url":%q},{"name":%q,"url":%q}]}`,
 				name, srv.URL+"/bin", update.AddonZip, srv.URL+"/zip")
 		case r.URL.Path == "/bin":

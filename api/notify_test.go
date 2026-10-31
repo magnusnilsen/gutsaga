@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 func TestAnnounceFlags(t *testing.T) {

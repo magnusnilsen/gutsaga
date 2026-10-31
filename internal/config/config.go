@@ -1,5 +1,4 @@
 // Package config stores Sagalore settings in the user config directory.
-// An existing OurSagas (and older GutSaga / SagaBoard) folder is copied once.
 package config
 
 import (
@@ -13,11 +12,11 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/magnusnilsen/gutsaga/internal/wowpath"
+	"github.com/sagalore/sagalore/internal/wowpath"
 )
 
 // DefaultUpdateRepo is the public Sagalore repo. Releases live there.
-const DefaultUpdateRepo = "magnusnilsen/gutsaga"
+const DefaultUpdateRepo = "sagalore/sagalore" // github.com/sagalore/sagalore
 
 type Update struct {
 	Repo    string `json:"repo"`
@@ -88,97 +87,6 @@ func Dir() (string, error) {
 	}
 }
 
-// legacyDirs are older product config folders, preferred in order.
-// OurSagas is the previous product name. GutSaga was the original; SagaBoard
-// was a short intermediate name.
-func legacyDirs() ([]string, error) {
-	var names []string
-	switch runtime.GOOS {
-	case "darwin":
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		base := filepath.Join(home, "Library", "Application Support")
-		names = []string{filepath.Join(base, "OurSagas"), filepath.Join(base, "GutSaga"), filepath.Join(base, "SagaBoard")}
-	case "windows":
-		base := os.Getenv("APPDATA")
-		if base == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return nil, err
-			}
-			base = filepath.Join(home, "AppData", "Roaming")
-		}
-		names = []string{filepath.Join(base, "OurSagas"), filepath.Join(base, "GutSaga"), filepath.Join(base, "SagaBoard")}
-	default:
-		base := os.Getenv("XDG_DATA_HOME")
-		if base == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return nil, err
-			}
-			base = filepath.Join(home, ".local", "share")
-		}
-		names = []string{filepath.Join(base, "OurSagas"), filepath.Join(base, "gutsaga"), filepath.Join(base, "SagaBoard")}
-	}
-	return names, nil
-}
-
-func dirEmpty(path string) bool {
-	entries, err := os.ReadDir(path)
-	return err != nil || len(entries) == 0
-}
-
-// MigrateLegacy copies an older config directory once when Sagalore's directory is empty.
-func MigrateLegacy() error {
-	next, err := Dir()
-	if err != nil {
-		return err
-	}
-	if !dirEmpty(next) {
-		return nil
-	}
-	olds, err := legacyDirs()
-	if err != nil {
-		return err
-	}
-	var old string
-	for _, cand := range olds {
-		if st, err := os.Stat(filepath.Join(cand, "config.json")); err == nil && !st.IsDir() {
-			old = cand
-			break
-		}
-	}
-	if old == "" {
-		return nil
-	}
-	if err := os.MkdirAll(next, 0o755); err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(old)
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		body, err := os.ReadFile(filepath.Join(old, e.Name()))
-		if err != nil {
-			return err
-		}
-		mode := os.FileMode(0o644)
-		if e.Name() == "config.json" {
-			mode = 0o600
-		}
-		if err := os.WriteFile(filepath.Join(next, e.Name()), body, mode); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func Path() (string, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -188,9 +96,6 @@ func Path() (string, error) {
 }
 
 func Load() (Config, error) {
-	if err := MigrateLegacy(); err != nil {
-		return Config{}, err
-	}
 	path, err := Path()
 	if err != nil {
 		return Config{}, err
@@ -232,7 +137,7 @@ func (cfg *Config) Normalize() {
 	}
 	cfg.Update.Repo = strings.TrimSpace(cfg.Update.Repo)
 	cfg.Update.Token = strings.TrimSpace(cfg.Update.Token)
-	if cfg.Update.Repo == "" || cfg.Update.Repo == "magnusnilsen/gutsaga-releases" {
+	if cfg.Update.Repo == "" {
 		cfg.Update.Repo = DefaultUpdateRepo
 	}
 }

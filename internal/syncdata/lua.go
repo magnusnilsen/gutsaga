@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 // WriteLua renders SagaloreData.lua. The addon reads this file at load /reload.

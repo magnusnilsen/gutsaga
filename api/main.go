@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/magnusnilsen/gutsaga/internal/discord"
-	"github.com/magnusnilsen/gutsaga/internal/envcompat"
-	"github.com/magnusnilsen/gutsaga/internal/realtime"
+	"github.com/sagalore/sagalore/internal/discord"
+	"github.com/sagalore/sagalore/internal/envcompat"
+	"github.com/sagalore/sagalore/internal/realtime"
 )
 
 func main() {
@@ -42,9 +42,9 @@ func main() {
 func usage() {
 	fmt.Fprintf(os.Stderr, `Sagalore API
 
-  gutsaga-api                 start the HTTP server
-  gutsaga-api seed            insert the local Elwynn tutorial sagas
-  gutsaga-api help
+  sagalore-api                 start the HTTP server
+  sagalore-api seed            insert the local Elwynn tutorial sagas
+  sagalore-api help
 
 GET /v1/ws is the player WebSocket (same bearer as /v1/sync).
 
@@ -69,7 +69,6 @@ Environment:
   SAGALORE_OWNER_BATTLETAG      owner of the bootstrap group (else the oldest BattleTag)
   DISCORD_WEBHOOK_URL          copied once onto the bootstrap group when its webhook is empty
   SAGALORE_ALLOW_DEV_SECRETS    set to 1 for local docker-compose only
-  OURSAGAS_*                   previous names for the SAGALORE_* variables above; still read
 `)
 }
 

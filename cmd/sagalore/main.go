@@ -11,12 +11,12 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/magnusnilsen/gutsaga/internal/app"
-	"github.com/magnusnilsen/gutsaga/internal/config"
-	"github.com/magnusnilsen/gutsaga/internal/envcompat"
-	"github.com/magnusnilsen/gutsaga/internal/notify"
-	"github.com/magnusnilsen/gutsaga/internal/tray"
-	"github.com/magnusnilsen/gutsaga/internal/version"
+	"github.com/sagalore/sagalore/internal/app"
+	"github.com/sagalore/sagalore/internal/config"
+	"github.com/sagalore/sagalore/internal/envcompat"
+	"github.com/sagalore/sagalore/internal/notify"
+	"github.com/sagalore/sagalore/internal/tray"
+	"github.com/sagalore/sagalore/internal/version"
 )
 
 type options struct {
@@ -126,7 +126,6 @@ func usage() {
   sagalore --headless            run without a tray icon
 
 Environment: SAGALORE_API_URL, SAGALORE_CLIENT (forever|retail|classic_era|classic), SAGALORE_WOW_PATH, SAGALORE_DEV_TOKEN.
-The previous OURSAGAS_* names are still read.
 Settings live in config.json. The program reads the chat log. It never sends keystrokes to the game.
 `)
 }
@@ -135,7 +134,7 @@ func logger() *slog.Logger {
 	var w io.Writer = os.Stdout
 	if dir, err := config.Dir(); err == nil {
 		_ = os.MkdirAll(dir, 0o755)
-		if f, err := os.OpenFile(filepath.Join(dir, "gutsaga.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+		if f, err := os.OpenFile(filepath.Join(dir, "sagalore.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
 			w = io.MultiWriter(os.Stdout, f)
 		}
 	}
@@ -154,7 +153,7 @@ func loadOrSetup(log *slog.Logger, opts options) (config.Config, int) {
 	}
 	cfg = applyOptions(cfg, opts)
 	if strings.TrimSpace(cfg.APIBaseURL) == "" {
-		fmt.Fprintln(os.Stderr, "--api-url or SAGALORE_API_URL is required (OURSAGAS_API_URL still works)")
+		fmt.Fprintln(os.Stderr, "--api-url or SAGALORE_API_URL is required")
 		return cfg, 1
 	}
 	if err := config.Validate(cfg); err != nil {

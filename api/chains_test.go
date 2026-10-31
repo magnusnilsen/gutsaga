@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 func chainObjective(id, text string) map[string]any {

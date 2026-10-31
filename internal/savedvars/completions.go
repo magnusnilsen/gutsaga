@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 // Completion is one local finish stored by the addon under SagaloreDB.completions.
@@ -36,13 +36,10 @@ var (
 	fieldNumber     = regexp.MustCompile(`\["(version|level|completed_at|started_at)"\]\s*=\s*(-?\d+)`)
 )
 
-// ListSagaloreFiles returns SavedVariables files for this flavor.
-// Sagalore.lua is preferred. OurSagas.lua is included only when that character
-// does not yet have a Sagalore.lua, so a copy that has not run is still read
-// and a migrated character is not imported twice.
+// ListSagaloreFiles returns SavedVariables/Sagalore.lua paths under the WoW account tree.
 func ListSagaloreFiles(wowDir string) ([]string, error) {
 	root := filepath.Join(wowDir, "WTF", "Account")
-	var current, legacy []string
+	var out []string
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -53,26 +50,13 @@ func ListSagaloreFiles(wowDir string) ([]string, error) {
 		if d.IsDir() || !inSavedVariables(path) {
 			return nil
 		}
-		switch {
-		case strings.EqualFold(d.Name(), "Sagalore.lua"):
-			current = append(current, path)
-		case strings.EqualFold(d.Name(), "OurSagas.lua"):
-			legacy = append(legacy, path)
+		if strings.EqualFold(d.Name(), "Sagalore.lua") {
+			out = append(out, path)
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
-	}
-	have := map[string]bool{}
-	for _, path := range current {
-		have[filepath.Dir(path)] = true
-	}
-	out := append([]string{}, current...)
-	for _, path := range legacy {
-		if !have[filepath.Dir(path)] {
-			out = append(out, path)
-		}
 	}
 	return out, nil
 }
@@ -176,101 +160,6 @@ func parseMemberBlob(s string) []contract.GroupMember {
 	return out
 }
 
-// CopyObjectiveChecks copies in-progress objective checks from an older
-// SavedVariables file (GutSaga or SagaBoard) into Sagalore once, when the new file has none.
-func CopyObjectiveChecks(wowDir string) error {
-	root := filepath.Join(wowDir, "WTF", "Account")
-	if _, err := os.Stat(root); err != nil {
-		return nil
-	}
-	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d == nil || d.IsDir() {
-			return nil
-		}
-		name := d.Name()
-		if !strings.EqualFold(name, "GutSaga.lua") && !strings.EqualFold(name, "SagaBoard.lua") {
-			return nil
-		}
-		if !strings.Contains(path, string(filepath.Separator)+"SavedVariables"+string(filepath.Separator)) {
-			return nil
-		}
-		oldBody, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		start := strings.Index(string(oldBody), `["objectives"]`)
-		if start < 0 {
-			return nil
-		}
-		next := filepath.Join(filepath.Dir(path), "Sagalore.lua")
-		cur, _ := os.ReadFile(next)
-		if strings.Contains(string(cur), "objectives_copied") || (strings.Contains(string(cur), `["objectives"]`) && !strings.Contains(string(cur), `["objectives"] = {}`)) {
-			return nil
-		}
-		snippet := string(oldBody)[start:]
-		marker := "\nSagaloreDB = SagaloreDB or {}\nSagaloreDB.objectives_copied = true\n"
-		if err := os.WriteFile(next, append(cur, []byte(marker+snippet)...), 0o644); err != nil {
-			return err
-		}
-		return nil
-	})
-}
-
-// MigrateOurSagas copies SavedVariables/OurSagas.lua onto Sagalore.lua and
-// renames the OurSagasDB global. WoW names the file after the addon folder, so
-// the old file is not loaded once the addon is Sagalore. A Sagalore.lua that
-// already holds progress is left alone.
-func MigrateOurSagas(wowDir string) error {
-	root := filepath.Join(wowDir, "WTF", "Account")
-	if _, err := os.Stat(root); err != nil {
-		return nil
-	}
-	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d == nil || d.IsDir() {
-			return nil
-		}
-		if !strings.EqualFold(d.Name(), "OurSagas.lua") || !inSavedVariables(path) {
-			return nil
-		}
-		srcBody, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		dest := filepath.Join(filepath.Dir(path), "Sagalore.lua")
-		destBody, destErr := os.ReadFile(dest)
-		if destErr != nil && !os.IsNotExist(destErr) {
-			return destErr
-		}
-		if !shouldCopySavedVars(string(srcBody), string(destBody), destErr == nil) {
-			return nil
-		}
-		rewritten := strings.ReplaceAll(string(srcBody), "OurSagasDB", "SagaloreDB")
-		return os.WriteFile(dest, []byte(rewritten), 0o644)
-	})
-}
-
-func shouldCopySavedVars(src, dst string, dstExists bool) bool {
-	if strings.TrimSpace(src) == "" {
-		return false
-	}
-	if !dstExists {
-		return true
-	}
-	if hasProgress(dst) {
-		return false
-	}
-	return hasProgress(src)
-}
-
-func hasProgress(body string) bool {
-	if len(ParseCompletions("migrate", body)) > 0 || len(ParseResets("migrate", body)) > 0 || len(ParsePendingInvites("migrate", body)) > 0 {
-		return true
-	}
-	if strings.Contains(body, `["seen_notice"]`) {
-		return true
-	}
-	return objectivesHaveData(body)
-}
 
 func objectivesHaveData(body string) bool {
 	i := strings.Index(body, `["objectives"]`)

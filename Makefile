@@ -1,7 +1,7 @@
 .PHONY: dev wait seed down test
 
 API_URL ?= http://localhost:8080
-DATABASE_URL ?= postgres://gutsaga:gutsaga@127.0.0.1:5432/gutsaga?sslmode=disable
+DATABASE_URL ?= postgres://sagalore:sagalore@127.0.0.1:5432/sagalore?sslmode=disable
 
 dev: 
 	docker compose up --build -d
@@ -29,4 +29,3 @@ test:
 	lua5.1 addon/objectives_test.lua
 	lua5.1 addon/chains_test.lua
 	lua5.1 addon/invite_test.lua
-	lua5.1 addon/migrate_test.lua

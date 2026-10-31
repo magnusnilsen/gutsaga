@@ -110,55 +110,6 @@ func TestInstallClassicKeepsFlavorTOCs(t *testing.T) {
 	}
 }
 
-func TestInstallMigratesAndRemovesLegacyAddon(t *testing.T) {
-	wow := t.TempDir()
-	legacy := filepath.Join(wow, "Interface", "AddOns", "OurSagas")
-	if err := os.MkdirAll(filepath.Join(legacy, "media"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(legacy, "OurSagasData.lua"), []byte("OurSagasData = { entries = { kept = true } }\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(legacy, "media", "quest.tga"), []byte("TGAdata"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	sv := filepath.Join(wow, "WTF", "Account", "ACC", "Celebras", "Magni", "SavedVariables")
-	if err := os.MkdirAll(sv, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	body := "OurSagasDB = {\n[\"completions\"] = {\n[\"4cc34091-0e9b-4c18-800a-3162c90acc56\"] = {\n[\"saga_id\"] = \"4cc34091-0e9b-4c18-800a-3162c90acc56\",\n[\"character\"] = \"Magni\",\n[\"version\"] = 1,\n[\"level\"] = 2,\n[\"completed_at\"] = 1792698415,\n[\"realm\"] = \"Celebras\",\n},\n},\n}\n"
-	if err := os.WriteFile(filepath.Join(sv, "OurSagas.lua"), []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := Install(wow, "classic_era"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Fatalf("legacy addon still present: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "Sagalore", "SagaloreData.lua"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "kept = true") || strings.Contains(string(data), "OurSagas") || !strings.Contains(string(data), "SagaloreData") {
-		t.Fatalf("data file:\n%s", data)
-	}
-	tga, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "Sagalore", "media", "quest.tga"))
-	if err != nil || string(tga) != "TGAdata" {
-		t.Fatalf("tga %q err %v", tga, err)
-	}
-	migrated, err := os.ReadFile(filepath.Join(sv, "Sagalore.lua"))
-	if err != nil || !strings.Contains(string(migrated), "SagaloreDB") || strings.Contains(string(migrated), "OurSagasDB") {
-		t.Fatalf("saved vars:\n%s %v", migrated, err)
-	}
-	if err := Install(wow, "classic_era"); err != nil {
-		t.Fatal(err)
-	}
-	again, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "Sagalore", "SagaloreData.lua"))
-	if err != nil || string(again) != string(data) {
-		t.Fatalf("second install rewrote data:\n%s", again)
-	}
-}
 
 func between(s, start, end string) string {
 	i := strings.Index(s, start)

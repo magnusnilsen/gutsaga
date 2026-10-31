@@ -17,7 +17,6 @@ func TestParseCompleteRealmWithSpaces(t *testing.T) {
 }
 
 func TestParseCompleteFromChannelEcho(t *testing.T) {
-	// Channel named GutSaga prefixes the line; payload must still parse.
 	line := `10/22 22:30:00.000  [Sagalore] Magní: [Sagalore] COMPLETE 11111111-1111-1111-1111-111111111111 3 Magní Celebras 2 1761144240`
 	ev, ok := Parse(line)
 	if !ok || ev.Kind != KindComplete || ev.Character != "Magní" || ev.Realm != "Celebras" {
@@ -47,7 +46,7 @@ func TestParseLevelAndJunk(t *testing.T) {
 	if _, ok := Parse(`[Sagalore] COMPLETE bare-id`); ok {
 		t.Fatal("short line should fail")
 	}
-	if _, ok := Parse("GutSaga: Fullført – noe"); ok {
+	if _, ok := Parse("Chat: Fullført – noe"); ok {
 		t.Fatal("friendly line must not parse")
 	}
 	if _, ok := Parse(`[Sagalore] COMPLETE id 1 Magni - 0 1761144240`); ok {
@@ -59,13 +58,9 @@ func TestParseLevelAndJunk(t *testing.T) {
 	}
 }
 
-func TestParseLegacyOurSagasPrefix(t *testing.T) {
-	ev, ok := Parse(`[OurSagas] COMPLETE 11111111-1111-1111-1111-111111111111 3 Magni Argent Dawn 12 1761144240`)
-	if !ok || ev.Kind != KindComplete || ev.Character != "Magni" || ev.Realm != "Argent Dawn" {
-		t.Fatalf("%+v ok=%v", ev, ok)
-	}
-	ev, ok = Parse(`[OurSagas] Magní: [OurSagas] INVITE accept|abc`)
-	if !ok || ev.Kind != KindInvite || ev.Action != "accept" || ev.InviteID != "abc" {
-		t.Fatalf("%+v ok=%v", ev, ok)
+func TestParseRejectsUnknownPrefix(t *testing.T) {
+	ev, ok := Parse(`[Other] COMPLETE 11111111-1111-1111-1111-111111111111 3 Magni Argent Dawn 12 1761144240`)
+	if ok {
+		t.Fatalf("unexpected %+v", ev)
 	}
 }
