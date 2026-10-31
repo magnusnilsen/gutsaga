@@ -1444,6 +1444,10 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 		if quests[i].HasImage {
 			quests[i].ImageURL = "/v1/sagas/" + quests[i].ID + "/image"
 		}
+		// Personal starters are stamped Sagalore#0000; the log shows "Sagalore".
+		if strings.EqualFold(quests[i].CreatedBy, personalCreator) {
+			quests[i].CreatedBy = "Sagalore"
+		}
 	}
 	if err := applyChainPositions(ctx, s.pool, quests); err != nil {
 		return contract.SyncResponse{}, err

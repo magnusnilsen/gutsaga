@@ -24,7 +24,13 @@ func (s *Store) EnsurePersonalGroup(ctx context.Context, playerID string) error 
 		SELECT id::text FROM groups
 		WHERE personal AND owner_player_id=$1`, playerID).Scan(&existing)
 	if err == nil {
-		return nil
+		if err := s.autoIncludePersonalCharacters(ctx, playerID, existing); err != nil {
+			return err
+		}
+		if err := s.upgradePersonalStartersV2(ctx, existing); err != nil {
+			return err
+		}
+		return s.ensurePersonalStarterCovers(ctx, existing)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return err
@@ -68,11 +74,80 @@ func (s *Store) EnsurePersonalGroup(ctx context.Context, playerID string) error 
 		return fmt.Errorf("personal creator: %w", err)
 	}
 	for _, q := range personalStarterQuests() {
-		q.GroupID = groupID
-		q.CreatedBy = personalCreator
-		if _, err := s.CreateQuest(ctx, q); err != nil {
-			return fmt.Errorf("personal starter %q: %w", q.Title, err)
+		if err := s.createPersonalStarter(ctx, groupID, q); err != nil {
+			return err
 		}
+	}
+	if err := s.autoIncludePersonalCharacters(ctx, playerID, groupID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) createPersonalStarter(ctx context.Context, groupID string, q QuestInput) error {
+	q.GroupID = groupID
+	q.CreatedBy = personalCreator
+	created, err := s.CreateQuest(ctx, q)
+	if err != nil {
+		return fmt.Errorf("personal starter %q: %w", q.Title, err)
+	}
+	if cover := personalCoverPNG(q.Title); len(cover) > 0 {
+		if _, err := s.writeQuestImage(ctx, created.ID, "image/png", cover); err != nil {
+			return fmt.Errorf("personal starter cover %q: %w", q.Title, err)
+		}
+	}
+	return nil
+}
+
+// ensurePersonalStarterCovers attaches sample covers to active personal
+// starters that still lack an image (idempotent).
+func (s *Store) ensurePersonalStarterCovers(ctx context.Context, groupID string) error {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id::text, title FROM quests
+		WHERE group_id=$1::uuid AND active AND created_by=$2
+		  AND (image_bytes IS NULL OR octet_length(image_bytes)=0)`,
+		groupID, personalCreator)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type row struct{ id, title string }
+	var missing []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.title); err != nil {
+			return err
+		}
+		missing = append(missing, r)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, r := range missing {
+		cover := personalCoverPNG(r.title)
+		if len(cover) == 0 {
+			continue
+		}
+		if _, err := s.writeQuestImage(ctx, r.id, "image/png", cover); err != nil {
+			return fmt.Errorf("personal starter cover %q: %w", r.title, err)
+		}
+	}
+	return nil
+}
+
+// autoIncludePersonalCharacters marks every character on the account as
+// participating and clears leftover Personal include-invites. Personal is
+// account-scoped; there is no opt-in dialog.
+func (s *Store) autoIncludePersonalCharacters(ctx context.Context, playerID, groupID string) error {
+	if _, err := s.pool.Exec(ctx, `
+		UPDATE characters SET participating=true, updated_at=now()
+		WHERE player_id=$1 AND participating=false`, playerID); err != nil {
+		return err
+	}
+	if _, err := s.pool.Exec(ctx, `
+		UPDATE group_invites SET status='accepted'
+		WHERE group_id=$1::uuid AND status='pending'`, groupID); err != nil {
+		return err
 	}
 	return nil
 }
@@ -94,32 +169,79 @@ func (s *Store) groupIsPersonal(ctx context.Context, groupID string) (bool, erro
 	return personal, err
 }
 
+// upgradePersonalStartersV2 replaces outdated auto-seeded starters with the
+// current sample set. Covers the first-wave trio and the sit-based rhythm
+// (Classic /sit has no chat text). Idempotent once the current set is live.
+func (s *Store) upgradePersonalStartersV2(ctx context.Context, groupID string) error {
+	var oldCount int
+	err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM quests
+		WHERE group_id=$1::uuid AND active
+		  AND created_by=$2
+		  AND (
+		    title IN ('Say hello', 'Take a seat', 'Celebrate')
+		    OR (title = 'A quick rhythm' AND objectives::text ILIKE '%"SIT"%')
+		  )`,
+		groupID, personalCreator).Scan(&oldCount)
+	if err != nil || oldCount == 0 {
+		return err
+	}
+	if _, err := s.pool.Exec(ctx, `
+		UPDATE quests SET active=false, updated_at=now()
+		WHERE group_id=$1::uuid AND active AND created_by=$2`,
+		groupID, personalCreator); err != nil {
+		return err
+	}
+	if _, err := s.EnsurePlayer(ctx, personalCreator, "Sagalore"); err != nil {
+		return fmt.Errorf("personal creator: %w", err)
+	}
+	for _, q := range personalStarterQuests() {
+		if err := s.createPersonalStarter(ctx, groupID, q); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // personalStarterQuests are zone- and faction-agnostic. Emotes work anywhere
 // in the open world, so every new account can finish them on any character.
+// They intentionally sample different saga shapes: a single action, a timed
+// sequence, and a flourish — enough to show what authoring can do.
 func personalStarterQuests() []QuestInput {
 	return []QuestInput{
 		{
-			Title:       "Say hello",
-			Description: "A saga can watch what you do in the world.\n\nWave at nobody in particular — /wave — to mark this one done.",
+			Title:       "Wave hello",
+			Description: "Sagalore watches what you do in the world.\n\nType /wave anywhere to finish this first saga.",
 			PartyQuest:  true,
 			Objectives: []contract.Objective{
 				{ID: "wave", Type: contract.ObjectiveEmote, Text: "Wave (/wave)", Emote: "WAVE"},
 			},
 		},
 		{
-			Title:       "Take a seat",
-			Description: "Rest for a moment.\n\nSit down with /sit. Stand up whenever you like afterward.",
+			Title:       "A quick rhythm",
+			Description: "Sagas can chain actions on a timer.\n\nKneel, then wave - both within 20 seconds - to clear this one.",
 			PartyQuest:  true,
 			Objectives: []contract.Objective{
-				{ID: "sit", Type: contract.ObjectiveEmote, Text: "Sit (/sit)", Emote: "SIT"},
+				{
+					ID:        "rhythm",
+					Type:      contract.ObjectiveSequence,
+					Text:      "Kneel, then wave (20s)",
+					WithinSec: 20,
+					Beats: []contract.Objective{
+						// /sit has no chat text on Classic, so the first sample
+						// beat uses /kneel (which does) and stays easy to verify.
+						{ID: "kneel", Type: contract.ObjectiveEmote, Text: "Kneel (/kneel)", Emote: "KNEEL"},
+						{ID: "wave2", Type: contract.ObjectiveEmote, Text: "Wave (/wave)", Emote: "WAVE"},
+					},
+				},
 			},
 		},
 		{
-			Title:       "Celebrate",
-			Description: "Something went right — or will.\n\nCheer with /cheer to finish this starter.",
+			Title:       "Strike a pose",
+			Description: "One last flourish before you invite friends or build your own.\n\nDance with /dance.",
 			PartyQuest:  true,
 			Objectives: []contract.Objective{
-				{ID: "cheer", Type: contract.ObjectiveEmote, Text: "Cheer (/cheer)", Emote: "CHEER"},
+				{ID: "dance", Type: contract.ObjectiveEmote, Text: "Dance (/dance)", Emote: "DANCE"},
 			},
 		},
 	}

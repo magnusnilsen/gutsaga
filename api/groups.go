@@ -243,13 +243,16 @@ func (s *Store) CreateInvite(ctx context.Context, playerID, groupID, name, realm
 }
 
 // SyncInvites creates include-invites for alts that are not participating, then lists pending invites.
+// Personal groups are skipped: every character on the account belongs there without asking.
 func (s *Store) SyncInvites(ctx context.Context, playerID string) ([]contract.Invite, error) {
 	if _, err := s.pool.Exec(ctx, `
 		INSERT INTO group_invites (group_id, character_name, realm, status)
 		SELECT gm.group_id, c.name, c.realm, 'pending'
 		FROM characters c
 		JOIN group_members gm ON gm.player_id = c.player_id
+		JOIN groups g ON g.id = gm.group_id
 		WHERE c.player_id=$1 AND c.participating = false
+		AND NOT g.personal
 		AND NOT EXISTS (
 			SELECT 1 FROM group_invites i
 			WHERE i.group_id = gm.group_id

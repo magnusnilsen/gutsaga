@@ -7,6 +7,8 @@
 
 local PREFIX = "Sagalore"
 local LEGACY_PREFIX = "OurSagas"
+-- Same URL as internal/app DefaultCreateSagasURL (copyable EditBox in the log).
+local CREATE_SAGAS_URL = "https://app.smia.io/m/sagalore"
 
 local function L(key)
     if type(Sagalore_L) == "function" then
@@ -58,6 +60,10 @@ local INK = { r = 0.22, g = 0.12, b = 0.04 }
 local INK_MUTED = { r = 0.42, g = 0.35, b = 0.25 }
 local lastDetailID
 local selectedID
+-- Toast (and similar) can open a completed saga while every saga is done.
+-- show() clears completed selection on open so the all-done info screen can appear;
+-- this flag keeps an explicit completed pick.
+local preserveCompletedSelection = false
 local built = false
 local checking = false
 local lastCharacterLine = ""
@@ -708,6 +714,33 @@ function SagaloreBoard.sortMode()
     return "completed_at"
 end
 
+-- True when the saga has objectives that can meaningfully race on a clock
+-- (travel, kills, sequences, etc.). Lone free-standing emotes do not.
+local function entryHasTimedSteps(entry)
+    if type(entry) ~= "table" or type(entry.objectives) ~= "table" then
+        return false
+    end
+    local n = #entry.objectives
+    if n == 0 then
+        return false
+    end
+    for i = 1, n do
+        local o = entry.objectives[i]
+        if type(o) == "table" then
+            local t = o.type
+            if t == "sequence" or t == "go" or t == "location" or t == "kill"
+                or t == "item" or t == "collect" or t == "instance_run"
+                or t == "all_of" or t == "any_of" then
+                return true
+            end
+            if (t == "emote" or t == "talk") and (o.zone or o.subzone or o.map_id or o.x or o.y) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function activityList(entry)
     local out = {}
     local seen = {}
@@ -779,7 +812,10 @@ local function activityList(entry)
             })
         end
     end
-    local mode = SagaloreBoard.sortMode()
+    local mode = "completed_at"
+    if entryHasTimedSteps(entry) then
+        mode = SagaloreBoard.sortMode()
+    end
     table.sort(out, function(a, b)
         if mode == "completion_time" then
             local ad, bd = a.duration_sec, b.duration_sec
@@ -879,10 +915,15 @@ local function applyItemLink(text, obj)
 end
 
 local function creatorName(entry)
-    if type(entry.created_by) == "string" and entry.created_by ~= "" then
-        return entry.created_by
+    local by = entry and entry.created_by
+    if type(by) ~= "string" or by == "" then
+        return "Ukjent"
     end
-    return "Ukjent"
+    -- Personal starters are stamped Sagalore#0000 in the API.
+    if string.lower(by) == "sagalore#0000" then
+        return "Sagalore"
+    end
+    return by
 end
 
 local function completionSet()
@@ -1034,10 +1075,7 @@ local function searchRank(entry, needle)
 end
 
 local function passesFilters(entry, entries)
-    local bucket = statusBucket(entry, entries)
-    if statusFilter[bucket] == false then
-        return false
-    end
+    -- Status is already the open/done list sections; no separate status filter.
     if creatorHidden[creatorName(entry)] then
         return false
     end
@@ -1260,26 +1298,9 @@ local function filterCheck(text, checked, onClick)
 end
 
 local function setupListFilters()
-    if not statusDrop or not UIDropDownMenu_Initialize then
+    if not UIDropDownMenu_Initialize then
         return
     end
-    UIDropDownMenu_Initialize(statusDrop, function()
-        filterCheck(L("ui.not_started"), statusFilter.open ~= false, function(on)
-            statusFilter.open = on
-            saveFilters()
-        end)
-        -- Chain prerequisite not finished yet ("Låst: fullfør … først").
-        filterCheck(L("ui.requires_previous"), statusFilter.locked ~= false, function(on)
-            statusFilter.locked = on
-            saveFilters()
-        end)
-        filterCheck(L("ui.completed"), statusFilter.done ~= false, function(on)
-            statusFilter.done = on
-            saveFilters()
-        end)
-        spaceDropList(1)
-    end)
-    UIDropDownMenu_SetText(statusDrop, L("ui.status"))
     if groupDrop then
         UIDropDownMenu_Initialize(groupDrop, function()
             local seen, names = {}, {}
@@ -1312,36 +1333,38 @@ local function setupListFilters()
         end)
         UIDropDownMenu_SetText(groupDrop, L("ui.group"))
     end
-    UIDropDownMenu_Initialize(creatorDrop, function()
-        local seen, names = {}, {}
-        local entries = currentEntries()
-        for i = 1, #entries do
-            local name = creatorName(entries[i])
-            if not seen[name] then
-                seen[name] = true
-                names[#names + 1] = name
-            end
-        end
-        table.sort(names)
-        if #names == 0 then
-            filterCheck(L("ui.none"), false, function() end)
-            spaceDropList(1)
-            return
-        end
-        for i = 1, #names do
-            local name = names[i]
-            filterCheck(name, not creatorHidden[name], function(on)
-                if on then
-                    creatorHidden[name] = nil
-                else
-                    creatorHidden[name] = true
+    if creatorDrop then
+        UIDropDownMenu_Initialize(creatorDrop, function()
+            local seen, names = {}, {}
+            local entries = currentEntries()
+            for i = 1, #entries do
+                local name = creatorName(entries[i])
+                if not seen[name] then
+                    seen[name] = true
+                    names[#names + 1] = name
                 end
-                saveFilters()
-            end)
-        end
-        spaceDropList(1)
-    end)
-    UIDropDownMenu_SetText(creatorDrop, L("ui.created_by"))
+            end
+            table.sort(names)
+            if #names == 0 then
+                filterCheck(L("ui.none"), false, function() end)
+                spaceDropList(1)
+                return
+            end
+            for i = 1, #names do
+                local name = names[i]
+                filterCheck(name, not creatorHidden[name], function(on)
+                    if on then
+                        creatorHidden[name] = nil
+                    else
+                        creatorHidden[name] = true
+                    end
+                    saveFilters()
+                end)
+            end
+            spaceDropList(1)
+        end)
+        UIDropDownMenu_SetText(creatorDrop, L("ui.created_by"))
+    end
     hookDropListSpacing()
 end
 
@@ -2462,6 +2485,9 @@ function SagaloreBoard.hideBoardChrome()
     if SagaloreBoard.emptyFS then
         SagaloreBoard.emptyFS:Hide()
     end
+    if SagaloreBoard.reloadHintFS then
+        SagaloreBoard.reloadHintFS:Hide()
+    end
     if SagaloreBoard.boardGroupDrop then
         SagaloreBoard.boardGroupDrop:Hide()
     end
@@ -2577,6 +2603,7 @@ function SagaloreBoard.hideLogLists()
     if creatorDrop then
         creatorDrop:Hide()
     end
+    SagaloreBoard.hideCreateURL()
 end
 
 function SagaloreBoard.periodLabel(period)
@@ -2774,6 +2801,16 @@ function SagaloreBoard.refreshBoard()
     detailTitle:Show()
     local detailY = (detailTitle:GetStringHeight() or 24) + 12
 
+    if SagaloreBoard.reloadHintFS then
+        SagaloreBoard.reloadHintFS:ClearAllPoints()
+        SagaloreBoard.reloadHintFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+        SagaloreBoard.reloadHintFS:SetWidth(width)
+        SagaloreBoard.reloadHintFS:SetTextColor(0.72, 0.66, 0.52)
+        SagaloreBoard.reloadHintFS:SetText(L("ui.board_reload"))
+        SagaloreBoard.reloadHintFS:Show()
+        detailY = detailY + (SagaloreBoard.reloadHintFS:GetStringHeight() or 14) + 10
+    end
+
     local entries = {}
     local board = selected and SagaloreBoard.findLeaderboard(selected.id, period) or nil
     if type(board) == "table" and type(board.entries) == "table" then
@@ -2918,6 +2955,65 @@ function SagaloreBoard.hideActivitySort()
     end
 end
 
+function SagaloreBoard.urlBoxFocused()
+    local box = SagaloreBoard.urlBox
+    return box and box.HasFocus and box:HasFocus()
+end
+
+function SagaloreBoard.hideCreateURL()
+    if SagaloreBoard.urlBox then
+        SagaloreBoard.urlBox:ClearFocus()
+        SagaloreBoard.urlBox:Hide()
+    end
+    if SagaloreBoard.urlSelectBtn then
+        SagaloreBoard.urlSelectBtn:Hide()
+    end
+end
+
+function SagaloreBoard.placeCreateURL(y, width, textColor)
+    local box = SagaloreBoard.urlBox
+    local btn = SagaloreBoard.urlSelectBtn
+    if not box then
+        return y
+    end
+    -- World tick rebuilds the detail pane ~1/s. Leave a focused box alone so
+    -- the player can select and copy the URL without it clearing.
+    if box:IsShown() and SagaloreBoard.urlBoxFocused() then
+        return (SagaloreBoard.urlBoxBottomY or (y + 26))
+    end
+    local btnW = 56
+    if btn and btn.GetFontString and btn:GetFontString() and btn:GetFontString().GetStringWidth then
+        btnW = math.max(56, (btn:GetFontString():GetStringWidth() or 48) + 16)
+    end
+    local boxW = width - btnW - 8
+    if boxW < 120 then
+        boxW = width
+        btnW = 0
+    end
+    box:ClearAllPoints()
+    box:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -y)
+    box:SetWidth(boxW)
+    if box:GetText() ~= CREATE_SAGAS_URL then
+        box:SetText(CREATE_SAGAS_URL)
+    end
+    if type(textColor) == "table" then
+        box:SetTextColor(textColor.r or 0.55, textColor.g or 0.75, textColor.b or 1)
+    else
+        box:SetTextColor(0.45, 0.7, 1)
+    end
+    box:Show()
+    if btn and btnW > 0 then
+        btn:ClearAllPoints()
+        btn:SetPoint("LEFT", box, "RIGHT", 6, 0)
+        btn:SetWidth(btnW)
+        btn:Show()
+    elseif btn then
+        btn:Hide()
+    end
+    SagaloreBoard.urlBoxBottomY = y + 26
+    return SagaloreBoard.urlBoxBottomY
+end
+
 refresh = function()
     if not built then
         return
@@ -2949,15 +3045,21 @@ refresh = function()
     sortBySearch(doneList)
 
     local selectedEntry = selectedID and findEntry(selectedID) or nil
+    -- Prefer the top uncompleted saga. Never auto-select a completed one so
+    -- an all-done log can show the info screen instead of a leftover finish.
     if not selectedEntry then
         if openList[1] then
             selectedEntry = openList[1]
-        elseif doneList[1] then
-            selectedEntry = doneList[1]
-        end
-        if selectedEntry then
             selectedID = selectedEntry.saga_id
+        else
+            selectedID = nil
         end
+    end
+    local allDoneInfo = selectedEntry == nil and #openList == 0 and #doneList > 0
+    if allDoneInfo then
+        SagaloreBoard.applyBoardSkin()
+    else
+        SagaloreBoard.applyLogSkin()
     end
 
     local openExpanded = sectionExpanded("open", true)
@@ -3089,25 +3191,56 @@ refresh = function()
         if detailMeta then
             detailMeta:Hide()
         end
-        if player.name == "" then
+        SagaloreBoard.hideActivitySort()
+        local showCreateURL = false
+        if allDoneInfo then
+            -- Use the same FontString as parchment section headers ("Description" /
+            -- "Activity") — QuestTitleFont. Avoid SetFont(); on Classic it can
+            -- permanently detach the inherit and fall back to body size.
+            detailGoalsHeader:Show()
+            detailGoalsHeader:SetText(L("ui.all_done"))
+            detailGoalsHeader:SetTextColor(1, 0.86, 0.45)
+            detailGoalsHeader:SetWidth(width)
+            detailGoalsHeader:ClearAllPoints()
+            detailGoalsHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
+            detailY = detailY + (detailGoalsHeader:GetStringHeight() or 20) + 12
+            detailFS:SetText(L("ui.all_done_body"))
+            detailFS:SetTextColor(0.9, 0.84, 0.7)
+            showCreateURL = true
+        elseif player.name == "" then
             detailFS:SetText(L("ui.login_character"))
+            detailFS:SetTextColor(INK.r, INK.g, INK.b)
         elseif type(SagaloreData) ~= "table" or type(SagaloreData.entries) ~= "table" or #SagaloreData.entries == 0 then
             detailFS:SetText(L("ui.no_sagas"))
+            detailFS:SetTextColor(INK.r, INK.g, INK.b)
         elseif #currentEntries() == 0
             and type(SagaloreInvite) == "table" and type(SagaloreInvite.onlyPersonalGroups) == "function"
             and SagaloreInvite.onlyPersonalGroups(SagaloreData) then
             detailFS:SetText(L("ui.ask_invite"))
+            detailFS:SetTextColor(INK.r, INK.g, INK.b)
+            showCreateURL = true
         else
             detailFS:SetText(string.format(L("ui.no_sagas_for"), player.name))
+            detailFS:SetTextColor(INK.r, INK.g, INK.b)
         end
-        detailFS:SetTextColor(INK.r, INK.g, INK.b)
         detailFS:SetWidth(width)
         detailFS:ClearAllPoints()
         detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
         detailY = detailY + (detailFS:GetStringHeight() or 14) + 8
+        if showCreateURL then
+            local urlColor = allDoneInfo and { r = 0.55, g = 0.78, b = 1 } or { r = 0.2, g = 0.35, b = 0.7 }
+            detailY = SagaloreBoard.placeCreateURL(detailY, width, urlColor)
+        else
+            SagaloreBoard.hideCreateURL()
+        end
     else
+        SagaloreBoard.hideCreateURL()
         local selectedLocked = entryLocked(selectedEntry, entries)
         detailTitle:Show()
+        -- Re-bind the inherit in case a prior SetFont() detached QuestTitleFont.
+        if SagaloreBoard.detailTitleFont and _G[SagaloreBoard.detailTitleFont] then
+            detailTitle:SetFontObject(_G[SagaloreBoard.detailTitleFont])
+        end
         detailTitle:SetText(selectedEntry.title or "Saga")
         -- Parchment header stays dark ink for contrast; list titles carry difficulty color.
         detailTitle:SetTextColor(INK.r, INK.g, INK.b)
@@ -3193,6 +3326,7 @@ refresh = function()
             detailY = detailY + 4
         end
         detailGoalsHeader:Show()
+        detailGoalsHeader:SetText(L("ui.description"))
         detailGoalsHeader:ClearAllPoints()
         detailGoalsHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
         detailGoalsHeader:SetWidth(width)
@@ -3200,10 +3334,6 @@ refresh = function()
         detailY = detailY + (detailGoalsHeader:GetStringHeight() or 20) + 10
 
         local description = formatDescription(selectedEntry.description)
-        if type(SagaloreInvite) == "table" and type(SagaloreInvite.onlyPersonalGroups) == "function"
-            and SagaloreInvite.onlyPersonalGroups(SagaloreData) then
-            description = description .. "\n\n" .. L("ui.create_hint")
-        end
         detailFS:SetText(description)
         detailFS:SetTextColor(INK.r, INK.g, INK.b)
         detailFS:SetSpacing(4)
@@ -3211,6 +3341,7 @@ refresh = function()
         detailFS:ClearAllPoints()
         detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
         detailY = detailY + (detailFS:GetStringHeight() or 14) + 12
+        SagaloreBoard.hideCreateURL()
 
         if detailImage then
             local path = selectedEntry.image
@@ -3251,19 +3382,26 @@ refresh = function()
             activities = actList
         end
     end
+    local showActivityTiming = selectedEntry and entryHasTimedSteps(selectedEntry)
     if detailActivityHeader then
         if #activities > 0 then
             detailY = detailY + 8
             detailActivityHeader:Show()
             detailActivityHeader:ClearAllPoints()
             detailActivityHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
-            local headerW, sortH = SagaloreBoard.placeActivitySort(detailY, width)
+            local headerW = width
+            local headerH = detailActivityHeader:GetStringHeight() or 20
+            if showActivityTiming then
+                local sortH
+                headerW, sortH = SagaloreBoard.placeActivitySort(detailY, width)
+                if sortH > headerH then
+                    headerH = sortH
+                end
+            else
+                SagaloreBoard.hideActivitySort()
+            end
             detailActivityHeader:SetWidth(headerW)
             detailActivityHeader:SetTextColor(INK.r, INK.g, INK.b)
-            local headerH = detailActivityHeader:GetStringHeight() or 20
-            if sortH > headerH then
-                headerH = sortH
-            end
             detailY = detailY + headerH + 10
         else
             detailActivityHeader:Hide()
@@ -3281,12 +3419,14 @@ refresh = function()
                 row.userFS:Hide()
             end
             local whenText = act.when or ""
-            local durText = SagaloreBoard.formatDuration(act.duration_sec)
-            if durText ~= "" then
-                if whenText ~= "" then
-                    whenText = whenText .. " · " .. durText
-                else
-                    whenText = durText
+            if showActivityTiming then
+                local durText = SagaloreBoard.formatDuration(act.duration_sec)
+                if durText ~= "" then
+                    if whenText ~= "" then
+                        whenText = whenText .. " · " .. durText
+                    else
+                        whenText = durText
+                    end
                 end
             end
             local charText = act.character or ""
@@ -3548,12 +3688,13 @@ local function onWorld()
     readObject()
     checkAll()
     if frame and frame:IsShown() then
-        -- Rebuilding the window closes an open dropdown. The world tick is
-        -- about once a second, which is what made the menu vanish.
+        -- Rebuilding the window closes an open dropdown and clears EditBox
+        -- selection. Skip while a menu is open or the create-URL box is focused.
         local list = _G.DropDownList1
-        if not (list and list.IsShown and list:IsShown()) then
-            refresh()
+        if (list and list.IsShown and list:IsShown()) or SagaloreBoard.urlBoxFocused() then
+            return
         end
+        refresh()
     else
         updateMinimapUnread()
     end
@@ -3563,6 +3704,23 @@ local function show()
     if frame then
         frame:Show()
         onWorld()
+        if not preserveCompletedSelection then
+            local entry = selectedID and findEntry(selectedID) or nil
+            if entry and isComplete(entry) then
+                local hasOpen = false
+                local entries = currentEntries()
+                for i = 1, #entries do
+                    if not isComplete(entries[i]) then
+                        hasOpen = true
+                        break
+                    end
+                end
+                if not hasOpen then
+                    selectedID = nil
+                end
+            end
+        end
+        preserveCompletedSelection = false
         refresh()
     end
 end
@@ -4065,20 +4223,17 @@ local function build()
     end
 
     if UIDropDownMenu_Initialize then
-        statusDrop = CreateFrame("Frame", "SagaloreStatusFilter", frame, "UIDropDownMenuTemplate")
-        statusDrop:SetPoint("BOTTOMLEFT", listPanel, "TOPLEFT", -14, -4)
-        UIDropDownMenu_SetWidth(statusDrop, 78)
-        UIDropDownMenu_JustifyText(statusDrop, "LEFT")
         groupDrop = CreateFrame("Frame", "SagaloreGroupFilter", frame, "UIDropDownMenuTemplate")
-        groupDrop:SetPoint("LEFT", statusDrop, "RIGHT", -20, 0)
-        UIDropDownMenu_SetWidth(groupDrop, 78)
+        groupDrop:SetPoint("BOTTOMLEFT", listPanel, "TOPLEFT", -14, -4)
+        UIDropDownMenu_SetWidth(groupDrop, 96)
         UIDropDownMenu_JustifyText(groupDrop, "LEFT")
         creatorDrop = CreateFrame("Frame", "SagaloreCreatorFilter", frame, "UIDropDownMenuTemplate")
-        creatorDrop:SetPoint("LEFT", groupDrop, "RIGHT", -20, 0)
-        UIDropDownMenu_SetWidth(creatorDrop, 96)
+        creatorDrop:SetPoint("LEFT", groupDrop, "RIGHT", -16, 0)
+        UIDropDownMenu_SetWidth(creatorDrop, 110)
         UIDropDownMenu_JustifyText(creatorDrop, "LEFT")
         setupListFilters()
     end
+    statusDrop = nil
 
     listScroll = CreateFrame("ScrollFrame", "SagaloreListScroll", listPanel)
     listScroll:SetPoint("TOPLEFT", 6, -8)
@@ -4198,6 +4353,7 @@ local function build()
     if QuestTitleFont then
         titleFont = "QuestTitleFont"
     end
+    SagaloreBoard.detailTitleFont = titleFont
     detailTitle = detailChild:CreateFontString(nil, "OVERLAY", titleFont)
     detailTitle:SetPoint("TOPLEFT", 6, -4)
     detailTitle:SetJustifyH("LEFT")
@@ -4274,6 +4430,38 @@ local function build()
     SagaloreBoard.emptyFS:SetWordWrap(true)
     SagaloreBoard.emptyFS:SetTextColor(INK.r, INK.g, INK.b)
     SagaloreBoard.emptyFS:Hide()
+    SagaloreBoard.reloadHintFS = detailChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    SagaloreBoard.reloadHintFS:SetJustifyH("LEFT")
+    SagaloreBoard.reloadHintFS:SetJustifyV("TOP")
+    SagaloreBoard.reloadHintFS:SetWordWrap(true)
+    SagaloreBoard.reloadHintFS:SetTextColor(0.72, 0.66, 0.52)
+    SagaloreBoard.reloadHintFS:Hide()
+    local urlBox = CreateFrame("EditBox", "SagaloreCreateURLBox", detailChild, "InputBoxTemplate")
+    urlBox:SetAutoFocus(false)
+    urlBox:SetHeight(22)
+    urlBox:SetMaxLetters(120)
+    urlBox:SetTextInsets(8, 8, 0, 0)
+    urlBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    urlBox:SetScript("OnEditFocusGained", function(self)
+        self:HighlightText(0, -1)
+    end)
+    urlBox:Hide()
+    SagaloreBoard.urlBox = urlBox
+    local urlBtn = CreateFrame("Button", nil, detailChild, "UIPanelButtonTemplate")
+    urlBtn:SetSize(64, 22)
+    urlBtn:SetText(L("ui.copy_link"))
+    urlBtn:SetScript("OnClick", function()
+        local box = SagaloreBoard.urlBox
+        if not box then
+            return
+        end
+        box:SetFocus()
+        box:HighlightText(0, -1)
+    end)
+    urlBtn:Hide()
+    SagaloreBoard.urlSelectBtn = urlBtn
     pcall(function()
         detailFS:SetScript("OnHyperlinkClick", onGoalLinkClick)
         detailFS:SetScript("OnHyperlinkEnter", onGoalLinkEnter)
@@ -4284,6 +4472,9 @@ local function build()
     bindWheel(detailFS, detailScroll, 28)
     bindWheel(detailGoalsHeader, detailScroll, 28)
     bindWheel(detailActivityHeader, detailScroll, 28)
+    if SagaloreBoard.reloadHintFS then
+        bindWheel(SagaloreBoard.reloadHintFS, detailScroll, 28)
+    end
     attachScrollBar(detailPanel, detailScroll, 28)
 
     toast = CreateFrame("Frame", "SagaloreToast", UIParent, backdropTemplate)
@@ -4350,6 +4541,7 @@ local function build()
         local questID = self.questID
         self:Hide()
         if type(questID) == "string" and questID ~= "" then
+            preserveCompletedSelection = true
             selectedID = questID
             markRead(questID)
             local entry = findEntry(questID)
@@ -4359,6 +4551,8 @@ local function build()
                 setSectionExpanded("open", true)
             end
             scrollSelectIntoView = true
+            initDB()
+            SagaloreDB.view = "log"
             show()
         end
     end)
@@ -4456,9 +4650,10 @@ SlashCmdList.SAGALORE = function(msg)
     show()
 end
 
--- Classic slash emotes always raise CHAT_MSG_TEXT_EMOTE, but DoEmote is not
--- always hooked (load order / client builds). Keep the last DoEmote token and
--- also infer common tokens from the localized chat line as a fallback.
+-- Most slash emotes raise CHAT_MSG_TEXT_EMOTE. Silent ones (/sit, /stand,
+-- and a few others) only animate — no chat line — so capture must come from
+-- DoEmote and/or a SlashCmdList wrap. Keep the last DoEmote token and also
+-- infer common tokens from the localized chat line as a fallback.
 local lastDoEmoteToken = nil
 
 local function inferEmoteToken(msg)
@@ -4598,19 +4793,50 @@ local function installInteractHook()
 end
 
 local emoteHooked = false
-local function installEmoteHook()
-    if emoteHooked or type(hooksecurefunc) ~= "function" then
+local silentSlashWrapped = false
+
+-- /sit /stand (and a few sleeps) produce no CHAT_MSG_TEXT_EMOTE. Some Classic
+-- builds also skip DoEmote for those slashes and call SitOrStand instead.
+-- Wrap the slash handlers so authored SIT/STAND steps still fire.
+local function installSilentEmoteSlashWrap()
+    if silentSlashWrapped or type(SlashCmdList) ~= "table" then
         return
     end
-    local ok = pcall(function()
-        hooksecurefunc("DoEmote", function(token, unit)
-            noteEmote(token, unit)
-            onWorld()
-        end)
-    end)
-    if ok then
-        emoteHooked = true
+    local map = {
+        SIT = "SIT",
+        STAND = "STAND",
+        SLEEP = "SLEEP",
+        LAYDOWN = "LAYDOWN",
+        LAY = "LAYDOWN",
+        LIE = "LAYDOWN",
+        LIEDOWN = "LAYDOWN",
+    }
+    for cmd, token in pairs(map) do
+        local prev = SlashCmdList[cmd]
+        if type(prev) == "function" then
+            SlashCmdList[cmd] = function(msg)
+                noteEmote(token, "none")
+                onWorld()
+                return prev(msg)
+            end
+        end
     end
+    silentSlashWrapped = true
+end
+
+local function installEmoteHook()
+    if type(hooksecurefunc) == "function" and not emoteHooked then
+        local ok = pcall(function()
+            hooksecurefunc("DoEmote", function(token, unit)
+                noteEmote(token, unit)
+                onWorld()
+            end)
+        end)
+        if ok then
+            emoteHooked = true
+        end
+    end
+    installSilentEmoteSlashWrap()
 end
 
 local inviteFrame
