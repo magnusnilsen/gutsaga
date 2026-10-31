@@ -1040,16 +1040,6 @@ local function saveFilters()
     }
 end
 
-local function statusBucket(entry, entries)
-    if isComplete(entry) then
-        return "done"
-    end
-    if entryLocked(entry, entries) then
-        return "locked"
-    end
-    return "open"
-end
-
 local searchQuery = ""
 local searchScores = {}
 
@@ -1078,7 +1068,7 @@ local function searchRank(entry, needle)
     return nil
 end
 
-local function passesFilters(entry, entries)
+local function passesFilters(entry)
     -- Status is already the open/done list sections; no separate status filter.
     if creatorHidden[creatorName(entry)] then
         return false
@@ -3038,7 +3028,7 @@ refresh = function()
 
     local openList, doneList = {}, {}
     for i = 1, #entries do
-        if passesFilters(entries[i], entries) then
+        if passesFilters(entries[i]) then
             if isComplete(entries[i]) then
                 table.insert(doneList, entries[i])
             else
