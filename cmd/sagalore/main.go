@@ -122,7 +122,7 @@ func usage() {
   sagalore --client classic      use _classic_
   sagalore --api-url http://localhost:8080
   sagalore sync                  fetch sagas once
-  sagalore setup                 optional folder, language, and update repo
+  sagalore setup                 optional folder and update repo
   sagalore --headless            run without a tray icon
 
 Environment: SAGALORE_API_URL, SAGALORE_CLIENT (forever|retail|classic_era|classic), SAGALORE_WOW_PATH, SAGALORE_DEV_TOKEN.
@@ -267,17 +267,6 @@ func run(opts options) int {
 		})
 	}
 	tray.Run(ctx, "Sagalore "+version.Version, []tray.Item{
-		{Title: "Language: English / Norwegian", Tooltip: "Rewrite the addon language file", OnClick: func() {
-			go func() {
-				next := "nb"
-				if application.ConfigLanguage() == "nb" {
-					next = "en"
-				}
-				if err := application.SetLanguage(next); err != nil {
-					log.Warn("language", "err", err)
-				}
-			}()
-		}},
 		{Title: "Create sagas…", Tooltip: "Open the Smia MCP listing to create sagas with AI", OnClick: func() {
 			go func() {
 				if err := application.OpenCreateSagas(); err != nil {

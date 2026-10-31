@@ -50,11 +50,9 @@ func isBnetConfigError(err error) bool {
 	return strings.Contains(msg, "503") || strings.Contains(msg, "bnet_not_configured")
 }
 
-// ConfigLanguage is the saved en or nb choice. Empty means the addon uses GetLocale().
+// ConfigLanguage is the companion UI language. Always English for now.
 func (a *App) ConfigLanguage() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.Config.Language
+	return "en"
 }
 
 // LoggedIn reports whether the companion has a Sagalore API credential.
@@ -202,15 +200,12 @@ func (a *App) clearSessionLocked(keepSignedOut bool) {
 	}
 }
 
-// SetLanguage stores en or nb and rewrites the addon language file.
+// SetLanguage is kept for callers that still flip language; it forces English
+// until multi-language shipping returns.
 func (a *App) SetLanguage(lang string) error {
-	switch lang {
-	case "en", "nb":
-	default:
-		return errors.New("language must be en or nb")
-	}
+	_ = lang
 	a.mu.Lock()
-	a.Config.Language = lang
+	a.Config.Language = "en"
 	cfg := a.Config
 	wow := a.WowDir
 	a.mu.Unlock()
@@ -218,7 +213,7 @@ func (a *App) SetLanguage(lang string) error {
 		return err
 	}
 	if wow != "" {
-		return install.WriteLanguage(wow, lang)
+		return install.WriteLanguage(wow, "en")
 	}
 	return nil
 }

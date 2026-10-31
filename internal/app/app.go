@@ -98,7 +98,7 @@ func (a *App) notifyAccount() {
 func (a *App) AccountStatus() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return accountStatus(a.Config.Token() != "", a.player, a.Config, a.sync, a.Config.Language)
+	return accountStatus(a.Config.Token() != "", a.player, a.Config, a.sync, "en")
 }
 
 func accountStatus(loggedIn bool, player contract.Player, cfg config.Config, sync contract.SyncResponse, lang string) string {
@@ -231,7 +231,7 @@ func (a *App) bootstrap(ctx context.Context) error {
 		if err := install.Install(a.WowDir, a.Config.Client); err != nil {
 			a.Log.Error("addon install failed", "err", err)
 		}
-		if err := install.WriteLanguage(a.WowDir, a.Config.Language); err != nil {
+		if err := install.WriteLanguage(a.WowDir, "en"); err != nil {
 			a.Log.Warn("could not write addon language", "err", err)
 		}
 		if err := savedvars.CopyObjectiveChecks(a.WowDir); err != nil {
