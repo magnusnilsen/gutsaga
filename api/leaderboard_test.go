@@ -230,7 +230,8 @@ func TestLeaderboardAndActivitySort(t *testing.T) {
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("sync %d %v", statusOf(resp), err)
 	}
-	if len(syncOut.Leaderboards) != 4 {
+	// One set of period boards per group the player belongs to (Personal + the test group).
+	if len(syncOut.Leaderboards) != 8 {
 		t.Fatalf("boards %d", len(syncOut.Leaderboards))
 	}
 	var sawFast bool
