@@ -17,6 +17,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 	"github.com/magnusnilsen/gutsaga/internal/envcompat"
 	"github.com/magnusnilsen/gutsaga/internal/install"
+	"github.com/magnusnilsen/gutsaga/internal/notify"
 )
 
 func (a *App) ensureLogin(ctx context.Context) error {
@@ -29,9 +30,24 @@ func (a *App) ensureLogin(ctx context.Context) error {
 		a.mu.Unlock()
 		return errors.New("not logged in")
 	}
-	a.loginTried = true
 	a.mu.Unlock()
-	return a.Login(ctx)
+	err := a.Login(ctx)
+	a.mu.Lock()
+	// Only burn the auto-prompt after the browser flow actually starts.
+	// A 503 (API missing BNET_*) must not block tray / next sync retries.
+	if err == nil || !isBnetConfigError(err) {
+		a.loginTried = true
+	}
+	a.mu.Unlock()
+	return err
+}
+
+func isBnetConfigError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "503") || strings.Contains(msg, "bnet_not_configured")
 }
 
 // ConfigLanguage is the saved en or nb choice. Empty means the addon uses GetLocale().
@@ -74,8 +90,10 @@ func (a *App) Login(ctx context.Context) error {
 	if err := registerBnetAttempt(ctx, a.Client.HTTP, start); err != nil {
 		return err
 	}
+	a.announceLogin("Log in with Battle.net in your browser")
 	if err := openBrowser(start); err != nil {
 		a.Log.Warn("could not open the browser", "err", err, "url", start)
+		a.announceLogin("Could not open the browser. Use Log in with Battle.net in the tray, or open: " + start)
 	}
 	deadline := time.Now().Add(5 * time.Minute)
 	for {
@@ -241,6 +259,18 @@ func (a *App) OpenCreateSagas() error {
 		return err
 	}
 	return nil
+}
+
+func (a *App) announceLogin(body string) {
+	if body == "" {
+		return
+	}
+	a.Log.Info(body)
+	if a.Notify != nil {
+		a.Notify("Sagalore", body)
+		return
+	}
+	_ = notify.Show("Sagalore", body)
 }
 
 func openBrowser(raw string) error {

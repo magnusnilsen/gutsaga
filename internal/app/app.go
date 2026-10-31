@@ -21,6 +21,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 	"github.com/magnusnilsen/gutsaga/internal/i18n"
 	"github.com/magnusnilsen/gutsaga/internal/install"
+	"github.com/magnusnilsen/gutsaga/internal/notify"
 	"github.com/magnusnilsen/gutsaga/internal/queue"
 	"github.com/magnusnilsen/gutsaga/internal/savedvars"
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
@@ -240,6 +241,17 @@ func (a *App) bootstrap(ctx context.Context) error {
 	if a.Client.APIKey == "" {
 		if err := a.ensureLogin(ctx); err != nil {
 			a.Log.Warn("not logged in", "err", err)
+			a.mu.Lock()
+			tried := a.loginTried
+			a.mu.Unlock()
+			if !tried {
+				// Config/API error before the browser opened — surface it.
+				if a.Notify != nil {
+					a.Notify("Sagalore", "Could not start Battle.net login. Check the API, then use Log in with Battle.net in the tray.")
+				} else {
+					_ = notify.Show("Sagalore", "Could not start Battle.net login. Check the API, then use Log in with Battle.net in the tray.")
+				}
+			}
 			return err
 		}
 	}

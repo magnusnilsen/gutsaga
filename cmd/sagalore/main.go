@@ -256,11 +256,12 @@ func run(opts options) int {
 		m.SetAuthAction(false, func() {
 			go func() {
 				if err := application.Login(context.Background()); err != nil {
-					log.Warn("innlogging feilet", "err", err)
+					log.Warn("login failed", "err", err)
+					_ = notify.Show("Sagalore", "Login failed. Try again from the tray.")
 					return
 				}
 				if err := application.SyncNow(context.Background()); err != nil {
-					log.Warn("synkronisering feilet", "err", err)
+					log.Warn("sync failed", "err", err)
 				}
 			}()
 		})
