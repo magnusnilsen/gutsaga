@@ -1,7 +1,7 @@
 // Package realtime is the push channel between the Sagalore API and the companion.
 // The API writes one small JSON event per saga change. The companion fetches
 // GET /v1/sync itself. Postgres LISTEN/NOTIFY carries the event to every API
-// process, so more than one Railway instance can hold WebSockets.
+// process, so more than one API replica can hold WebSockets.
 package realtime
 
 import "encoding/json"

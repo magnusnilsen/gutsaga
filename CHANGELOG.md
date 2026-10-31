@@ -2,7 +2,7 @@
 
 ## Open-source cleanup
 
-Go module and update feed are `github.com/sagalore/sagalore` / `sagalore/sagalore`. Environment variables are `SAGALORE_*` only. Release assets are `sagalore-*` and `Sagalore-addon.zip`. Realtime Postgres notify uses the `sagalore_events` channel.
+Go module and update feed are `github.com/sagalore/sagalore` / `sagalore/sagalore`. Environment variables are `SAGALORE_*` only. Release assets are `sagalore-*` and `Sagalore-addon.zip`. Realtime Postgres notify uses the `sagalore_events` channel. The marketing site lives in [sagalore/website](https://github.com/sagalore/website); this repo no longer serves a landing page or ships host-vendor config.
 
 ## Leaderboards
 

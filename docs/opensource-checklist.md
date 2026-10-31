@@ -9,9 +9,10 @@ Use this when moving from the private archive to the public `sagalore/sagalore` 
 - [x] `SAGALORE_*` env only (no dual-read fallbacks)
 - [x] Single release asset names (`sagalore-*`, `Sagalore-addon.zip`)
 - [x] English CI release download notes
-- [x] Honest README (Cursor + AI assets, Mac-first matrix, unsigned, honor-based times, landing-in-repo note)
+- [x] Honest README (Cursor + AI assets, Mac-first matrix, unsigned, honor-based times)
 - [x] `docs/architecture.md`
 - [x] Realtime channel / triggers named `sagalore_*` (see migration `016` for existing DBs)
+- [x] Marketing site extracted to [sagalore/website](https://github.com/sagalore/website); no host-vendor config in the product repo
 
 ## Before the first public release
 
@@ -21,8 +22,8 @@ Use this when moving from the private archive to the public `sagalore/sagalore` 
 - [ ] Apply pending API migrations on the hosted database (especially `016_realtime_sagalore_channel.sql`) before flipping companion builds that `LISTEN` on `sagalore_events`
 - [ ] Branch protection on `main` + required CI
 - [ ] Smoke a **pre-release** tag: download each OS asset, companion update path, addon zip install
-- [ ] Confirm landing / Discord OG still point at `sagalore.app` / `api.sagalore.app`
-- [ ] Consider splitting the marketing site (`web/`) out of the product repo (e.g. `sagalore/website` or Pages/Cloudflare) once the public seed is settled
+- [ ] Point `sagalore.app` DNS at the static marketing host ([sagalore/website](https://github.com/sagalore/website)); keep `api.sagalore.app` on the API
+- [ ] Confirm Discord OG still uses `https://sagalore.app/assets/og-image.jpg`
 
 ## Release workflow (tighten when public)
 

@@ -1,5 +1,5 @@
-# Local development only. Railway does not use this file — it builds api/Dockerfile
-# via railway.json and takes ADMIN_TOKEN / IMAGE_URL_SECRET from the Railway dashboard.
+# Local development only. Production hosts build api/Dockerfile and set
+# ADMIN_TOKEN / IMAGE_URL_SECRET (and the rest) in that environment.
 # The known defaults below (dev-admin-token, …) are rejected at API startup unless
 # SAGALORE_ALLOW_DEV_SECRETS=1, so they cannot silently ship to production.
 services:

@@ -60,7 +60,6 @@ Environment:
   BNET_CLIENT_ID               Battle.net OAuth client id
   BNET_CLIENT_SECRET           Battle.net OAuth client secret (stays on the API)
   PUBLIC_BASE_URL              public API origin, also the OAuth redirect base (no trailing slash)
-  LANDING_DIR                  optional path to web/ (serves / and /assets); Docker sets /web
   IMAGE_URL_SECRET             HMAC secret for signed cover URLs (openssl rand -hex 32)
   IMAGE_URL_TTL                signed URL lifetime (Go duration, default 1h)
   PORT                         listen port (default 8080)
@@ -73,7 +72,7 @@ Environment:
 }
 
 // docker-compose.yml ships weak local defaults. Refuse them unless the
-// operator explicitly opts in — Railway never sets SAGALORE_ALLOW_DEV_SECRETS.
+// operator explicitly opts in with SAGALORE_ALLOW_DEV_SECRETS=1.
 var knownDevSecrets = map[string]string{
 	"ADMIN_TOKEN":      "dev-admin-token",
 	"IMAGE_URL_SECRET": "dev-image-url-secret",

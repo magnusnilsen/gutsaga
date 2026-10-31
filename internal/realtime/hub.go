@@ -12,9 +12,9 @@ import (
 
 const (
 	// PingInterval is how often a server socket sends a protocol ping and a
-	// text {"type":"ping"}. Railway's edge does not idle-timeout upgraded
-	// WebSockets, but NATs and half-open deploys do. 25s is under the 60s
-	// HTTP/1.1 idle limit in case a connection never finished the upgrade.
+	// text {"type":"ping"}. Reverse proxies and NATs often idle-close quiet
+	// connections; 25s stays under common ~60s HTTP/1.1 idle limits in case a
+	// connection never finished the WebSocket upgrade.
 	PingInterval = 25 * time.Second
 	writeTimeout = 10 * time.Second
 )
@@ -115,7 +115,7 @@ func (h *Hub) remove(c *client) {
 // Serve upgrades one player socket. playerID is the Sagalore player uuid from
 // the session. The handler must authenticate before calling Serve.
 // Origin is not checked: this is not a browser, and the bearer token is the
-// credential. Railway terminates TLS and forwards the upgrade.
+// credential. TLS usually ends at a reverse proxy that forwards the upgrade.
 func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, playerID string) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: true,

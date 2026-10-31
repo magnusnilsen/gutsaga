@@ -1,6 +1,6 @@
 # Self-hosting Sagalore
 
-Railway is one place you can run the API. It is not required. This repository includes Compose for Postgres and the API.
+Run the API anywhere that can run the container (or `go run ./api`) and talk to Postgres. This repository includes Compose for local development and a single host. The docs do not assume a particular cloud vendor.
 
 ## Compose
 
