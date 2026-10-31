@@ -186,15 +186,12 @@ func tocBody(mode, name string, bodies map[string][]byte, original []byte) []byt
 	}
 }
 
-// WriteLanguage records the companion language for the addon. Empty means the
-// addon uses GetLocale() when that catalog exists.
+// WriteLanguage records the companion language for the addon.
+// English only for now; lang is ignored so a stale config cannot flip the UI.
 func WriteLanguage(wowDir, lang string) error {
+	_ = lang
 	path := filepath.Join(wowpath.AddonDir(wowDir), "SagaloreLanguage.lua")
-	body := []byte("SagaloreLanguage = nil\n")
-	switch strings.ToLower(strings.TrimSpace(lang)) {
-	case "en", "nb":
-		body = []byte("SagaloreLanguage = \"" + strings.ToLower(strings.TrimSpace(lang)) + "\"\n")
-	}
+	body := []byte("-- English only for now; other catalogs remain in Locales/ for later.\nSagaloreLanguage = \"en\"\n")
 	return writeFile(path, body)
 }
 

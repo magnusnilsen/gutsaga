@@ -23,6 +23,7 @@ type Entry struct {
 	GroupID           string               `json:"group_id,omitempty"`
 	GroupSlug         string               `json:"group_slug,omitempty"`
 	GroupName         string               `json:"group_name,omitempty"`
+	PendingInviteID   string               `json:"pending_invite_id,omitempty"`
 	MinLevel          *int                 `json:"min_level"`
 	Status            string               `json:"status"`
 	CompletedAt       string               `json:"completed_at"`
@@ -78,8 +79,15 @@ func Merge(sync contract.SyncResponse) []Entry {
 		titles[q.ID] = q.Title
 	}
 	completers := completersByQuest(sync)
+	chars := sync.Characters
+	// Before the addon has reported a character (common right after Battle.net
+	// login on Classic Era), still emit party sagas so Personal starters show
+	// on the first /reload. The addon treats character "*" as "any toon".
+	if len(chars) == 0 && len(sync.Quests) > 0 {
+		chars = []contract.Character{{Name: "*", Level: 1000, Participating: true}}
+	}
 	var out []Entry
-	for _, ch := range sync.Characters {
+	for _, ch := range chars {
 		for _, q := range sync.Quests {
 			p, has := progress[ch.ID+"\n"+q.ID]
 			completed := has && p.Status == "completed"
@@ -93,6 +101,7 @@ func Merge(sync contract.SyncResponse) []Entry {
 				Description: q.Description, Objectives: q.Objectives,
 				ObjectivesOrdered: q.ObjectivesOrdered, When: q.When, Group: q.Group,
 				GroupID: q.GroupID, GroupSlug: q.GroupSlug, GroupName: q.GroupName,
+				PendingInviteID: q.PendingInviteID,
 				MinLevel: q.MinLevel, PartyQuest: q.PartyQuest,
 				CreatedBy: q.CreatedBy, CompletedBy: completers[q.ID],
 				Requires: requireRefs(q.Requires, titles), Locked: locked,

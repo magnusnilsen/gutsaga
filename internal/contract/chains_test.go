@@ -57,13 +57,13 @@ func TestRequireCycleAndLockMessage(t *testing.T) {
 	if HasRequireCycle(map[string][]string{"a": {"b"}, "b": {}}) {
 		t.Fatal("chain is not a cycle")
 	}
-	if LockMessage([]string{"En kveld"}) != "Låst: fullfør En kveld først" {
+	if LockMessage([]string{"En kveld"}) != "Locked: finish En kveld first" {
 		t.Fatal(LockMessage([]string{"En kveld"}))
 	}
-	if LockMessage([]string{"A", "B"}) != "Låst: fullfør A og B først" {
+	if LockMessage([]string{"A", "B"}) != "Locked: finish A and B first" {
 		t.Fatal(LockMessage([]string{"A", "B"}))
 	}
-	if LockMessage([]string{"A", "B", "C"}) != "Låst: fullfør A, B og C først" {
+	if LockMessage([]string{"A", "B", "C"}) != "Locked: finish A, B and C first" {
 		t.Fatal(LockMessage([]string{"A", "B", "C"}))
 	}
 }

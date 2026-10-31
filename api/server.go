@@ -118,6 +118,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/admin/log", s.withAdmin(s.listLog))
 	mux.HandleFunc("POST /v1/admin/log", s.withAdmin(s.createLog))
 	mux.HandleFunc("DELETE /v1/admin/progress", s.withAdmin(s.deleteAdminProgress))
+	s.mountLanding(mux)
 	return mux
 }
 

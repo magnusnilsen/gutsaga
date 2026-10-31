@@ -122,7 +122,7 @@ func usage() {
   sagalore --client classic      use _classic_
   sagalore --api-url http://localhost:8080
   sagalore sync                  fetch sagas once
-  sagalore setup                 optional folder, language, and update repo
+  sagalore setup                 optional folder and update repo
   sagalore --headless            run without a tray icon
 
 Environment: SAGALORE_API_URL, SAGALORE_CLIENT (forever|retail|classic_era|classic), SAGALORE_WOW_PATH, SAGALORE_DEV_TOKEN.
@@ -226,7 +226,7 @@ func run(opts options) int {
 		if trayMenu != nil {
 			refreshUpdate(trayMenu, application, log)
 		}
-		_ = notify.Show("Sagalore", "Ny versjon "+tag+" — start på nytt for å oppdatere")
+		_ = notify.Show("Sagalore", "New version "+tag+" — restart to update")
 	}
 	if isTerminal(os.Stdin) {
 		application.Prompt = func() (string, error) {
@@ -241,6 +241,9 @@ func run(opts options) int {
 	go application.Run(ctx)
 	if opts.Headless || !tray.Supported() {
 		fmt.Println("Sagalore is running. Log in with Battle.net if asked. Quit with Ctrl+C.")
+		if application.NeedsLogin() {
+			fmt.Println("If the browser did not finish login, re-run without --headless and use Log in with Battle.net in the tray.")
+		}
 		<-ctx.Done()
 		return 0
 	}
@@ -256,24 +259,21 @@ func run(opts options) int {
 		m.SetAuthAction(false, func() {
 			go func() {
 				if err := application.Login(context.Background()); err != nil {
-					log.Warn("innlogging feilet", "err", err)
+					log.Warn("login failed", "err", err)
+					_ = notify.Show("Sagalore", "Login failed. Try again from the tray.")
 					return
 				}
 				if err := application.SyncNow(context.Background()); err != nil {
-					log.Warn("synkronisering feilet", "err", err)
+					log.Warn("sync failed", "err", err)
 				}
 			}()
 		})
 	}
 	tray.Run(ctx, "Sagalore "+version.Version, []tray.Item{
-		{Title: "Language: English / Norwegian", Tooltip: "Rewrite the addon language file", OnClick: func() {
+		{Title: "Create sagas…", Tooltip: "Open the Smia MCP listing to create sagas with AI", OnClick: func() {
 			go func() {
-				next := "nb"
-				if application.ConfigLanguage() == "nb" {
-					next = "en"
-				}
-				if err := application.SetLanguage(next); err != nil {
-					log.Warn("language", "err", err)
+				if err := application.OpenCreateSagas(); err != nil {
+					log.Warn("create sagas", "err", err)
 				}
 			}()
 		}},

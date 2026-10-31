@@ -302,11 +302,21 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatal(err, resp.StatusCode)
 	}
-	if syncOut.BattleTag != "Magnus#2231" || len(syncOut.Characters) != 1 || len(syncOut.Quests) != 1 || len(syncOut.Progress) != 1 {
+	if syncOut.BattleTag != "Magnus#2231" || len(syncOut.Characters) != 1 || len(syncOut.Progress) != 1 {
 		t.Fatalf("sync %+v", syncOut)
 	}
-	if syncOut.Quests[0].Version != 2 || syncOut.Progress[0].QuestVersion != 1 || syncOut.Progress[0].Status != "completed" {
-		t.Fatalf("sync versions quest=%d progress=%+v", syncOut.Quests[0].Version, syncOut.Progress[0])
+	var syncedQuest *contract.Quest
+	for i := range syncOut.Quests {
+		if syncOut.Quests[i].ID == quest.ID {
+			syncedQuest = &syncOut.Quests[i]
+			break
+		}
+	}
+	if syncedQuest == nil {
+		t.Fatalf("sync missing quest %s in %+v", quest.ID, syncOut.Quests)
+	}
+	if syncedQuest.Version != 2 || syncOut.Progress[0].QuestVersion != 1 || syncOut.Progress[0].Status != "completed" {
+		t.Fatalf("sync versions quest=%d progress=%+v", syncedQuest.Version, syncOut.Progress[0])
 	}
 	if syncOut.Progress[0].ScreenshotURL != "https://cdn.example/shot.png" {
 		t.Fatalf("screenshot url %q", syncOut.Progress[0].ScreenshotURL)
@@ -333,7 +343,14 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Quests) != 1 || listed.Quests[0].Status == nil || *listed.Quests[0].Status != "completed" || listed.Quests[0].Eligible == nil || !*listed.Quests[0].Eligible {
+	var listedQuest *contract.QuestListItem
+	for i := range listed.Quests {
+		if listed.Quests[i].ID == quest.ID {
+			listedQuest = &listed.Quests[i]
+			break
+		}
+	}
+	if listedQuest == nil || listedQuest.Status == nil || *listedQuest.Status != "completed" || listedQuest.Eligible == nil || !*listedQuest.Eligible {
 		t.Fatalf("list %+v", listed.Quests)
 	}
 

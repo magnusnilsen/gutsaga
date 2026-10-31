@@ -21,6 +21,7 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 	"github.com/magnusnilsen/gutsaga/internal/i18n"
 	"github.com/magnusnilsen/gutsaga/internal/install"
+	"github.com/magnusnilsen/gutsaga/internal/notify"
 	"github.com/magnusnilsen/gutsaga/internal/queue"
 	"github.com/magnusnilsen/gutsaga/internal/savedvars"
 	"github.com/magnusnilsen/gutsaga/internal/screenshot"
@@ -45,7 +46,7 @@ type App struct {
 	mu         sync.Mutex
 	loginMu    sync.Mutex
 	loginTried bool
-	signedOut  bool // user chose Logg ut; do not open the browser until they log in again
+	signedOut  bool // user chose Log out; do not open the browser until they log in again
 	notice     string
 	noticeID   string
 	// Notify shows the desktop banner. Tests set it. Nil uses the OS.
@@ -97,7 +98,7 @@ func (a *App) notifyAccount() {
 func (a *App) AccountStatus() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return accountStatus(a.Config.Token() != "", a.player, a.Config, a.sync, a.Config.Language)
+	return accountStatus(a.Config.Token() != "", a.player, a.Config, a.sync, "en")
 }
 
 func accountStatus(loggedIn bool, player contract.Player, cfg config.Config, sync contract.SyncResponse, lang string) string {
@@ -152,10 +153,12 @@ func (a *App) Run(ctx context.Context) {
 	flushTick := time.NewTicker(5 * time.Second)
 	syncTick := time.NewTicker(10 * time.Minute)
 	updateTick := time.NewTicker(4 * time.Hour)
+	loginRemindTick := time.NewTicker(loginRemindInterval)
 	defer tailTick.Stop()
 	defer flushTick.Stop()
 	defer syncTick.Stop()
 	defer updateTick.Stop()
+	defer loginRemindTick.Stop()
 	debounce := time.NewTimer(time.Hour)
 	debounce.Stop()
 	defer debounce.Stop()
@@ -175,6 +178,8 @@ func (a *App) Run(ctx context.Context) {
 			a.Flush(ctx)
 		case <-syncTick.C:
 			a.bootstrap(ctx)
+		case <-loginRemindTick.C:
+			a.maybeRemindLogin()
 		case <-updateTick.C:
 			if !a.NoUpdate {
 				a.maybeUpdate(ctx)
@@ -230,7 +235,7 @@ func (a *App) bootstrap(ctx context.Context) error {
 		if err := install.Install(a.WowDir, a.Config.Client); err != nil {
 			a.Log.Error("addon install failed", "err", err)
 		}
-		if err := install.WriteLanguage(a.WowDir, a.Config.Language); err != nil {
+		if err := install.WriteLanguage(a.WowDir, "en"); err != nil {
 			a.Log.Warn("could not write addon language", "err", err)
 		}
 		if err := savedvars.CopyObjectiveChecks(a.WowDir); err != nil {
@@ -240,6 +245,17 @@ func (a *App) bootstrap(ctx context.Context) error {
 	if a.Client.APIKey == "" {
 		if err := a.ensureLogin(ctx); err != nil {
 			a.Log.Warn("not logged in", "err", err)
+			a.mu.Lock()
+			tried := a.loginTried
+			a.mu.Unlock()
+			if !tried {
+				// Config/API error before the browser opened — surface it.
+				if a.Notify != nil {
+					a.Notify("Sagalore", "Could not start Battle.net login. Check the API, then use Log in with Battle.net in the tray.")
+				} else {
+					_ = notify.Show("Sagalore", "Could not start Battle.net login. Check the API, then use Log in with Battle.net in the tray.")
+				}
+			}
 			return err
 		}
 	}
@@ -426,13 +442,15 @@ func (a *App) pollChat() {
 
 // pollSavedVars enqueues completions the addon wrote locally. On Classic Era,
 // AddMessage lines never reach WoWChatLog.txt, so this is the reliable path.
-// It also applies /sagalore and /sl reset requests and invite answers from SavedVariables.
+// It also applies /sagalore and /sl reset requests, invite answers, and the
+// pending character snapshot from SavedVariables.
 func (a *App) pollSavedVars() {
 	if a.WowDir == "" {
 		return
 	}
 	a.pollPendingResets()
 	a.pollPendingInvites()
+	a.pollPendingCharacter()
 	list, err := savedvars.ReadCompletions(a.WowDir)
 	if err != nil {
 		return
@@ -529,6 +547,29 @@ func (a *App) pollPendingInvites() {
 		})
 		if ok {
 			a.Log.Info("lest invite fra SavedVariables", "action", inv.Action, "id", inv.ID)
+		}
+	}
+}
+
+// pollPendingCharacter enqueues CHARACTER upserts from SagaloreDB.pending_character.
+func (a *App) pollPendingCharacter() {
+	list, err := savedvars.ReadPendingCharacters(a.WowDir)
+	if err != nil || len(list) == 0 {
+		return
+	}
+	for _, ch := range list {
+		level := ch.Level
+		if level < 1 {
+			level = 1
+		}
+		key := queue.CharacterKey(ch.Name, ch.Realm, level, ch.Race, ch.Class, ch.BattleTag)
+		ok := a.Queue.Enqueue(queue.Item{
+			Kind: "character", Key: key,
+			Character: ch.Name, Realm: ch.Realm, Level: level,
+			Race: ch.Race, Class: ch.Class, BattleTag: ch.BattleTag,
+		})
+		if ok {
+			a.Log.Info("lest character fra SavedVariables", "character", ch.Name, "realm", ch.Realm)
 		}
 	}
 }

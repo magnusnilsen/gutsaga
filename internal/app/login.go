@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -16,7 +17,17 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/contract"
 	"github.com/magnusnilsen/gutsaga/internal/envcompat"
 	"github.com/magnusnilsen/gutsaga/internal/install"
+	"github.com/magnusnilsen/gutsaga/internal/notify"
 )
+
+// errLoginTimedOut is returned when the browser flow runs out of time. The
+// companion keeps running and reminds the user from the tray / notifications.
+var errLoginTimedOut = errors.New("Battle.net login timed out")
+
+const loginRemindInterval = 5 * time.Minute
+
+// loginTimeout is how long Login waits for the browser flow. Tests shorten it.
+var loginTimeout = 5 * time.Minute
 
 func (a *App) ensureLogin(ctx context.Context) error {
 	a.mu.Lock()
@@ -28,16 +39,52 @@ func (a *App) ensureLogin(ctx context.Context) error {
 		a.mu.Unlock()
 		return errors.New("not logged in")
 	}
-	a.loginTried = true
 	a.mu.Unlock()
-	return a.Login(ctx)
+	err := a.Login(ctx)
+	a.mu.Lock()
+	// Only burn the auto-prompt after the browser flow actually starts.
+	// A 503 (API missing BNET_*) must not block tray / next sync retries.
+	if err == nil || !isBnetConfigError(err) {
+		a.loginTried = true
+	}
+	a.mu.Unlock()
+	if errors.Is(err, errLoginTimedOut) {
+		a.announceLogin("Battle.net login timed out. Use Log in with Battle.net in the tray when you are ready.")
+	}
+	return err
 }
 
-// ConfigLanguage is the saved en or nb choice. Empty means the addon uses GetLocale().
-func (a *App) ConfigLanguage() string {
+// NeedsLogin reports whether the companion is running without a session and
+// the user has not explicitly logged out (tray / reminders should nudge).
+func (a *App) NeedsLogin() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.Config.Language
+	return a.Config.Token() == "" && !a.signedOut
+}
+
+// maybeRemindLogin shows a desktop notice when auto-login already ran (or
+// timed out) and the user still has no session. Skips explicit logout.
+func (a *App) maybeRemindLogin() {
+	a.mu.Lock()
+	need := a.Config.Token() == "" && !a.signedOut && a.loginTried
+	a.mu.Unlock()
+	if !need {
+		return
+	}
+	a.announceLogin("Still not logged in. Use Log in with Battle.net in the tray to sync your sagas.")
+}
+
+func isBnetConfigError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "503") || strings.Contains(msg, "bnet_not_configured")
+}
+
+// ConfigLanguage is the companion UI language. Always English for now.
+func (a *App) ConfigLanguage() string {
+	return "en"
 }
 
 // LoggedIn reports whether the companion has a Sagalore API credential.
@@ -73,16 +120,18 @@ func (a *App) Login(ctx context.Context) error {
 	if err := registerBnetAttempt(ctx, a.Client.HTTP, start); err != nil {
 		return err
 	}
+	a.announceLogin("Log in with Battle.net in your browser")
 	if err := openBrowser(start); err != nil {
 		a.Log.Warn("could not open the browser", "err", err, "url", start)
+		a.announceLogin("Could not open the browser. Use Log in with Battle.net in the tray, or open: " + start)
 	}
-	deadline := time.Now().Add(5 * time.Minute)
+	deadline := time.Now().Add(loginTimeout)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if time.Now().After(deadline) {
-			return errors.New("Battle.net login timed out")
+			return errLoginTimedOut
 		}
 		out, pending, err := a.Client.PollBnet(ctx, attempt)
 		if err != nil {
@@ -183,15 +232,12 @@ func (a *App) clearSessionLocked(keepSignedOut bool) {
 	}
 }
 
-// SetLanguage stores en or nb and rewrites the addon language file.
+// SetLanguage is kept for callers that still flip language; it forces English
+// until multi-language shipping returns.
 func (a *App) SetLanguage(lang string) error {
-	switch lang {
-	case "en", "nb":
-	default:
-		return errors.New("language must be en or nb")
-	}
+	_ = lang
 	a.mu.Lock()
-	a.Config.Language = lang
+	a.Config.Language = "en"
 	cfg := a.Config
 	wow := a.WowDir
 	a.mu.Unlock()
@@ -199,7 +245,7 @@ func (a *App) SetLanguage(lang string) error {
 		return err
 	}
 	if wow != "" {
-		return install.WriteLanguage(wow, lang)
+		return install.WriteLanguage(wow, "en")
 	}
 	return nil
 }
@@ -218,6 +264,40 @@ func randomAttempt() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// DefaultCreateSagasURL is the Smia public MCP listing for authoring sagas.
+// Override with SAGALORE_CREATE_URL.
+const DefaultCreateSagasURL = "https://app.smia.io/m/sagalore"
+
+// CreateSagasURL returns where the tray "Create sagas…" item should open.
+func CreateSagasURL() string {
+	if v := strings.TrimSpace(os.Getenv("SAGALORE_CREATE_URL")); v != "" {
+		return v
+	}
+	return DefaultCreateSagasURL
+}
+
+// OpenCreateSagas opens the public MCP listing in the browser.
+func (a *App) OpenCreateSagas() error {
+	url := CreateSagasURL()
+	if err := openBrowser(url); err != nil {
+		a.Log.Warn("could not open create-sagas URL", "err", err, "url", url)
+		return err
+	}
+	return nil
+}
+
+func (a *App) announceLogin(body string) {
+	if body == "" {
+		return
+	}
+	a.Log.Info(body)
+	if a.Notify != nil {
+		a.Notify("Sagalore", body)
+		return
+	}
+	_ = notify.Show("Sagalore", body)
 }
 
 func openBrowser(raw string) error {
