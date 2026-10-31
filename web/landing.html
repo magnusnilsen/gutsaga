@@ -872,6 +872,33 @@
     font-size: 0.8rem;
     line-height: 1.5;
   }
+  .oss-faq {
+    list-style: none;
+    margin: 2.4rem auto 0;
+    padding: 0;
+    max-width: 40rem;
+    display: grid;
+    gap: 1.5rem;
+    text-align: left;
+  }
+  .oss-faq li {
+    margin: 0;
+    color: var(--ink-soft);
+    line-height: 1.55;
+  }
+  .oss-faq strong {
+    display: block;
+    margin-bottom: 0.35rem;
+    color: #fff4df;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .oss-faq a {
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(240, 208, 120, 0.35);
+  }
+  .oss-faq a:hover { border-bottom-color: rgba(240, 208, 120, 0.8); }
 
   footer {
     padding: 1.4rem 1.2rem 2rem;
@@ -1093,7 +1120,7 @@
   <div class="section-inner">
     <p class="kicker">Create</p>
     <h2 id="create-title">Build sagas worth racing</h2>
-    <p class="create-copy">Open the <a href="https://app.smia.io/m/sagalore">official Sagalore MCP listing</a> and write quests your friends and guild can share and compete on.</p>
+    <p class="create-copy">Open the <a href="https://app.smia.io/m/sagalore">official Sagalore MCP listing</a> and write quests your friends and guild can share and compete on. It runs on Smia and talks to the same open API anyone can use.</p>
     <div class="cta-row">
       <a class="btn allow wide" href="https://app.smia.io/m/sagalore">Open MCP listing</a>
     </div>
@@ -1104,8 +1131,22 @@
   <div class="section-bg" aria-hidden="true"></div>
   <div class="section-inner">
     <p class="kicker">Open source</p>
-    <h2 id="open-title">Built in the open</h2>
-    <p class="blurb">Sagalore is open source on GitHub — browse the code, file issues, or contribute.</p>
+    <h2 id="open-title">Free, open, and honest about hosting</h2>
+    <p class="blurb">Sagalore is free and open source. The addon, companion, and API are on GitHub — anyone can run their own server.</p>
+    <ul class="oss-faq">
+      <li>
+        <strong>The project</strong>
+        MIT-licensed on GitHub. Read the code, fork it, self-host with your own Battle.net app.
+      </li>
+      <li>
+        <strong>The official server</strong>
+        The easiest start is sagalore.app — free to use. Your data lives there; you sign in with Battle.net.
+      </li>
+      <li>
+        <strong>The MCP</strong>
+        The <a href="https://app.smia.io/m/sagalore">official MCP</a> lets your AI create sagas. It is built on the open Sagalore API and runs on Smia, a platform we also make. It is not in the repo so Sagalore stays independent of any one platform — and so we can show people Smia. Want your own MCP? The API is documented. Build away.
+      </li>
+    </ul>
     <div class="cta-row">
       <a class="btn allow wide" href="https://github.com/sagalore/sagalore">View on GitHub</a>
     </div>

@@ -4,6 +4,14 @@ Sagalore is a saga log for a World of Warcraft group. One person plays. The desk
 
 **Site:** [sagalore.app](https://sagalore.app) · **API:** `api.sagalore.app` · **Repo:** [github.com/sagalore/sagalore](https://github.com/sagalore/sagalore)
 
+## Free and open source
+
+Three parts, on purpose:
+
+1. **The project.** Sagalore is free and open source (MIT). The addon, the companion, and the API are on GitHub. Anyone can read the code, run it, and host their own server.
+2. **The official server.** The easiest way to start is the official server at [sagalore.app](https://sagalore.app) / `api.sagalore.app`, which is free to use. Your data is stored there, and you sign in with Battle.net.
+3. **The MCP.** There is an [official MCP](https://app.smia.io/m/sagalore) that lets your AI create sagas. It is built on the open Sagalore API and runs on [Smia](https://smia.io), a platform we also make. The MCP is not in this repo: Sagalore stays independent of any one platform, and the listing is also a way to show people Smia. Want your own MCP? The API is documented — build away. See [docs/API.md](docs/API.md) and [docs/oauth.md](docs/oauth.md).
+
 ## Project status
 
 Early public / alpha. One maintainer. Expect rough edges, unsigned binaries, and slow replies on issues.
@@ -13,7 +21,6 @@ Early public / alpha. One maintainer. Expect rough edges, unsigned binaries, and
 - Not affiliated with or endorsed by Blizzard. Unofficial software; ToS risk is yours.
 - Release binaries are **not signed**. Gatekeeper and SmartScreen warnings are expected.
 - Leaderboard finish times are **client-reported** (honor-based), not anti-cheat.
-- Official hosted API is convenience. MIT license: run your own (you need your own Battle.net app).
 
 ## Try it locally
 
