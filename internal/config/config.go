@@ -316,20 +316,7 @@ func Setup(r io.Reader, w io.Writer, current Config) (Config, error) {
 	if current.Update.Enabled != nil && !*current.Update.Enabled {
 		autoDefault = "nei"
 	}
-	langDefault := current.Language
-	if langDefault == "" {
-		langDefault = "en"
-	}
-	lang, err := ask("Language (en or nb)", langDefault)
-	if err != nil {
-		return current, err
-	}
-	switch strings.ToLower(strings.TrimSpace(lang)) {
-	case "nb", "no", "norsk":
-		current.Language = "nb"
-	default:
-		current.Language = "en"
-	}
+	current.Language = "en"
 	auto, err := ask("Automatic updates (yes/no)", autoDefault)
 	if err != nil {
 		return current, err

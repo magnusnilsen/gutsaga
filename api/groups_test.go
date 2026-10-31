@@ -100,13 +100,36 @@ func TestSyncIsolationBetweenGroups(t *testing.T) {
 	}
 	var syncA, syncB contract.SyncResponse
 	resp, err = authorA.do(http.MethodGet, "/v1/sync", nil, &syncA)
-	if err != nil || resp.StatusCode != http.StatusOK || len(syncA.Quests) != 1 || syncA.Quests[0].ID != sagaA.ID {
-		t.Fatalf("sync A %+v %d %v", syncA.Quests, statusOf(resp), err)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("sync A %d %v", statusOf(resp), err)
+	}
+	if !syncHasQuest(syncA, sagaA.ID) || syncHasQuest(syncA, sagaB.ID) {
+		t.Fatalf("sync A leaked or missing %+v", questIDs(syncA))
 	}
 	resp, err = authorB.do(http.MethodGet, "/v1/sync", nil, &syncB)
-	if err != nil || len(syncB.Quests) != 1 || syncB.Quests[0].ID != sagaB.ID {
-		t.Fatalf("sync B %+v", syncB.Quests)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("sync B %d %v", statusOf(resp), err)
 	}
+	if !syncHasQuest(syncB, sagaB.ID) || syncHasQuest(syncB, sagaA.ID) {
+		t.Fatalf("sync B leaked or missing %+v", questIDs(syncB))
+	}
+}
+
+func syncHasQuest(sync contract.SyncResponse, id string) bool {
+	for _, q := range sync.Quests {
+		if q.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func questIDs(sync contract.SyncResponse) []string {
+	out := make([]string, 0, len(sync.Quests))
+	for _, q := range sync.Quests {
+		out = append(out, q.ID)
+	}
+	return out
 }
 
 func TestListGroupMembers(t *testing.T) {

@@ -91,17 +91,20 @@ type Quest struct {
 	GroupID        string   `json:"group_id,omitempty"`
 	GroupSlug      string   `json:"group_slug,omitempty"`
 	GroupName      string   `json:"group_name,omitempty"`
-	MinLevel       *int     `json:"min_level"`
-	PartyQuest     bool     `json:"party"`
-	AssignedTo     []IDRef  `json:"assigned_to"`
-	CreatedBy      string   `json:"created_by"`
-	Active         bool     `json:"active"`
-	Version        int      `json:"version"`
-	HasImage       bool     `json:"has_image"`
-	ImageURL       string   `json:"image_url,omitempty"`
-	ImageSignedURL string   `json:"image_signed_url,omitempty"`
-	Requires       []string `json:"requires"`
-	Chain          *Chain   `json:"chain,omitempty"`
+	// PendingInviteID is set when this saga is preloaded for a pending join invite
+	// (not yet a member). Empty once the account belongs to the group.
+	PendingInviteID string   `json:"pending_invite_id,omitempty"`
+	MinLevel        *int     `json:"min_level"`
+	PartyQuest      bool     `json:"party"`
+	AssignedTo      []IDRef  `json:"assigned_to"`
+	CreatedBy       string   `json:"created_by"`
+	Active          bool     `json:"active"`
+	Version         int      `json:"version"`
+	HasImage        bool     `json:"has_image"`
+	ImageURL        string   `json:"image_url,omitempty"`
+	ImageSignedURL  string   `json:"image_signed_url,omitempty"`
+	Requires        []string `json:"requires"`
+	Chain           *Chain   `json:"chain,omitempty"`
 }
 
 type Progress struct {
@@ -178,12 +181,13 @@ type Player struct {
 // GroupSummary is a tenant the signed-in account belongs to.
 // It is not the saga party-size rule, which stays on the objective and saga field named group.
 type GroupSummary struct {
-	ID      string `json:"id"`
-	Slug    string `json:"slug"`
-	Name    string `json:"name"`
-	Locale  string `json:"locale"`
-	Role    string `json:"role,omitempty"`
-	OwnerID string `json:"owner_player_id,omitempty"`
+	ID       string `json:"id"`
+	Slug     string `json:"slug"`
+	Name     string `json:"name"`
+	Locale   string `json:"locale"`
+	Role     string `json:"role,omitempty"`
+	OwnerID  string `json:"owner_player_id,omitempty"`
+	Personal bool   `json:"personal,omitempty"`
 }
 
 // GroupMemberRow is one account in a tenant group (not a party roster line).

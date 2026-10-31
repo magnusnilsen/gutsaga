@@ -42,6 +42,25 @@ assertTrue(prompt and prompt.key == "invite.include" and prompt.group == "Gutar"
 Invite.snooze(db, id2, now)
 assertTrue(Invite.prompt(db, character, data, now + 5) == nil, "snooze hides the dialog")
 
+assertTrue(Invite.entryVisible({}, { title = "Open" }), "no pending is visible")
+assertTrue(not Invite.entryVisible({}, { pending_invite_id = id }), "pending hidden until accept")
+Invite.markAccepted(db, id)
+assertTrue(Invite.entryVisible(db, { pending_invite_id = id }), "accepted pending is visible")
+
+local failID = "33333333-3333-3333-3333-333333333333"
+local pendingData = { invites = { { id = failID, name = "Magni", realm = "Everlook", group_name = "Tutorial", kind = "join" } } }
+db.answered_invites[failID] = true
+Invite.reconcileAnswered(db, pendingData)
+assertTrue(not Invite.answered(db, failID), "failed accept re-prompts after reconcile")
+assertTrue(Invite.onlyPersonalGroups({ groups = { { name = "Personal", personal = true } } }), "only personal")
+assertTrue(not Invite.onlyPersonalGroups({ groups = { { name = "Personal", personal = true }, { name = "Gutar" } } }), "friend group")
+
+local other = { name = "Thrall", realm = "Everlook" }
+local wait = Invite.waitingFor({}, other, data, now)
+assertTrue(wait and wait.name == "Magni" and wait.realm == "Everlook" and wait.group == "Tutorial", "wrong character wait")
+assertTrue(Invite.waitingFor({}, character, data, now) == nil, "matching character has no wait hint")
+assertTrue(Invite.prompt({}, other, data, now) == nil, "wrong character has no prompt")
+
 SagaloreLanguage = "nb"
 assertTrue(Sagalore_L("invite.join") == "Bli med i %s?", "nb join")
 assertTrue(Sagalore_L("invite.accept") == "Ja", "nb accept")

@@ -1,5 +1,6 @@
 -- Resolves a catalog key. Missing keys fall back to English.
--- SagaloreLanguage is "en", "nb", or nil (then GetLocale()).
+-- Other catalogs (nb, …) stay loadable for later; the product ships English
+-- only for now. An explicit SagaloreLanguage override is kept for tests.
 local function catalog(lang)
     local all = SagaloreLocale or {}
     if lang == "nb" and type(all.nb) == "table" then
@@ -12,13 +13,6 @@ local function clientLang()
     local set = SagaloreLanguage
     if set == "en" or set == "nb" then
         return set
-    end
-    local loc = "enUS"
-    if type(GetLocale) == "function" then
-        loc = GetLocale() or loc
-    end
-    if loc == "nbNO" or loc == "noNO" then
-        return "nb"
     end
     return "en"
 end

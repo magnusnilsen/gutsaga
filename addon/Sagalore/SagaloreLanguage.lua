@@ -1,3 +1,3 @@
 -- The companion overwrites this file on install.
--- nil means the addon uses GetLocale() when that language exists, else English.
-SagaloreLanguage = nil
+-- English only for now; other catalogs remain in Locales/ for later.
+SagaloreLanguage = "en"

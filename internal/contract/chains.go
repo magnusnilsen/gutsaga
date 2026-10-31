@@ -238,31 +238,31 @@ func SagaLocks(characters []Character, quests []Quest, progress []Progress) []Sa
 }
 
 // LockMessage is the addon line for the prerequisites still open.
-// One name: "Låst: fullfør X først". Several: "Låst: fullfør A, B og C først".
+// One name: "Locked: finish X first". Several: "Locked: finish A, B and C first".
 func LockMessage(titles []string) string {
 	clean := make([]string, 0, len(titles))
 	for _, t := range titles {
 		t = strings.TrimSpace(t)
 		if t == "" {
-			t = "en saga"
+			t = "a saga"
 		}
 		clean = append(clean, t)
 	}
 	if len(clean) == 0 {
 		return ""
 	}
-	return "Låst: fullfør " + joinNorwegian(clean) + " først"
+	return "Locked: finish " + joinEnglish(clean) + " first"
 }
 
-func joinNorwegian(parts []string) string {
+func joinEnglish(parts []string) string {
 	switch len(parts) {
 	case 0:
 		return ""
 	case 1:
 		return parts[0]
 	case 2:
-		return parts[0] + " og " + parts[1]
+		return parts[0] + " and " + parts[1]
 	default:
-		return strings.Join(parts[:len(parts)-1], ", ") + " og " + parts[len(parts)-1]
+		return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
 	}
 }

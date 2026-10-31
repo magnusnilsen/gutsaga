@@ -1163,7 +1163,7 @@ func buildGoalsMarkdown(q contract.Quest) string {
 		b.WriteString(fmt.Sprintf("%d. %s", i+1, text))
 	}
 	if b.Len() == 0 {
-		return "(ingen mål)"
+		return "(no goals)"
 	}
 	return b.String()
 }
@@ -1172,17 +1172,17 @@ func buildGoalsMarkdown(q contract.Quest) string {
 func buildActivityCard(completers []contract.QuestCompleter) *contract.QuestCard {
 	card := &contract.QuestCard{
 		Columns: []contract.QuestCardColumn{
-			{ID: "character", Label: "Karakter", Fill: true, Bold: true},
-			{ID: "detail", Label: "Detaljer", Fill: true},
-			{ID: "when", Label: "Når"},
+			{ID: "character", Label: "Character", Fill: true, Bold: true},
+			{ID: "detail", Label: "Details", Fill: true},
+			{ID: "when", Label: "When"},
 		},
 	}
 	if len(completers) == 0 {
 		card.Rows = []contract.QuestCardRow{{
 			ID:    "done-none",
-			Group: "Aktivitet",
+			Group: "Activity",
 			Cells: map[string]any{
-				"character": "Ingen har fullført ennå",
+				"character": "No one has completed this yet",
 				"detail":    "",
 				"when":      "",
 			},
@@ -1192,7 +1192,7 @@ func buildActivityCard(completers []contract.QuestCompleter) *contract.QuestCard
 	for i, c := range completers {
 		who := c.Character
 		if who != "" {
-			who += " fullførte"
+			who += " completed"
 		}
 		detail := ""
 		if c.Class != "" && c.Level > 0 {
@@ -1214,7 +1214,7 @@ func buildActivityCard(completers []contract.QuestCompleter) *contract.QuestCard
 		}
 		card.Rows = append(card.Rows, contract.QuestCardRow{
 			ID:    fmt.Sprintf("done-%d", i+1),
-			Group: "Aktivitet",
+			Group: "Activity",
 			Cells: map[string]any{
 				"character": who,
 				"detail":    detail,
@@ -1332,6 +1332,9 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 		}
 		return contract.SyncResponse{}, err
 	}
+	if err := s.EnsurePersonalGroup(ctx, playerID); err != nil {
+		return contract.SyncResponse{}, err
+	}
 	chars, err := scanCharactersMust(ctx, s.pool, characterSelect+` WHERE c.player_id=$1 ORDER BY c.name, c.realm`, playerID)
 	if err != nil {
 		return contract.SyncResponse{}, err
@@ -1339,8 +1342,61 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	if chars == nil {
 		chars = []contract.Character{}
 	}
+	invites, err := s.SyncInvites(ctx, playerID)
+	if err != nil {
+		return contract.SyncResponse{}, err
+	}
+	if invites == nil {
+		invites = []contract.Invite{}
+	}
+	pendingByGroup := map[string]string{}
+	for _, inv := range invites {
+		if inv.Kind != "join" || inv.GroupID == "" {
+			continue
+		}
+		if _, ok := pendingByGroup[inv.GroupID]; !ok {
+			pendingByGroup[inv.GroupID] = inv.ID
+		}
+	}
+	memberGroups := map[string]bool{}
+	grows, err := s.pool.Query(ctx, `SELECT group_id::text FROM group_members WHERE player_id=$1`, playerID)
+	if err != nil {
+		return contract.SyncResponse{}, err
+	}
+	for grows.Next() {
+		var id string
+		if err := grows.Scan(&id); err != nil {
+			grows.Close()
+			return contract.SyncResponse{}, err
+		}
+		memberGroups[id] = true
+	}
+	if err := grows.Err(); err != nil {
+		grows.Close()
+		return contract.SyncResponse{}, err
+	}
+	grows.Close()
 	rows, err := s.pool.Query(ctx, questSelect+`
-		WHERE q.group_id IN (SELECT group_id FROM group_members WHERE player_id=$1)
+		WHERE q.group_id IN (
+			SELECT group_id FROM group_members WHERE player_id=$1
+			UNION
+			SELECT i.group_id FROM group_invites i
+			JOIN players p ON p.id=$1
+			WHERE i.status='pending'
+			AND NOT EXISTS (
+				SELECT 1 FROM group_members gm
+				WHERE gm.group_id=i.group_id AND gm.player_id=p.id
+			)
+			AND (
+				EXISTS (
+					SELECT 1 FROM characters c
+					WHERE c.player_id=p.id
+					AND lower(c.name)=lower(i.character_name)
+					AND lower(c.realm)=lower(i.realm)
+				)
+				OR (i.battletag IS NOT NULL AND i.battletag <> '' AND lower(i.battletag)=lower(COALESCE(p.battletag, '')))
+			)
+		)
 		AND (q.active OR q.id IN (
 			SELECT p.quest_id FROM progress p
 			JOIN characters c ON c.id = p.character_id
@@ -1353,13 +1409,22 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	defer rows.Close()
 	var quests []contract.Quest
 	var ids []string
+	var memberIDs []string
 	for rows.Next() {
 		q, err := scanQuest(rows.Scan)
 		if err != nil {
 			return contract.SyncResponse{}, err
 		}
+		if !memberGroups[q.GroupID] {
+			if inviteID := pendingByGroup[q.GroupID]; inviteID != "" {
+				q.PendingInviteID = inviteID
+			}
+		}
 		quests = append(quests, q)
 		ids = append(ids, q.ID)
+		if memberGroups[q.GroupID] {
+			memberIDs = append(memberIDs, q.ID)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return contract.SyncResponse{}, err
@@ -1378,6 +1443,10 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 		}
 		if quests[i].HasImage {
 			quests[i].ImageURL = "/v1/sagas/" + quests[i].ID + "/image"
+		}
+		// Personal starters are stamped Sagalore#0000; the log shows "Sagalore".
+		if strings.EqualFold(quests[i].CreatedBy, personalCreator) {
+			quests[i].CreatedBy = "Sagalore"
 		}
 	}
 	if err := applyChainPositions(ctx, s.pool, quests); err != nil {
@@ -1419,7 +1488,7 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	if err := prows.Err(); err != nil {
 		return contract.SyncResponse{}, err
 	}
-	completions, err := s.sagaCompletions(ctx, ids)
+	completions, err := s.sagaCompletions(ctx, memberIDs)
 	if err != nil {
 		return contract.SyncResponse{}, err
 	}
@@ -1435,15 +1504,8 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	if err != nil {
 		return contract.SyncResponse{}, err
 	}
-	invites, err := s.SyncInvites(ctx, playerID)
-	if err != nil {
-		return contract.SyncResponse{}, err
-	}
 	if groups == nil {
 		groups = []contract.GroupSummary{}
-	}
-	if invites == nil {
-		invites = []contract.Invite{}
 	}
 	return contract.SyncResponse{
 		BattleTag: tag, GeneratedAt: contract.FormatTime(time.Now()),
@@ -1970,10 +2032,10 @@ func (s *Store) SetLevel(ctx context.Context, playerID string, in contract.Level
 	if _, err := tx.Exec(ctx, `UPDATE characters SET level=$2, updated_at=now() WHERE id=$1`, in.CharacterID, in.Level); err != nil {
 		return contract.LevelResponse{}, err
 	}
-	body := fmt.Sprintf("%s nådde nivå %d.", name, in.Level)
+	body := fmt.Sprintf("%s reached level %d.", name, in.Level)
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO adventure_log (player_id, character_id, type, title, body)
-		VALUES ($1,$2,'level',$3,$4)`, playerID, in.CharacterID, fmt.Sprintf("Nivå %d", in.Level), body); err != nil {
+		VALUES ($1,$2,'level',$3,$4)`, playerID, in.CharacterID, fmt.Sprintf("Level %d", in.Level), body); err != nil {
 		return contract.LevelResponse{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

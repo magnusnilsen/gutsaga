@@ -54,6 +54,9 @@ func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, notice
 		if e.GroupName != "" {
 			fmt.Fprintf(&b, "      group_name = %s,\n", luaString(e.GroupName))
 		}
+		if e.PendingInviteID != "" {
+			fmt.Fprintf(&b, "      pending_invite_id = %s,\n", luaString(e.PendingInviteID))
+		}
 		if e.MinLevel == nil {
 			b.WriteString("      min_level = nil,\n")
 		} else {
@@ -112,12 +115,17 @@ func WriteSyncLua(battletag, generatedAt string, entries []Entry, notice, notice
 func writeLuaGroups(b *strings.Builder, groups []contract.GroupSummary, invites []contract.Invite, characters []contract.Character) {
 	b.WriteString("  groups = {\n")
 	for _, g := range groups {
-		fmt.Fprintf(b, "    { id = %s, slug = %s, name = %s },\n", luaString(g.ID), luaString(g.Slug), luaString(g.Name))
+		personal := "false"
+		if g.Personal {
+			personal = "true"
+		}
+		fmt.Fprintf(b, "    { id = %s, slug = %s, name = %s, personal = %s },\n",
+			luaString(g.ID), luaString(g.Slug), luaString(g.Name), personal)
 	}
 	b.WriteString("  },\n  invites = {\n")
 	for _, inv := range invites {
-		fmt.Fprintf(b, "    { id = %s, group_name = %s, name = %s, realm = %s, battletag = %s, kind = %s },\n",
-			luaString(inv.ID), luaString(inv.GroupName), luaString(inv.Name), luaString(inv.Realm), luaString(inv.BattleTag), luaString(inv.Kind))
+		fmt.Fprintf(b, "    { id = %s, group_id = %s, group_name = %s, name = %s, realm = %s, battletag = %s, kind = %s },\n",
+			luaString(inv.ID), luaString(inv.GroupID), luaString(inv.GroupName), luaString(inv.Name), luaString(inv.Realm), luaString(inv.BattleTag), luaString(inv.Kind))
 	}
 	b.WriteString("  },\n  characters = {\n")
 	for _, c := range characters {
