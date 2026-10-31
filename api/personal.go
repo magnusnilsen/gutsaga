@@ -94,43 +94,32 @@ func (s *Store) groupIsPersonal(ctx context.Context, groupID string) (bool, erro
 	return personal, err
 }
 
+// personalStarterQuests are zone- and faction-agnostic. Emotes work anywhere
+// in the open world, so every new account can finish them on any character.
 func personalStarterQuests() []QuestInput {
-	goldX, goldY := 0.438, 0.658
-	goldR := 0.05
-	roadX, roadY := 0.456, 0.477
-	roadR := 0.04
-	water := 159
-	milk := 1179
-	one := 1
 	return []QuestInput{
 		{
-			Title: "An evening in Goldshire",
-			Description: "Go to Lion's Pride Inn in the heart of Goldshire.\n\n" +
-				"Talk to Innkeeper Farley about the day's rumors, and make sure you have spring water in your bag before you sit by the fire.",
-			PartyQuest: true,
+			Title:       "Say hello",
+			Description: "A saga can watch what you do in the world.\n\nWave at nobody in particular — /wave — to mark this one done.",
+			PartyQuest:  true,
 			Objectives: []contract.Objective{
-				{ID: "goldshire", Type: contract.ObjectiveLocation, Text: "Stand in or just outside Lion's Pride Inn in Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
-				{ID: "farley", Type: contract.ObjectiveInteract, Text: "Talk to Innkeeper Farley", NPC: "Innkeeper Farley"},
-				{ID: "water", Type: contract.ObjectiveCollect, Text: "Have 1 Refreshing Spring Water (sold by Farley)", ItemID: &water, ItemName: "Refreshing Spring Water", Count: one},
+				{ID: "wave", Type: contract.ObjectiveEmote, Text: "Wave (/wave)", Emote: "WAVE"},
 			},
 		},
 		{
-			Title: "The road from Northshire",
-			Description: "North of Goldshire is the road out of Northshire Abbey.\n\n" +
-				"Stand where Falkhaan Isenstrider usually stands, where the forest opens toward Elwynn.",
-			PartyQuest: true,
+			Title:       "Take a seat",
+			Description: "Rest for a moment.\n\nSit down with /sit. Stand up whenever you like afterward.",
+			PartyQuest:  true,
 			Objectives: []contract.Objective{
-				{ID: "road", Type: contract.ObjectiveLocation, Text: "Stand on the road south of Northshire", MapID: intPtr(37), X: &roadX, Y: &roadY, Radius: &roadR},
+				{ID: "sit", Type: contract.ObjectiveEmote, Text: "Sit (/sit)", Emote: "SIT"},
 			},
 		},
 		{
-			Title: "Milk for the watch",
-			Description: "The guards in Goldshire need something cold to drink.\n\n" +
-				"Ice Cold Milk is sold by Innkeeper Farley — buy one and meet on the square in front of the inn.",
-			PartyQuest: true,
+			Title:       "Celebrate",
+			Description: "Something went right — or will.\n\nCheer with /cheer to finish this starter.",
+			PartyQuest:  true,
 			Objectives: []contract.Objective{
-				{ID: "square", Type: contract.ObjectiveLocation, Text: "Stand in Goldshire", Subzone: "Goldshire|Lion's Pride Inn", MapID: intPtr(37), X: &goldX, Y: &goldY, Radius: &goldR},
-				{ID: "milk", Type: contract.ObjectiveCollect, Text: "Have 1 Ice Cold Milk", ItemID: &milk, ItemName: "Ice Cold Milk", Count: one},
+				{ID: "cheer", Type: contract.ObjectiveEmote, Text: "Cheer (/cheer)", Emote: "CHEER"},
 			},
 		},
 	}

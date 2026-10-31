@@ -19,6 +19,7 @@ SagaloreLocale.en = {
     ["ui.no_sagas"] = "No sagas yet.\n\nStart Sagalore on this computer and type /reload.",
     ["ui.no_sagas_for"] = "No sagas for %s.",
     ["ui.ask_invite"] = "Ask a friend for an invite to join their sagas.\n\nTo create your own, use the Sagalore tray → Create sagas… (AI + Smia MCP).",
+    ["ui.create_hint"] = "These are your personal starters. Ask a friend for an invite to join their sagas, or create your own from the Sagalore tray → Create sagas…",
     ["invite.accepted"] = "Joined %s. New sagas are ready.",
     ["ui.search"] = "Search",
     ["ui.description"] = "Description",

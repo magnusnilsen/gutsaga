@@ -19,6 +19,7 @@ SagaloreLocale.nb = {
     ["ui.no_sagas"] = "Ingen sagaer ennå.\n\nStart Sagalore på maskinen og skriv /reload.",
     ["ui.no_sagas_for"] = "Ingen sagaer for %s.",
     ["ui.ask_invite"] = "Be en venn om en invitasjon for å bli med i sagaene deres.\n\nFor å lage egne: Sagalore-meny → Create sagas… (AI + Smia MCP).",
+    ["ui.create_hint"] = "Dette er dine personlige startere. Be en venn om en invitasjon, eller lag egne fra Sagalore-menyen → Create sagas…",
     ["invite.accepted"] = "Ble med i %s. Nye sagaer er klare.",
     ["ui.search"] = "Søk",
     ["ui.description"] = "Beskrivelse",

@@ -3184,6 +3184,10 @@ refresh = function()
         detailY = detailY + (detailGoalsHeader:GetStringHeight() or 20) + 10
 
         local description = formatDescription(selectedEntry.description)
+        if type(SagaloreInvite) == "table" and type(SagaloreInvite.onlyPersonalGroups) == "function"
+            and SagaloreInvite.onlyPersonalGroups(SagaloreData) then
+            description = description .. "\n\n" .. L("ui.create_hint")
+        end
         detailFS:SetText(description)
         detailFS:SetTextColor(INK.r, INK.g, INK.b)
         detailFS:SetSpacing(4)
