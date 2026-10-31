@@ -9,7 +9,7 @@ Use this when moving from the private archive to the public `sagalore/sagalore` 
 - [x] `SAGALORE_*` env only (no dual-read fallbacks)
 - [x] Single release asset names (`sagalore-*`, `Sagalore-addon.zip`)
 - [x] English CI release download notes
-- [x] Honest README (Cursor, Mac-first matrix, unsigned, honor-based times)
+- [x] Honest README (Cursor + AI assets, Mac-first matrix, unsigned, honor-based times, landing-in-repo note)
 - [x] `docs/architecture.md`
 - [x] Realtime channel / triggers named `sagalore_*` (see migration `016` for existing DBs)
 
@@ -22,6 +22,7 @@ Use this when moving from the private archive to the public `sagalore/sagalore` 
 - [ ] Branch protection on `main` + required CI
 - [ ] Smoke a **pre-release** tag: download each OS asset, companion update path, addon zip install
 - [ ] Confirm landing / Discord OG still point at `sagalore.app` / `api.sagalore.app`
+- [ ] Consider splitting the marketing site (`web/`) out of the product repo (e.g. `sagalore/website` or Pages/Cloudflare) once the public seed is settled
 
 ## Release workflow (tighten when public)
 

@@ -12,11 +12,14 @@ Three parts, on purpose:
 2. **The official server.** The easiest way to start is the official server at [sagalore.app](https://sagalore.app) / `api.sagalore.app`, which is free to use. Your data is stored there, and you sign in with Battle.net.
 3. **The MCP.** There is an [official MCP](https://app.smia.io/m/sagalore) that lets your AI create sagas. It is built on the open Sagalore API and runs on [Smia](https://smia.io), a platform we also make. The MCP is not in this repo: Sagalore stays independent of any one platform, and the listing is also a way to show people Smia. Want your own MCP? The API is documented — build away. See [docs/API.md](docs/API.md) and [docs/oauth.md](docs/oauth.md).
 
+The official marketing site (`web/`) also lives in this repo so one deploy can serve sagalore.app. Self-hosters can leave `LANDING_DIR` unset and run API-only; the landing is not required to play.
+
 ## Project status
 
 Early public / alpha. One maintainer. Expect rough edges, unsigned binaries, and slow replies on issues.
 
-- Built with heavy **Cursor** (AI) assistance. Architecture and merge decisions are human-owned; review PRs as carefully as you would any agent-assisted codebase.
+- Built with heavy **Cursor** (AI) assistance for a lot of the **code**. Architecture and merge decisions are human-owned; review PRs as carefully as you would any agent-assisted codebase.
+- **Assets** were AI-generated or AI-assisted too: logo / emblem / wordmark, landing copy, and UI frames / chrome. Treat the brand as provisional, not commissioned art.
 - Day-to-day development and playtesting: **macOS Apple silicon**, WoW Classic Era (and Forever). The Windows companion is **built in CI**; in-game Windows play is not systematically tested.
 - Not affiliated with or endorsed by Blizzard. Unofficial software; ToS risk is yours.
 - Release binaries are **not signed**. Gatekeeper and SmartScreen warnings are expected.
