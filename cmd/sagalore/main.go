@@ -241,6 +241,9 @@ func run(opts options) int {
 	go application.Run(ctx)
 	if opts.Headless || !tray.Supported() {
 		fmt.Println("Sagalore is running. Log in with Battle.net if asked. Quit with Ctrl+C.")
+		if application.NeedsLogin() {
+			fmt.Println("If the browser did not finish login, re-run without --headless and use Log in with Battle.net in the tray.")
+		}
 		<-ctx.Done()
 		return 0
 	}

@@ -55,6 +55,12 @@ assertTrue(not Invite.answered(db, failID), "failed accept re-prompts after reco
 assertTrue(Invite.onlyPersonalGroups({ groups = { { name = "Personal", personal = true } } }), "only personal")
 assertTrue(not Invite.onlyPersonalGroups({ groups = { { name = "Personal", personal = true }, { name = "Gutar" } } }), "friend group")
 
+local other = { name = "Thrall", realm = "Everlook" }
+local wait = Invite.waitingFor({}, other, data, now)
+assertTrue(wait and wait.name == "Magni" and wait.realm == "Everlook" and wait.group == "Tutorial", "wrong character wait")
+assertTrue(Invite.waitingFor({}, character, data, now) == nil, "matching character has no wait hint")
+assertTrue(Invite.prompt({}, other, data, now) == nil, "wrong character has no prompt")
+
 SagaloreLanguage = "nb"
 assertTrue(Sagalore_L("invite.join") == "Bli med i %s?", "nb join")
 assertTrue(Sagalore_L("invite.accept") == "Ja", "nb accept")

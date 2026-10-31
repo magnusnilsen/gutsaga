@@ -20,6 +20,15 @@ import (
 	"github.com/magnusnilsen/gutsaga/internal/notify"
 )
 
+// errLoginTimedOut is returned when the browser flow runs out of time. The
+// companion keeps running and reminds the user from the tray / notifications.
+var errLoginTimedOut = errors.New("Battle.net login timed out")
+
+const loginRemindInterval = 5 * time.Minute
+
+// loginTimeout is how long Login waits for the browser flow. Tests shorten it.
+var loginTimeout = 5 * time.Minute
+
 func (a *App) ensureLogin(ctx context.Context) error {
 	a.mu.Lock()
 	if a.Client.APIKey != "" {
@@ -39,7 +48,30 @@ func (a *App) ensureLogin(ctx context.Context) error {
 		a.loginTried = true
 	}
 	a.mu.Unlock()
+	if errors.Is(err, errLoginTimedOut) {
+		a.announceLogin("Battle.net login timed out. Use Log in with Battle.net in the tray when you are ready.")
+	}
 	return err
+}
+
+// NeedsLogin reports whether the companion is running without a session and
+// the user has not explicitly logged out (tray / reminders should nudge).
+func (a *App) NeedsLogin() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.Config.Token() == "" && !a.signedOut
+}
+
+// maybeRemindLogin shows a desktop notice when auto-login already ran (or
+// timed out) and the user still has no session. Skips explicit logout.
+func (a *App) maybeRemindLogin() {
+	a.mu.Lock()
+	need := a.Config.Token() == "" && !a.signedOut && a.loginTried
+	a.mu.Unlock()
+	if !need {
+		return
+	}
+	a.announceLogin("Still not logged in. Use Log in with Battle.net in the tray to sync your sagas.")
 }
 
 func isBnetConfigError(err error) bool {
@@ -93,13 +125,13 @@ func (a *App) Login(ctx context.Context) error {
 		a.Log.Warn("could not open the browser", "err", err, "url", start)
 		a.announceLogin("Could not open the browser. Use Log in with Battle.net in the tray, or open: " + start)
 	}
-	deadline := time.Now().Add(5 * time.Minute)
+	deadline := time.Now().Add(loginTimeout)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if time.Now().After(deadline) {
-			return errors.New("Battle.net login timed out")
+			return errLoginTimedOut
 		}
 		out, pending, err := a.Client.PollBnet(ctx, attempt)
 		if err != nil {

@@ -4844,6 +4844,7 @@ local inviteFrame
 local shownInvite
 local showInviteDialog
 local maybeInvite
+local shownWaitingInvite
 
 local function emitInvite(action, id)
     if type(SagaloreInvite) ~= "table" or type(SagaloreInvite.line) ~= "function" then
@@ -4964,13 +4965,26 @@ maybeInvite = function()
         SagaloreInvite.reconcileAnswered(SagaloreDB, SagaloreData)
     end
     local prompt = SagaloreInvite.prompt(SagaloreDB, player, SagaloreData, unixNow())
-    if not prompt then
+    if prompt then
+        if shownInvite == prompt.id and inviteFrame and inviteFrame:IsShown() then
+            return
+        end
+        showInviteDialog(prompt)
         return
     end
-    if shownInvite == prompt.id and inviteFrame and inviteFrame:IsShown() then
+    if type(SagaloreInvite.waitingFor) ~= "function" then
         return
     end
-    showInviteDialog(prompt)
+    local waiting = SagaloreInvite.waitingFor(SagaloreDB, player, SagaloreData, unixNow())
+    if not waiting or waiting.id == shownWaitingInvite then
+        return
+    end
+    shownWaitingInvite = waiting.id
+    if waiting.group and waiting.group ~= "" then
+        chat(string.format(L("invite.wrong_character"), waiting.name or "", waiting.realm or "", waiting.group))
+    else
+        chat(string.format(L("invite.wrong_character_nogroup"), waiting.name or "", waiting.realm or ""))
+    end
 end
 
 local events = CreateFrame("Frame")

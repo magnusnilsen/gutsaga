@@ -165,5 +165,36 @@ function M.prompt(db, character, data, now)
     return nil
 end
 
+-- waitingFor is an invite on this account that is not for the logged-in character.
+-- Used to hint "log into Magni-Everlook" instead of failing silently.
+function M.waitingFor(db, character, data, now)
+    if type(data) ~= "table" or type(data.invites) ~= "table" then
+        return nil
+    end
+    local name = character and character.name or ""
+    local realm = character and character.realm or ""
+    if name == "" then
+        return nil
+    end
+    for i = 1, #data.invites do
+        local inv = data.invites[i]
+        if type(inv) == "table" and type(inv.id) == "string" and inv.id ~= "" then
+            if not M.answered(db, inv.id) and not M.snoozed(db, inv.id, now) then
+                local invName = inv.name or ""
+                local invRealm = inv.realm or ""
+                if invName ~= "" and not (same(invName, name) and same(invRealm, realm)) then
+                    return {
+                        id = inv.id,
+                        name = invName,
+                        realm = invRealm,
+                        group = inv.group_name or "",
+                    }
+                end
+            end
+        end
+    end
+    return nil
+end
+
 SagaloreInvite = M
 return M

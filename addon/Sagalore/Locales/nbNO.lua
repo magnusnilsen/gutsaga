@@ -6,6 +6,8 @@ SagaloreLocale.nb = {
     ["invite.accept"] = "Ja",
     ["invite.decline"] = "Nei",
     ["invite.later"] = "Ikke nå",
+    ["invite.wrong_character"] = "Invitasjon for %s-%s (%s) venter. Logg inn på den karakteren for å godta.",
+    ["invite.wrong_character_nogroup"] = "Invitasjon for %s-%s venter. Logg inn på den karakteren for å godta.",
 
     ["ui.status"] = "Status",
     ["ui.group"] = "Gruppe",

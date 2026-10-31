@@ -153,10 +153,12 @@ func (a *App) Run(ctx context.Context) {
 	flushTick := time.NewTicker(5 * time.Second)
 	syncTick := time.NewTicker(10 * time.Minute)
 	updateTick := time.NewTicker(4 * time.Hour)
+	loginRemindTick := time.NewTicker(loginRemindInterval)
 	defer tailTick.Stop()
 	defer flushTick.Stop()
 	defer syncTick.Stop()
 	defer updateTick.Stop()
+	defer loginRemindTick.Stop()
 	debounce := time.NewTimer(time.Hour)
 	debounce.Stop()
 	defer debounce.Stop()
@@ -176,6 +178,8 @@ func (a *App) Run(ctx context.Context) {
 			a.Flush(ctx)
 		case <-syncTick.C:
 			a.bootstrap(ctx)
+		case <-loginRemindTick.C:
+			a.maybeRemindLogin()
 		case <-updateTick.C:
 			if !a.NoUpdate {
 				a.maybeUpdate(ctx)

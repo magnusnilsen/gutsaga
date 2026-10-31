@@ -6,6 +6,8 @@ SagaloreLocale.en = {
     ["invite.accept"] = "Accept",
     ["invite.decline"] = "Decline",
     ["invite.later"] = "Not now",
+    ["invite.wrong_character"] = "Invite for %s-%s (%s) is waiting. Log into that character to accept.",
+    ["invite.wrong_character_nogroup"] = "Invite for %s-%s is waiting. Log into that character to accept.",
 
     ["ui.status"] = "Status",
     ["ui.group"] = "Group",
