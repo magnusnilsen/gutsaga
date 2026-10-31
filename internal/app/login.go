@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -218,6 +219,28 @@ func randomAttempt() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// DefaultCreateSagasURL is the Smia public MCP listing for authoring sagas.
+// Override with SAGALORE_CREATE_URL.
+const DefaultCreateSagasURL = "https://smia.tools"
+
+// CreateSagasURL returns where the tray "Create sagas…" item should open.
+func CreateSagasURL() string {
+	if v := strings.TrimSpace(os.Getenv("SAGALORE_CREATE_URL")); v != "" {
+		return v
+	}
+	return DefaultCreateSagasURL
+}
+
+// OpenCreateSagas opens the public MCP listing in the browser.
+func (a *App) OpenCreateSagas() error {
+	url := CreateSagasURL()
+	if err := openBrowser(url); err != nil {
+		a.Log.Warn("could not open create-sagas URL", "err", err, "url", url)
+		return err
+	}
+	return nil
 }
 
 func openBrowser(raw string) error {

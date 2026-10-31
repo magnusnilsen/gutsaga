@@ -277,6 +277,13 @@ func run(opts options) int {
 				}
 			}()
 		}},
+		{Title: "Create sagas…", Tooltip: "Open the Smia MCP listing to create sagas with AI", OnClick: func() {
+			go func() {
+				if err := application.OpenCreateSagas(); err != nil {
+					log.Warn("create sagas", "err", err)
+				}
+			}()
+		}},
 		{Title: "Sync now", Tooltip: "Fetch sagas from the API", OnClick: func() {
 			go func() {
 				if err := application.SyncNow(context.Background()); err != nil {
