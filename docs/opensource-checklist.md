@@ -28,10 +28,10 @@ Use this when moving from the private archive to the public `sagalore/sagalore` 
 
 ## Release workflow (tighten when public)
 
-- [ ] Prefer tag `v*` or explicit dispatch over “every push to main ships”
+- [x] Prefer tag `v*` or explicit dispatch over “every push to main ships”
 - [ ] Ensure the workflow creates/pushes the annotated tag that `next-version.sh` expects
 - [ ] Keep artifact contract documented in README (companion auto-update depends on exact names)
-- [ ] `contents: write` only on the release job; PR job read-only
+- [x] `contents: write` only on the release job; PR job read-only
 - [ ] Dependabot for Go modules (optional, lightweight)
 
 ## Addon catalog automation (later)
