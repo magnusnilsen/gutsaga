@@ -57,7 +57,7 @@ func (s *Server) createSaga(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.announceCreated(r.Context(), out, body.Announce, image, contentType)
+	s.announceCreated(r.Context(), out, body.Announce)
 	writeJSON(w, http.StatusCreated, s.withSignedCoverURL(withSagaImageURL(out)))
 }
 

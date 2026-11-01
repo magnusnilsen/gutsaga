@@ -141,7 +141,7 @@ type CompletionResponse struct {
 	Completed         bool          `json:"completed"`
 	ProgressID        string        `json:"progress_id,omitempty"`
 	LogWritten        bool          `json:"log_written"`
-	DiscordPosted     bool          `json:"discord_posted"`
+	WebhookPosted     bool          `json:"webhook_posted"`
 	CharacterName     string        `json:"character_name,omitempty"`
 	CharacterRace     string        `json:"character_race,omitempty"`
 	CharacterClass    string        `json:"character_class,omitempty"`

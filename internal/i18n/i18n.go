@@ -1,4 +1,4 @@
-// Package i18n is the companion and Discord catalog.
+// Package i18n is the companion catalog.
 // English is the fallback. API error codes stay English in the API package.
 package i18n
 
@@ -67,24 +67,6 @@ func ENKeys() map[string]string {
 }
 
 var en = map[string]string{
-	"discord.someone":      "Someone",
-	"discord.completed":    "completed a saga!",
-	"discord.created":      "%s created a new saga",
-	"discord.created_anon": "New saga",
-	"discord.updated":      "%s updated a saga",
-	"discord.updated_anon": "A saga was updated",
-	"discord.retired":      "%s retired a saga",
-	"discord.retired_anon": "A saga was retired",
-	"discord.retired_body": "This saga is no longer active.",
-	"discord.version":      "New version %d.",
-	"discord.description":  "Description",
-	"discord.ready":        "A new saga is ready.",
-	"discord.level":        "reached a new level.",
-	"discord.no_goals":     "No goals",
-	"discord.goal":         "Goal",
-	"discord.more_goals":   "… and %d more goals",
-	"discord.more_checked": "… and %d more goals",
-
 	"app.logged_out":   "Not logged in",
 	"app.account":      "Account: %s",
 	"app.login":        "Log in with Battle.net",
@@ -124,24 +106,6 @@ var en = map[string]string{
 }
 
 var nb = map[string]string{
-	"discord.someone":      "En karakter",
-	"discord.completed":    "fullførte en saga!",
-	"discord.created":      "%s opprettet en ny saga",
-	"discord.created_anon": "Ny saga",
-	"discord.updated":      "%s oppdaterte en saga",
-	"discord.updated_anon": "En saga er oppdatert",
-	"discord.retired":      "%s la bort en saga",
-	"discord.retired_anon": "En saga er lagt bort",
-	"discord.retired_body": "Sagaen er ikke lenger aktiv.",
-	"discord.version":      "Ny versjon %d.",
-	"discord.description":  "Beskrivelse",
-	"discord.ready":        "En ny saga er klar.",
-	"discord.level":        "nådde et nytt nivå.",
-	"discord.no_goals":     "Ingen mål",
-	"discord.goal":         "Mål",
-	"discord.more_goals":   "… og %d mål til",
-	"discord.more_checked": "… og %d mål til",
-
 	"app.logged_out":   "Ikke innlogget",
 	"app.account":      "Konto: %s",
 	"app.login":        "Logg inn med Battle.net",

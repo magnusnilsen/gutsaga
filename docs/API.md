@@ -49,7 +49,7 @@ Session or `gst_`:
 | `POST` | `/v1/invites/{id}/decline` | Permanent for that invite. |
 | `POST` | `/v1/groups/{id}/leave` | Leave. If the owner leaves, the oldest remaining member becomes owner. |
 | `DELETE` | `/v1/groups/{id}/members/{playerID}` | Owner removes a member. |
-| `PUT` | `/v1/groups/{id}/discord` | Owner. `{"webhook_url":"..."}`. |
+| `PUT` | `/v1/groups/{id}/webhook` | Owner. `{"url":"..."}` (empty clears). JSON event POSTs — see [webhooks.md](webhooks.md). |
 | `PUT` | `/v1/groups/{id}/locale` | Owner. `en` or `nb`. |
 | `PATCH` | `/v1/characters/{id}` | `{"participating":true}`. |
 
@@ -78,6 +78,6 @@ Seed runs from `sagalore-api seed` or `make dev`. It does not run on server boot
 
 ## Errors
 
-`error` is the code and the contract. `message` is English. Clients may translate known codes. Discord text uses the group's locale, default English.
+`error` is the code and the contract. `message` is English. Clients may translate known codes. Group locale (`en` / `nb`) is for companion and addon chrome.
 
 See [sagas-api.md](sagas-api.md) for the saga document and [self-hosting.md](self-hosting.md) for deployment.

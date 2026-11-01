@@ -34,7 +34,7 @@ Listens on port 8080. Good for local development and a single host. Migrations r
 | `IMAGE_URL_SECRET` | for signed covers | `openssl rand -hex 32` |
 | `SAGALORE_BOOTSTRAP_GROUP` | when old sagas have no group | `slug:Name`. A fresh database does nothing. |
 | `SAGALORE_OWNER_BATTLETAG` | no | Owner of that bootstrap group. Otherwise the oldest player who has a BattleTag. |
-| `DISCORD_WEBHOOK_URL` | no | Copied once onto the bootstrap group when its webhook is empty. After that the group row is the source of truth. New groups stay quiet until the owner sets a webhook. |
+| `SAGALORE_BOOTSTRAP_WEBHOOK_URL` | no | Copied once onto the bootstrap group when its webhook is empty. After that the group row is the source of truth. New groups stay quiet until the owner sets a webhook (`PUT /v1/groups/{id}/webhook`). See [webhooks.md](webhooks.md). |
 | `SAGALORE_DEV_TOKEN` | dev and CI only | Login bypass. It is not a stand-in for Battle.net. |
 | `SAGALORE_CREATE_URL` | no | Optional override for the companion “Create sagas…” link (default is the official site). |
 

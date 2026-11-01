@@ -61,7 +61,7 @@ Anyone can run the API + Postgres and point a companion at it. Short checklist a
 
 A player is a Battle.net account (`bnet_account_id` and BattleTag). Characters come from the addon. A name and realm sticks to the first account that linked it. If the character line includes a BattleTag, it must match the logged-in account.
 
-Membership is the account. Any member may create sagas in the group. The owner invites, removes members, and sets Discord and locale. If you are in exactly one group, the saga body may omit `group`. Otherwise `group` is the group slug (a string). The party-size object is still `group` when it is an object; it may include `slug` when you need both.
+Membership is the account. Any member may create sagas in the group. The owner invites, removes members, and sets the group webhook and locale. If you are in exactly one group, the saga body may omit `group`. Otherwise `group` is the group slug (a string). The party-size object is still `group` when it is an object; it may include `slug` when you need both.
 
 Invites are addressed to a character. Accept joins that Battle.net account and marks the character participating. Decline sticks. Not now is a 12-hour snooze in SavedVariables.
 
@@ -86,6 +86,7 @@ Other services can register as OAuth clients and send the player through Battle.
 ## Docs
 
 - [docs/self-hosting.md](docs/self-hosting.md) — Compose, env, Battle.net app, curl
+- [docs/webhooks.md](docs/webhooks.md) — Group notification webhooks (JSON)
 - [docs/API.md](docs/API.md) — HTTP
 - [docs/oauth.md](docs/oauth.md) — OAuth 2.1 for external clients
 - [docs/sagas-api.md](docs/sagas-api.md) — saga JSON

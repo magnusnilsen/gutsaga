@@ -177,7 +177,7 @@ func (c *Client) Level(ctx context.Context, req contract.LevelRequest) (contract
 	return out, err
 }
 
-// Complete uploads the screenshot the player took. The API posts it to Discord.
+// Complete uploads the screenshot the player took. The API may notify the group webhook.
 func (c *Client) Complete(ctx context.Context, req contract.CompletionRequest, image []byte) (contract.CompletionResponse, error) {
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)

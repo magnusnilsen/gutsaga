@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/sagalore/sagalore/internal/contract"
 	"github.com/sagalore/sagalore/internal/i18n"
+	"github.com/sagalore/sagalore/internal/webhook"
 )
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,40}[a-z0-9])?$`)
@@ -536,16 +537,16 @@ func (s *Store) RemoveMember(ctx context.Context, actorID, groupID, memberID str
 	return nil
 }
 
-func (s *Store) SetGroupDiscord(ctx context.Context, playerID, groupID, webhook string) error {
+func (s *Store) SetGroupWebhook(ctx context.Context, playerID, groupID, webhook string) error {
 	if err := s.requireOwner(ctx, playerID, groupID); err != nil {
 		return err
 	}
 	webhook = strings.TrimSpace(webhook)
-	if webhook != "" && !strings.HasPrefix(webhook, "https://discord.com/api/webhooks/") && !strings.HasPrefix(webhook, "https://discordapp.com/api/webhooks/") {
-		return fmt.Errorf("%w: discord webhook", ErrInvalid)
+	if webhook != "" && !strings.HasPrefix(webhook, "https://") && !strings.HasPrefix(webhook, "http://") {
+		return fmt.Errorf("%w: webhook url must be http(s)", ErrInvalid)
 	}
 	_, err := s.pool.Exec(ctx, `
-		UPDATE groups SET discord_webhook_url=$2, discord_webhook_sourced=true WHERE id=$1`, groupID, webhook)
+		UPDATE groups SET webhook_url=$2, webhook_sourced=true WHERE id=$1`, groupID, webhook)
 	return err
 }
 
@@ -591,16 +592,26 @@ func (s *Store) SetParticipating(ctx context.Context, playerID, characterID stri
 	return s.GetCharacter(ctx, characterID)
 }
 
-func (s *Store) GroupDiscordForQuest(ctx context.Context, questID string) (webhook, locale string, err error) {
+func (s *Store) GroupWebhookForQuest(ctx context.Context, questID string) (url string, group webhook.GroupRef, err error) {
 	err = s.pool.QueryRow(ctx, `
-		SELECT COALESCE(g.discord_webhook_url, ''), COALESCE(g.locale, 'en')
+		SELECT COALESCE(g.webhook_url, ''), COALESCE(g.id::text, ''), COALESCE(g.slug, ''), COALESCE(g.name, '')
 		FROM quests q
 		LEFT JOIN groups g ON g.id = q.group_id
-		WHERE q.id=$1`, questID).Scan(&webhook, &locale)
+		WHERE q.id=$1`, questID).Scan(&url, &group.ID, &group.Slug, &group.Name)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", i18n.EN, nil
+		return "", webhook.GroupRef{}, nil
 	}
-	return webhook, i18n.Normalize(locale), err
+	return url, group, err
+}
+
+func (s *Store) GroupWebhook(ctx context.Context, groupID string) (url string, group webhook.GroupRef, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT COALESCE(webhook_url, ''), id::text, slug, name
+		FROM groups WHERE id=$1`, groupID).Scan(&url, &group.ID, &group.Slug, &group.Name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", webhook.GroupRef{}, ErrNotFound
+	}
+	return url, group, err
 }
 
 func (s *Store) MintPersonalToken(ctx context.Context, playerID, label string) (contract.PersonalToken, error) {
@@ -863,11 +874,13 @@ func (s *Server) listMyInvites(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) acceptInvite(w http.ResponseWriter, r *http.Request) {
-	out, err := s.store.AcceptInvite(r.Context(), playerFrom(r).ID, r.PathValue("id"))
+	p := playerFrom(r)
+	out, err := s.store.AcceptInvite(r.Context(), p.ID, r.PathValue("id"))
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	s.announceInviteAccepted(r.Context(), out, p.BattleTag)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -896,15 +909,15 @@ func (s *Server) removeMember(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) putGroupDiscord(w http.ResponseWriter, r *http.Request) {
+func (s *Server) putGroupWebhook(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		WebhookURL string `json:"webhook_url"`
+		URL string `json:"url"`
 	}
 	if err := readJSON(r, &body, 1<<16); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
 		return
 	}
-	if err := s.store.SetGroupDiscord(r.Context(), playerFrom(r).ID, r.PathValue("id"), body.WebhookURL); err != nil {
+	if err := s.store.SetGroupWebhook(r.Context(), playerFrom(r).ID, r.PathValue("id"), body.URL); err != nil {
 		s.fail(w, err)
 		return
 	}

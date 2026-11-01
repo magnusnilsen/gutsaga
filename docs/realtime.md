@@ -2,7 +2,7 @@
 
 The companion used to learn about sagas by calling `GET /v1/sync` every ten minutes. It still does that as a fallback. The fast path is a WebSocket.
 
-Discord and addon chrome follow the group or companion language. This note is English.
+Addon chrome follows the group or companion language. This note is English.
 
 ## Socket
 
@@ -57,7 +57,7 @@ SELECT pg_notify(
 
 On each event except `ping`, and on every reconnect, the companion syncs and rewrites `SagaloreData.lua`. Bursts within 200ms become one sync. The ten-minute poll stays.
 
-If the visible saga list changed, the companion logs a line (`Ny saga: …`, `Saga oppdatert: …`, and so on). It does **not** raise a desktop banner — Discord carries the player-facing alert.
+If the visible saga list changed, the companion logs a line (`Ny saga: …`, `Saga oppdatert: …`, and so on). It does **not** raise a desktop banner — group webhooks carry the player-facing alert when configured.
 
 The first sync after the program starts stays quiet in that sense. Startup already asks for `/reload`.
 

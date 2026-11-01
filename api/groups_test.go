@@ -13,7 +13,7 @@ func TestBootstrapGroupsExistingRowsOnly(t *testing.T) {
 	resetDB(t)
 	store := NewStore(testPool)
 	ctx := context.Background()
-	if err := store.Bootstrap(ctx, "tutorial:Tutorial", "", "https://discord.com/api/webhooks/example"); err != nil {
+	if err := store.Bootstrap(ctx, "tutorial:Tutorial", "", "https://hooks.example/example"); err != nil {
 		t.Fatal(err)
 	}
 	var groups int
@@ -41,12 +41,12 @@ func TestBootstrapGroupsExistingRowsOnly(t *testing.T) {
 	if err := store.Bootstrap(ctx, "", "", ""); err == nil {
 		t.Fatal("expected startup to refuse unscoped sagas")
 	}
-	if err := store.Bootstrap(ctx, "tutorial:Tutorial", "Player#1234", "https://discord.com/api/webhooks/example"); err != nil {
+	if err := store.Bootstrap(ctx, "tutorial:Tutorial", "Player#1234", "https://hooks.example/example"); err != nil {
 		t.Fatal(err)
 	}
 	var groupID, slug, hook string
 	var sourced bool
-	if err := testPool.QueryRow(ctx, `SELECT id::text, slug, discord_webhook_url, discord_webhook_sourced FROM groups`).Scan(&groupID, &slug, &hook, &sourced); err != nil {
+	if err := testPool.QueryRow(ctx, `SELECT id::text, slug, webhook_url, webhook_sourced FROM groups`).Scan(&groupID, &slug, &hook, &sourced); err != nil {
 		t.Fatal(err)
 	}
 	if slug != "tutorial" || hook == "" || !sourced {
@@ -63,11 +63,11 @@ func TestBootstrapGroupsExistingRowsOnly(t *testing.T) {
 	if attached != 1 || logAttached != 1 || participating != 1 || members != 1 {
 		t.Fatalf("attached %d log %d participating %d owner %d", attached, logAttached, participating, members)
 	}
-	if err := store.Bootstrap(ctx, "tutorial:Tutorial", "", "https://discord.com/api/webhooks/other"); err != nil {
+	if err := store.Bootstrap(ctx, "tutorial:Tutorial", "", "https://hooks.example/other"); err != nil {
 		t.Fatal(err)
 	}
 	var hook2 string
-	_ = testPool.QueryRow(ctx, `SELECT discord_webhook_url FROM groups WHERE id=$1`, groupID).Scan(&hook2)
+	_ = testPool.QueryRow(ctx, `SELECT webhook_url FROM groups WHERE id=$1`, groupID).Scan(&hook2)
 	if hook2 != hook {
 		t.Fatalf("webhook recopied: %s", hook2)
 	}

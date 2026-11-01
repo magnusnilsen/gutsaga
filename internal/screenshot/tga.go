@@ -172,7 +172,7 @@ func ToAddonTexture(data []byte) (tga []byte, width, height int, err error) {
 	return EncodeAddonTGA(img)
 }
 
-// NormalizeUpload returns image bytes Discord can attach.
+// NormalizeUpload returns image bytes suitable for cover uploads.
 // PNG, JPEG, GIF and WebP pass through. TGA is converted to PNG.
 func NormalizeUpload(data []byte) (out []byte, contentType string, err error) {
 	if len(data) == 0 {

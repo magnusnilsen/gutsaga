@@ -12,7 +12,7 @@ func TestNorwegianKeysExistInEnglish(t *testing.T) {
 }
 
 func TestMissingKeyFallsBackToEnglish(t *testing.T) {
-	if got := T("nb", "discord.created_anon"); got != "Ny saga" {
+	if got := T("nb", "app.login"); got != "Logg inn med Battle.net" {
 		t.Fatalf("nb %q", got)
 	}
 	// A key present only in English is used for nb too.
@@ -21,7 +21,7 @@ func TestMissingKeyFallsBackToEnglish(t *testing.T) {
 	if got := T("nb", "test.only_en"); got != "English fallback" {
 		t.Fatalf("fallback %q", got)
 	}
-	if got := T("de", "discord.no_goals"); got != "No goals" {
+	if got := T("de", "app.logged_out"); got != "Not logged in" {
 		t.Fatalf("unknown lang %q", got)
 	}
 }
