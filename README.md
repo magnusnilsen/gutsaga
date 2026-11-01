@@ -44,7 +44,11 @@ The API container must have the same `SAGALORE_DEV_TOKEN`. `make dev` sets `dev-
 
 The companion installs `Interface/AddOns/Sagalore`. In game, `/reload`, then `/sagalore` or `/sl`.
 
-If the database already has sagas and no group, set `SAGALORE_BOOTSTRAP_GROUP=slug:Name` before the API starts. See [docs/self-hosting.md](docs/self-hosting.md).
+If the database already has sagas and no group, set `SAGALORE_BOOTSTRAP_GROUP=slug:Name` before the API starts.
+
+## Self-host
+
+Anyone can run the API + Postgres and point a companion at it. Short checklist and env table: [docs/self-hosting.md](docs/self-hosting.md). For a real (non-dev-token) login you need your own Battle.net app, `PUBLIC_BASE_URL`, and secrets as described there. Official release binaries bake `SAGALORE_API_URL`; self-hosted companions pass `--api-url`.
 
 ## What you set before a real login
 

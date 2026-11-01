@@ -2,6 +2,7 @@
 /sagalore-api
 /sagalore.exe
 /dist/
+.wrangler/
 *.exe
 .env
 config.json

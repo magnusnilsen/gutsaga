@@ -6,8 +6,8 @@
 -- objectives_ordered is true on the saga.
 
 local PREFIX = "Sagalore"
--- Same URL as internal/app DefaultCreateSagasURL (copyable EditBox in the log).
-local CREATE_SAGAS_URL = "https://app.smia.io/m/sagalore"
+-- Same default as internal/app DefaultCreateSagasURL (copyable EditBox in the log).
+local CREATE_SAGAS_URL = "https://sagalore.app/#create"
 
 local function L(key)
     if type(Sagalore_L) == "function" then

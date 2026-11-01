@@ -1,6 +1,18 @@
 # Self-hosting Sagalore
 
-Run the API anywhere that can run the container (or `go run ./api`) and talk to Postgres. This repository includes Compose for local development and a single host. The docs do not assume a particular cloud vendor.
+Run your own API + Postgres. Point companions at that API. No particular cloud vendor is required or assumed.
+
+This page is intentionally short: enough for a human or an LLM to fork and stand something up. Deep HTTP shapes live in [API.md](API.md), [oauth.md](oauth.md), and [sagas-api.md](sagas-api.md).
+
+## Minimum path
+
+1. **Postgres** reachable with a connection string (`DATABASE_URL`).
+2. **API** from this repo: `docker compose up --build -d` locally, or build `api/Dockerfile` (context = repo root) and run the container / `go run ./api`.
+3. **Secrets** (production): real `ADMIN_TOKEN`, `IMAGE_URL_SECRET` (`openssl rand -hex 32`). Compose defaults are rejected unless `SAGALORE_ALLOW_DEV_SECRETS=1`.
+4. **Battle.net** app for that host: `BNET_CLIENT_ID`, `BNET_CLIENT_SECRET`, `PUBLIC_BASE_URL` (no trailing slash). Redirect URI = `{PUBLIC_BASE_URL}/v1/auth/bnet/callback`.
+5. **Companion** against your API: `go run ./cmd/sagalore --api-url https://your.api.example` (or a release binary with `--api-url`). Set `update.repo` to your fork, or disable updates, if you are not using official builds.
+
+Dev shortcut (no Battle.net): `make dev`, then `SAGALORE_DEV_TOKEN=dev-token SAGALORE_ADDON_SRC=addon/Sagalore go run ./cmd/sagalore --api-url http://localhost:8080 --client classic_era`. The API must see the same `SAGALORE_DEV_TOKEN`.
 
 ## Compose
 
@@ -8,7 +20,7 @@ Run the API anywhere that can run the container (or `go run ./api`) and talk to 
 docker compose up --build -d
 ```
 
-The API listens on port 8080. Compose is for local development and a single host. Set real secrets outside the checked-in defaults. The known dev secrets are rejected unless `SAGALORE_ALLOW_DEV_SECRETS=1`.
+Listens on port 8080. Good for local development and a single host. Migrations run on API startup.
 
 ## Environment
 
@@ -24,10 +36,11 @@ The API listens on port 8080. Compose is for local development and a single host
 | `SAGALORE_OWNER_BATTLETAG` | no | Owner of that bootstrap group. Otherwise the oldest player who has a BattleTag. |
 | `DISCORD_WEBHOOK_URL` | no | Copied once onto the bootstrap group when its webhook is empty. After that the group row is the source of truth. New groups stay quiet until the owner sets a webhook. |
 | `SAGALORE_DEV_TOKEN` | dev and CI only | Login bypass. It is not a stand-in for Battle.net. |
+| `SAGALORE_CREATE_URL` | no | Optional override for the companion “Create sagas…” link (default is the official site). |
 
-Each host registers its own Battle.net application and redirect URI. WoW Forever characters are not in Blizzard's profile API. The addon reports characters. A later check may mark them verified. Login does not wait for that.
+Each host registers its own Battle.net application and redirect URI. WoW Forever characters are not in Blizzard's profile API. The addon reports characters. Login does not wait for profile verification.
 
-The same Battle.net app and redirect URI also sign in players for the OAuth 2.1 authorization server. External clients register themselves at `POST /oauth/register`. They do not get the Battle.net client secret. See [oauth.md](oauth.md). Discovery documents are `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource`.
+The same Battle.net app and redirect URI also sign in players for the OAuth 2.1 authorization server. External clients register at `POST /oauth/register`. They do not get the Battle.net client secret. See [oauth.md](oauth.md). Discovery: `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource`.
 
 ## Companion
 
@@ -41,9 +54,9 @@ Official release binaries bake the public URL with:
 -X github.com/sagalore/sagalore/internal/version.DefaultAPIBaseURL=${SAGALORE_API_URL}
 ```
 
-`SAGALORE_API_URL` is a GitHub Actions variable on the official repository. If it is empty, the companion says `--api-url` or `SAGALORE_API_URL` is required.
+`SAGALORE_API_URL` is a GitHub Actions variable on the official repository. If it is empty, the companion requires `--api-url` or `SAGALORE_API_URL`.
 
-Set `update.repo` to your fork, or disable updates, if you are not running the official builds. The module path stays `github.com/sagalore/sagalore`.
+Module path: `github.com/sagalore/sagalore`. Default update feed: `sagalore/sagalore` on GitHub Releases.
 
 ## Create a group and a saga
 
