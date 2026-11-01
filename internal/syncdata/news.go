@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 // ReloadNews compares two syncs the way the addon will see them.

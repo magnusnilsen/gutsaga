@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 // placeholderPNG is a 640×360 dark panel used when a saga

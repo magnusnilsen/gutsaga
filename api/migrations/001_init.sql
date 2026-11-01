@@ -1,4 +1,4 @@
--- GutSaga initial schema.
+-- Sagalore initial schema.
 
 CREATE TABLE players (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

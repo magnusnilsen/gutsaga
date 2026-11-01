@@ -1,4 +1,4 @@
-module github.com/magnusnilsen/gutsaga
+module github.com/sagalore/sagalore
 
 go 1.25.0
 

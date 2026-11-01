@@ -136,7 +136,7 @@ func EncodeAddonTGA(img image.Image) ([]byte, int, int, error) {
 	binary.LittleEndian.PutUint16(out[12:14], uint16(w))
 	binary.LittleEndian.PutUint16(out[14:16], uint16(h))
 	out[16] = 32
-	// Match existing GutSaga.tga: 8-bit alpha, bottom-left origin (desc 0x08).
+	// 8-bit alpha, bottom-left origin (desc 0x08).
 	out[17] = 0x08
 	dst := out[18:]
 	for y := 0; y < h; y++ {

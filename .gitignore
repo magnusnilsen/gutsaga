@@ -1,5 +1,6 @@
-/gutsaga
-/gutsaga-api
+/sagalore
+/sagalore-api
+/sagalore.exe
 /dist/
 *.exe
 .env

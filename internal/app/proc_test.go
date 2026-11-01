@@ -15,9 +15,6 @@ func TestAddonZipKeepsLocalesAndSkipsData(t *testing.T) {
 	if _, ok := addonZipRel("Sagalore/SagaloreData.lua"); ok {
 		t.Fatal("data file should be skipped")
 	}
-	if _, ok := addonZipRel("OurSagas/OurSagasData.lua"); ok {
-		t.Fatal("legacy data file should be skipped")
-	}
 	if _, ok := addonZipRel("../Sagalore.lua"); ok {
 		t.Fatal("zip slip")
 	}

@@ -57,7 +57,7 @@ func (h *Hub) listenOnce(ctx context.Context, databaseURL string, ready func()) 
 	if cfg.RuntimeParams == nil {
 		cfg.RuntimeParams = map[string]string{}
 	}
-	cfg.RuntimeParams["application_name"] = "gutsaga-realtime"
+	cfg.RuntimeParams["application_name"] = "sagalore-realtime"
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		return err

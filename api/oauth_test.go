@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 func TestOAuthRedirectRules(t *testing.T) {

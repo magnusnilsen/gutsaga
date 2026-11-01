@@ -103,7 +103,7 @@ var en = map[string]string{
 	"app.auto_update":  "Automatic updates",
 	"app.running":      "Sagalore is running. Log in with Battle.net if asked. Quit with Ctrl+C.",
 	"app.synced":       "Synced. Type /reload in the game if you are logged in.",
-	"app.api_required": "--api-url or SAGALORE_API_URL is required (OURSAGAS_API_URL still works)",
+	"app.api_required": "--api-url or SAGALORE_API_URL is required",
 
 	"news.created":         "New saga: %s — type /reload in WoW",
 	"news.created_addon":   "New saga: %s is loaded.",
@@ -159,7 +159,7 @@ var nb = map[string]string{
 	"app.auto_update":  "Automatiske oppdateringer",
 	"app.running":      "Sagalore kjører. Logg inn med Battle.net om du blir bedt om det. Avslutt med Ctrl+C.",
 	"app.synced":       "Synkronisert. Skriv /reload i spillet hvis du er innlogget.",
-	"app.api_required": "--api-url eller SAGALORE_API_URL må være satt (OURSAGAS_API_URL virker fortsatt)",
+	"app.api_required": "--api-url eller SAGALORE_API_URL må være satt",
 
 	"news.created":         "Ny saga: %s — skriv /reload i WoW",
 	"news.created_addon":   "Ny saga: %s er lastet inn.",

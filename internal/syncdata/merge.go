@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 // Entry is one quest as a character should see it in the addon.

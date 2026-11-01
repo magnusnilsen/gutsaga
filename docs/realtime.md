@@ -38,15 +38,15 @@ A second completion of the same character and saga does not insert a row and doe
 
 ## Several API processes
 
-Migration `007_realtime_notify.sql` installs triggers. On commit they `pg_notify('gutsaga_events', …)`. Each API process holds **one dedicated connection** (`application_name = gutsaga-realtime`) and `LISTEN`s. A pooled connection would be reused and drop the subscription.
+Migration `007_realtime_notify.sql` installs triggers. On commit they `pg_notify('sagalore_events', …)`. Each API process holds **one dedicated connection** (`application_name = sagalore-realtime`) and `LISTEN`s. A pooled connection would be reused and drop the subscription.
 
-Railway can run more than one replica. No sticky sessions: the replica that committed the saga and the replica that holds the player's socket can be different. Both hear the notify. Each replica fans the event out only to the sockets it accepted.
+You can run more than one API replica. Sticky sessions are not required: the replica that committed the saga and the replica that holds the player's socket can be different. Both hear the notify. Each replica fans the event out only to the sockets it accepted.
 
 A new write path in `api/` does not need to call Go code. Bumping `quests.version` (what `UpdateQuest` already does) is enough. A path that writes some other table can emit the same JSON:
 
 ```sql
 SELECT pg_notify(
-  'gutsaga_events',
+  'sagalore_events',
   '{"type":"saga.updated","saga_id":"<uuid>","version":2}'
 );
 ```
@@ -65,23 +65,22 @@ WoW reads `SagaloreData.lua` only at login and `/reload`. The program cannot pre
 
 Reconnect waits 1s, 2s, 4s, … capped at 60s, with ±20% jitter. A `401` clears the session and starts Battle.net login again (or the dev-token bypass). If no data frame arrives for 70 seconds the companion treats the socket as dead. The server's text `ping` is that data frame.
 
-## Railway
+## Reverse proxies and multi-replica hosts
 
-Source: [Public networking specs and limits](https://docs.railway.com/networking/public-networking/specs-and-limits) and [WebSockets vs SSE](https://docs.railway.com/guides/sse-vs-websockets).
+Host-agnostic expectations for putting TLS and load balancing in front of the API:
 
-- The edge accepts the HTTP/1.1 upgrade. Nothing extra is configured on the service. `railway.json` stays a normal HTTP service with health check `GET /healthz`.
-- TLS ends at the proxy. Players connect with `wss://` because the public API URL is `https://`. `X-Forwarded-Proto` is `https`.
-- WebSocket connections are **exempt** from the HTTP duration and idle limits and may stay open with no traffic. Ordinary HTTP/1.1 connections that never upgrade are closed after 60 seconds of idleness. HTTP requests otherwise run at most 15 minutes when bytes are flowing, and 5 minutes when they are not. Those caps do not apply once the upgrade has succeeded.
-- The server still sends a WebSocket ping and a text `{"type":"ping"}` every 25 seconds. NATs, sleeping laptops, and a connection that only looked like a WebSocket still go quiet. 25 seconds is under the 60-second HTTP idle limit. The Go `http.Server` does **not** set `ReadTimeout` or `WriteTimeout`; those would cut the socket. `ReadHeaderTimeout` stays 10 seconds and only covers the upgrade headers.
-- Header budget is 32 KB. The bearer fits.
-- Inbound public traffic is TLS. Do not point the companion at plain `http://` on the Railway hostname.
-- A deploy sends `SIGTERM`. The process closes sockets with close code `1001` (Going Away), stops the `LISTEN` connection, then shuts the HTTP server down within 10 seconds. The companion reconnects and syncs, so a saga committed during the rollout is not lost.
+- The proxy must allow the HTTP/1.1 WebSocket upgrade on `GET /v1/ws`. Health checks can use `GET /healthz`.
+- Prefer terminating TLS at the proxy. Companions use `wss://` when `PUBLIC_BASE_URL` is `https://`. Forward `X-Forwarded-Proto` when the app needs to know the public scheme.
+- Many edges idle-close quiet HTTP/1.1 connections around 60 seconds. Keep WebSocket upgrades exempt from that idle limit when the platform allows it. The API still sends a protocol ping and a text `{"type":"ping"}` every 25 seconds for NATs and half-open links.
+- Do not set Go `http.Server` `ReadTimeout` / `WriteTimeout` on the long-lived socket path; those would cut WebSockets. `ReadHeaderTimeout` (10s) only covers upgrade headers.
+- Point companions at the public HTTPS API origin, not a plain `http://` edge hostname, once TLS is in front.
+- On deploy, send `SIGTERM`. The process closes sockets with close code `1001` (Going Away), stops the `LISTEN` connection, then shuts the HTTP server down within 10 seconds. Companions reconnect and sync, so a saga committed during the rollout is not lost.
 - Postgres `NOTIFY` is what makes a second replica correct. One replica's memory is not enough.
 
 ## Tests
 
 ```bash
-export DATABASE_URL=postgres://gutsaga:gutsaga@127.0.0.1:5432/gutsaga_test?sslmode=disable
+export DATABASE_URL=postgres://sagalore:sagalore@127.0.0.1:5432/sagalore_test?sslmode=disable
 go test ./internal/realtime ./internal/syncdata ./internal/notify ./internal/app ./api
 ```
 

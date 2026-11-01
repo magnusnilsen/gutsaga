@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
-	"github.com/magnusnilsen/gutsaga/internal/screenshot"
+	"github.com/sagalore/sagalore/internal/contract"
+	"github.com/sagalore/sagalore/internal/screenshot"
 )
 
 func withSagaImageURL(q contract.Quest) contract.Quest {

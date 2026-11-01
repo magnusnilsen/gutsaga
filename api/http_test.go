@@ -18,8 +18,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/magnusnilsen/gutsaga/internal/contract"
-	"github.com/magnusnilsen/gutsaga/internal/discord"
+	"github.com/sagalore/sagalore/internal/contract"
+	"github.com/sagalore/sagalore/internal/discord"
 )
 
 var testPool *pgxpool.Pool
@@ -27,7 +27,7 @@ var testPool *pgxpool.Pool
 func TestMain(m *testing.M) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://gutsaga:gutsaga@127.0.0.1:5432/gutsaga_test?sslmode=disable"
+		dsn = "postgres://sagalore:sagalore@127.0.0.1:5432/sagalore_test?sslmode=disable"
 	}
 	u, err := url.Parse(dsn)
 	if err != nil || !strings.Contains(u.Path, "test") {

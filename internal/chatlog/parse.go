@@ -1,5 +1,4 @@
 // Package chatlog parses Sagalore lines from WoWChatLog.txt.
-// Lines written by the previous OurSagas addon prefix are accepted too.
 package chatlog
 
 import (
@@ -37,12 +36,11 @@ type Event struct {
 }
 
 func Parse(line string) (Event, bool) {
-	// Sagalore is the current prefix. OurSagas remains so a chat log written
-	// before the rename still posts. A channel echo can contain the prefix
-	// twice; the machine verb is the one that counts.
+	// A channel echo can contain the prefix twice; the machine verb is the one that counts.
+	const marker = "[Sagalore]"
 	rest := line
 	for {
-		i, marker := indexMarker(rest)
+		i := strings.Index(rest, marker)
 		if i < 0 {
 			return Event{}, false
 		}
@@ -52,19 +50,6 @@ func Parse(line string) (Event, bool) {
 		}
 		rest = rest[i+len(marker):]
 	}
-}
-
-func indexMarker(s string) (int, string) {
-	best := -1
-	marker := ""
-	for _, m := range []string{"[Sagalore]", "[OurSagas]"} {
-		i := strings.Index(s, m)
-		if i >= 0 && (best < 0 || i < best) {
-			best = i
-			marker = m
-		}
-	}
-	return best, marker
 }
 
 func parsePayload(rest string) (Event, bool) {

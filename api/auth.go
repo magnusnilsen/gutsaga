@@ -3,7 +3,7 @@ package main
 import (
 	"net/http"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 func (s *Server) upsertCharacter(w http.ResponseWriter, r *http.Request) {

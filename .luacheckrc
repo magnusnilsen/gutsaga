@@ -10,7 +10,6 @@ globals = {
     "SagaloreLocale",
     "SagaloreLanguage",
     "Sagalore_L",
-    "SagaloreMigrate",
     "SagaloreBoard",
     "SLASH_SAGALORE1",
     "SLASH_SAGALORE2",
@@ -20,7 +19,6 @@ globals = {
     "refresh",
 }
 read_globals = {
-    "OurSagasDB",
     "CreateFrame",
     "C_ChatInfo",
     "C_CVar",
@@ -114,5 +112,4 @@ exclude_files = {
     "addon/invite_test.lua",
     "addon/objectives_test.lua",
     "addon/chains_test.lua",
-    "addon/migrate_test.lua",
 }

@@ -27,8 +27,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/i18n"
-	"github.com/magnusnilsen/gutsaga/internal/screenshot"
+	"github.com/sagalore/sagalore/internal/i18n"
+	"github.com/sagalore/sagalore/internal/screenshot"
 )
 
 const username = "Sagalore"

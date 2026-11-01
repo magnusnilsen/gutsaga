@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/magnusnilsen/gutsaga/internal/discord"
-	"github.com/magnusnilsen/gutsaga/internal/envcompat"
-	"github.com/magnusnilsen/gutsaga/internal/realtime"
+	"github.com/sagalore/sagalore/internal/discord"
+	"github.com/sagalore/sagalore/internal/envcompat"
+	"github.com/sagalore/sagalore/internal/realtime"
 )
 
 func main() {
@@ -42,9 +42,9 @@ func main() {
 func usage() {
 	fmt.Fprintf(os.Stderr, `Sagalore API
 
-  gutsaga-api                 start the HTTP server
-  gutsaga-api seed            insert the local Elwynn tutorial sagas
-  gutsaga-api help
+  sagalore-api                 start the HTTP server
+  sagalore-api seed            insert the local Elwynn tutorial sagas
+  sagalore-api help
 
 GET /v1/ws is the player WebSocket (same bearer as /v1/sync).
 
@@ -60,7 +60,6 @@ Environment:
   BNET_CLIENT_ID               Battle.net OAuth client id
   BNET_CLIENT_SECRET           Battle.net OAuth client secret (stays on the API)
   PUBLIC_BASE_URL              public API origin, also the OAuth redirect base (no trailing slash)
-  LANDING_DIR                  optional path to web/ (serves / and /assets); Docker sets /web
   IMAGE_URL_SECRET             HMAC secret for signed cover URLs (openssl rand -hex 32)
   IMAGE_URL_TTL                signed URL lifetime (Go duration, default 1h)
   PORT                         listen port (default 8080)
@@ -69,12 +68,11 @@ Environment:
   SAGALORE_OWNER_BATTLETAG      owner of the bootstrap group (else the oldest BattleTag)
   DISCORD_WEBHOOK_URL          copied once onto the bootstrap group when its webhook is empty
   SAGALORE_ALLOW_DEV_SECRETS    set to 1 for local docker-compose only
-  OURSAGAS_*                   previous names for the SAGALORE_* variables above; still read
 `)
 }
 
 // docker-compose.yml ships weak local defaults. Refuse them unless the
-// operator explicitly opts in — Railway never sets SAGALORE_ALLOW_DEV_SECRETS.
+// operator explicitly opts in with SAGALORE_ALLOW_DEV_SECRETS=1.
 var knownDevSecrets = map[string]string{
 	"ADMIN_TOKEN":      "dev-admin-token",
 	"IMAGE_URL_SECRET": "dev-image-url-secret",

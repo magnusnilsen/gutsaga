@@ -14,5 +14,4 @@ SagaloreData.lua
 SagaloreObjectives.lua
 SagaloreChains.lua
 SagaloreInvite.lua
-SagaloreMigrate.lua
 Sagalore.lua

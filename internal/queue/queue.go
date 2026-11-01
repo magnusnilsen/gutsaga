@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 type Item struct {
@@ -171,7 +171,7 @@ func (q *Queue) ForgetDone(key string) {
 }
 
 // ForgetDonePrefix drops every finished key with the given prefix
-// (e.g. "completion\n"+questID after a /gutsaga reset).
+// (e.g. "completion\n"+questID after a /sagalore reset).
 func (q *Queue) ForgetDonePrefix(prefix string) {
 	q.mu.Lock()
 	defer q.mu.Unlock()

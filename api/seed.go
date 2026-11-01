@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 // Map positions are fractions of UiMap 37 (Elwynn Forest) on retail, Classic Era,

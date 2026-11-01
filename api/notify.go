@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
-	"github.com/magnusnilsen/gutsaga/internal/discord"
-	"github.com/magnusnilsen/gutsaga/internal/screenshot"
+	"github.com/sagalore/sagalore/internal/contract"
+	"github.com/sagalore/sagalore/internal/discord"
+	"github.com/sagalore/sagalore/internal/screenshot"
 )
 
 // The production notifier is a discord.Queue so HTTP handlers return

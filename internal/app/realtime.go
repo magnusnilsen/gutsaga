@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"github.com/magnusnilsen/gutsaga/internal/realtime"
+	"github.com/sagalore/sagalore/internal/realtime"
 )
 
 // watchRealtime keeps the player socket open. Events and reconnects ask the

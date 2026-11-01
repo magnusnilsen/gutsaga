@@ -85,9 +85,9 @@ CREATE TABLE IF NOT EXISTS personal_tokens (
 CREATE INDEX IF NOT EXISTS personal_tokens_player_idx ON personal_tokens (player_id);
 
 -- Saga events go to members of the saga's group. Other groups do not hear them.
-CREATE OR REPLACE FUNCTION gutsaga_notify_event() RETURNS trigger
+CREATE OR REPLACE FUNCTION sagalore_notify_event() RETURNS trigger
 LANGUAGE plpgsql
-AS $gutsaga$
+AS $sagalore$
 DECLARE
     ev_type text;
     saga uuid;
@@ -131,7 +131,7 @@ BEGIN
 
     IF ev_type = 'level.changed' THEN
         PERFORM pg_notify(
-            'gutsaga_events',
+            'sagalore_events',
             json_strip_nulls(json_build_object(
                 'type', ev_type,
                 'player_id', audience
@@ -147,7 +147,7 @@ BEGIN
         WHERE q.id = saga
     LOOP
         PERFORM pg_notify(
-            'gutsaga_events',
+            'sagalore_events',
             json_strip_nulls(json_build_object(
                 'type', ev_type,
                 'saga_id', saga,
@@ -158,4 +158,4 @@ BEGIN
     END LOOP;
     RETURN NULL;
 END;
-$gutsaga$;
+$sagalore$;

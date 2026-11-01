@@ -2,21 +2,28 @@
 
 Sagalore is a saga log for a World of Warcraft group. One person plays. The desktop companion installs the addon, signs in with Battle.net, and syncs sagas. The addon has no HTTP of its own: it writes chat lines and SavedVariables, and the companion posts them.
 
-API paths stay `/v1/sagas`. A saga is still a saga. The JSON field `group` on a kill step or a saga is the party-size rule. Who plays together is a row in `groups`.
+**Site:** [sagalore.app](https://sagalore.app) · **API:** `api.sagalore.app` · **Product:** [github.com/sagalore/sagalore](https://github.com/sagalore/sagalore) · **Website:** [github.com/sagalore/website](https://github.com/sagalore/website)
 
-The product was renamed from OurSagas to Sagalore. The repository and Go module stay `gutsaga`. See [CHANGELOG.md](CHANGELOG.md).
+## Free and open source
 
-## Rename from OurSagas
+Three parts, on purpose:
 
-Existing WoW Classic characters keep their progress:
+1. **The project.** Sagalore is free and open source (MIT). The addon, the companion, and the API are in this repository. Anyone can read the code, run it, and host their own server on any host that runs containers (or a Go binary) and Postgres.
+2. **The official server.** The easiest way to start is the official server at [sagalore.app](https://sagalore.app) / `api.sagalore.app`, which is free to use. Your data is stored there, and you sign in with Battle.net.
+3. **The MCP.** There is an [official MCP](https://app.smia.io/m/sagalore) that lets your AI create sagas. It is built on the open Sagalore API and runs on [Smia](https://smia.io), a platform we also make. The MCP is not in this repo: Sagalore stays independent of any one platform, and the listing is also a way to show people Smia. Want your own MCP? The API is documented — build away. See [docs/API.md](docs/API.md) and [docs/oauth.md](docs/oauth.md).
 
-- The companion copies `WTF/.../SavedVariables/OurSagas.lua` to `Sagalore.lua` and renames the `OurSagasDB` global. A `Sagalore.lua` that already has progress is left as-is. On the first addon load, if `OurSagasDB` is still in memory and `SagaloreDB` has no progress, the addon copies it.
-- The companion copies `Interface/AddOns/OurSagas/OurSagasData.lua` and `media/*.tga` into `Interface/AddOns/Sagalore`, then removes the old addon folder (or renames it to `OurSagas.disabled` if the folder is locked) so the client does not load two addons.
-- Settings move from the OurSagas config folder to Sagalore when the new folder is empty. Older GutSaga and SagaBoard folders are still picked up.
-- `/sagalore` and `/sl` open the log.
-- Chat lines use `[Sagalore]`. The companion still reads `[OurSagas]` lines already in the chat log. Addon messages sent with the old prefix are still accepted.
-- `SAGALORE_*` environment variables replace `OURSAGAS_*`. The old names are still read when the new one is unset. Official builds read the GitHub Actions variable `SAGALORE_API_URL`, and fall back to `OURSAGAS_API_URL`.
-- Release files are `sagalore-*` and `Sagalore-addon.zip`. The same bytes are also uploaded as `oursagas-*` and `OurSagas-addon.zip` so an already-installed companion can update once.
+The marketing site is a **separate** repository ([sagalore/website](https://github.com/sagalore/website)). This product repo does not ship or serve the landing page.
+
+## Project status
+
+Early public / alpha. One maintainer. Expect rough edges, unsigned binaries, and slow replies on issues.
+
+- Built with heavy **Cursor** (AI) assistance for a lot of the **code**. Architecture and merge decisions are human-owned; review PRs as carefully as you would any agent-assisted codebase.
+- **Assets** were AI-generated or AI-assisted too: logo / emblem / wordmark, landing copy, and UI frames / chrome. Treat the brand as provisional, not commissioned art.
+- Day-to-day development and playtesting: **macOS Apple silicon**, WoW Classic Era (and Forever). The Windows companion is **built in CI**; in-game Windows play is not systematically tested.
+- Not affiliated with or endorsed by Blizzard. Unofficial software; ToS risk is yours.
+- Release binaries are **not signed**. Gatekeeper and SmartScreen warnings are expected.
+- Leaderboard finish times are **client-reported** (honor-based), not anti-cheat.
 
 ## Try it locally
 
@@ -54,6 +61,8 @@ Membership is the account. Any member may create sagas in the group. The owner i
 
 Invites are addressed to a character. Accept joins that Battle.net account and marks the character participating. Decline sticks. Not now is a 12-hour snooze in SavedVariables.
 
+API paths stay `/v1/sagas`. A saga is still a saga. The JSON field `group` on a kill step or a saga is the party-size rule. Who plays together is a row in `groups`.
+
 ## Leaderboards
 
 A group leaderboard is how many sagas each character has completed. It is not points, and it only includes characters whose Battle.net account is in that group. `GET /v1/groups/{id}/leaderboard?period=all|month|week|today` ranks them. Periods use the Europe/Oslo calendar: today, the Monday-starting week, and the calendar month.
@@ -77,9 +86,11 @@ Other services can register as OAuth clients and send the player through Battle.
 - [docs/oauth.md](docs/oauth.md) — OAuth 2.1 for external clients
 - [docs/sagas-api.md](docs/sagas-api.md) — saga JSON
 - [docs/character-opt-in.md](docs/character-opt-in.md) — participating characters
+- [docs/architecture.md](docs/architecture.md) — how the pieces fit
+- [docs/opensource-checklist.md](docs/opensource-checklist.md) — publish / org-move checklist
 - [docs/openapi.yaml](docs/openapi.yaml)
 - [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Updates
 
-Release assets are `sagalore-darwin-arm64`, `sagalore-darwin-amd64`, `sagalore-windows-amd64.exe`, and `Sagalore-addon.zip`. The default update repo is `magnusnilsen/gutsaga`. Self-hosters set `update.repo` or turn updates off. Binaries are not signed.
+Release assets are `sagalore-darwin-arm64`, `sagalore-darwin-amd64`, `sagalore-windows-amd64.exe`, and `Sagalore-addon.zip`. The default update repo is `sagalore/sagalore`. Self-hosters set `update.repo` or turn updates off. Binaries are not signed.

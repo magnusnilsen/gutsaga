@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magnusnilsen/gutsaga/internal/contract"
-	"github.com/magnusnilsen/gutsaga/internal/envcompat"
-	"github.com/magnusnilsen/gutsaga/internal/screenshot"
+	"github.com/sagalore/sagalore/internal/contract"
+	"github.com/sagalore/sagalore/internal/envcompat"
+	"github.com/sagalore/sagalore/internal/screenshot"
 )
 
 type Client struct {
@@ -52,7 +52,6 @@ func (e *HTTPError) Permanent() bool {
 // DevLogin exchanges SAGALORE_DEV_TOKEN for a gss_ session. It does not call Battle.net.
 // Optional identity comes from SAGALORE_DEV_BATTLETAG / SAGALORE_DEV_BNET_ACCOUNT /
 // SAGALORE_DEV_DISPLAY_NAME so a local run can merge onto an existing player.
-// The previous OURSAGAS_DEV_* names are still read.
 func (c *Client) DevLogin(ctx context.Context, devToken string) (contract.SessionResponse, error) {
 	body := map[string]string{}
 	if v := envcompat.Get("SAGALORE_DEV_BATTLETAG"); v != "" {
