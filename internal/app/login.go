@@ -266,9 +266,9 @@ func randomAttempt() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// DefaultCreateSagasURL is the Smia public MCP listing for authoring sagas.
-// Override with SAGALORE_CREATE_URL.
-const DefaultCreateSagasURL = "https://app.smia.io/m/sagalore"
+// DefaultCreateSagasURL is the official marketing site's create section.
+// Override with SAGALORE_CREATE_URL (e.g. your own tools URL when self-hosting).
+const DefaultCreateSagasURL = "https://sagalore.app/#create"
 
 // CreateSagasURL returns where the tray "Create sagas…" item should open.
 func CreateSagasURL() string {

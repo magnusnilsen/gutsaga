@@ -1,10 +1,15 @@
 package main
 
 import (
+	"encoding/base64"
 	"testing"
 
 	"github.com/sagalore/sagalore/internal/contract"
 )
+
+func encodePNG(raw []byte) string {
+	return base64.StdEncoding.EncodeToString(raw)
+}
 
 func TestAnnounceFlags(t *testing.T) {
 	no := false
@@ -28,7 +33,7 @@ func TestSignificantQuestChangeIgnoresAssignment(t *testing.T) {
 	same := base
 	same.AssignedTo = []contract.IDRef{{ID: "11111111-1111-1111-1111-111111111111"}}
 	if significantQuestChange(base, same) {
-		t.Fatal("assignment is not a discord-worthy change")
+		t.Fatal("assignment is not a significant change")
 	}
 	renamed := base
 	renamed.Title = "Ny vakt"

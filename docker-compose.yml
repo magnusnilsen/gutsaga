@@ -34,7 +34,7 @@ services:
       # slug:Name for the local tutorial group. A fresh database does nothing until seed creates sagas.
       SAGALORE_BOOTSTRAP_GROUP: ${SAGALORE_BOOTSTRAP_GROUP:-tutorial:Tutorial}
       # Optional: copied once onto the bootstrap group when its webhook is empty.
-      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      SAGALORE_BOOTSTRAP_WEBHOOK_URL: ${SAGALORE_BOOTSTRAP_WEBHOOK_URL:-}
       PORT: "8080"
     ports:
       - "8080:8080"

@@ -269,7 +269,7 @@ func run(opts options) int {
 		})
 	}
 	tray.Run(ctx, "Sagalore "+version.Version, []tray.Item{
-		{Title: "Create sagas…", Tooltip: "Open the Smia MCP listing to create sagas with AI", OnClick: func() {
+		{Title: "Create sagas…", Tooltip: "Open sagalore.app to create sagas with AI", OnClick: func() {
 			go func() {
 				if err := application.OpenCreateSagas(); err != nil {
 					log.Warn("create sagas", "err", err)

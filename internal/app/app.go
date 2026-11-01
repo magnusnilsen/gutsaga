@@ -332,7 +332,7 @@ func (a *App) announce(desktop string) {
 	if desktop == "" {
 		return
 	}
-	// Log only — Discord carries the player-facing alert. Notify is for tests.
+	// Log only — group webhooks carry the player-facing alert. Notify is for tests.
 	a.Log.Info(desktop)
 	if a.Notify != nil {
 		a.Notify("Sagalore", desktop)

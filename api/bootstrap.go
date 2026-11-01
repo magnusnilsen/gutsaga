@@ -14,7 +14,7 @@ var ErrUnscopedSagas = errors.New("sagas have no group_id and SAGALORE_BOOTSTRAP
 
 // Bootstrap attaches unscoped sagas to the group named by spec ("slug:Name").
 // A fresh database with no unscoped sagas does nothing, even when spec is set.
-// When the group's Discord webhook is still empty and hook is set, it is copied once.
+// When the group's webhook is still empty and hook is set, it is copied once.
 func (s *Store) Bootstrap(ctx context.Context, spec, ownerTag, hook string) error {
 	var unscoped int
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM quests WHERE group_id IS NULL`).Scan(&unscoped); err != nil {
@@ -85,8 +85,8 @@ func (s *Store) Bootstrap(ctx context.Context, spec, ownerTag, hook string) erro
 	}
 	if hook != "" {
 		if _, err := tx.Exec(ctx, `
-			UPDATE groups SET discord_webhook_url=$2, discord_webhook_sourced=true
-			WHERE id=$1 AND discord_webhook_url='' AND discord_webhook_sourced=false`, groupID, hook); err != nil {
+			UPDATE groups SET webhook_url=$2, webhook_sourced=true
+			WHERE id=$1 AND webhook_url='' AND webhook_sourced=false`, groupID, hook); err != nil {
 			return err
 		}
 	}
@@ -98,8 +98,8 @@ func (s *Store) copyBootstrapWebhook(ctx context.Context, slug, hook string) err
 		return nil
 	}
 	_, err := s.pool.Exec(ctx, `
-		UPDATE groups SET discord_webhook_url=$2, discord_webhook_sourced=true
-		WHERE slug=$1 AND discord_webhook_url='' AND discord_webhook_sourced=false`, slug, hook)
+		UPDATE groups SET webhook_url=$2, webhook_sourced=true
+		WHERE slug=$1 AND webhook_url='' AND webhook_sourced=false`, slug, hook)
 	return err
 }
 

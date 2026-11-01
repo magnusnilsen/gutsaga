@@ -22,8 +22,9 @@ Use this when moving from the private archive to the public `sagalore/sagalore` 
 - [ ] Apply pending API migrations on the hosted database (especially `016_realtime_sagalore_channel.sql`) before flipping companion builds that `LISTEN` on `sagalore_events`
 - [ ] Branch protection on `main` + required CI
 - [ ] Smoke a **pre-release** tag: download each OS asset, companion update path, addon zip install
-- [ ] Point `sagalore.app` DNS at the static marketing host ([sagalore/website](https://github.com/sagalore/website)); keep `api.sagalore.app` on the API
+- [x] Marketing on separate host ([sagalore/website](https://github.com/sagalore/website)); API hostname separate
 - [ ] Confirm Discord OG still uses `https://sagalore.app/assets/og-image.jpg`
+- [ ] Grep seed tree: no host-vendor names; MCP platform named only in README honesty bullet (product deep links use sagalore.app)
 
 ## Release workflow (tighten when public)
 

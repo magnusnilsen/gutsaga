@@ -14,16 +14,10 @@ import (
 	"time"
 
 	"github.com/sagalore/sagalore/internal/contract"
-	"github.com/sagalore/sagalore/internal/discord"
 	"github.com/sagalore/sagalore/internal/realtime"
 	"github.com/sagalore/sagalore/internal/screenshot"
+	"github.com/sagalore/sagalore/internal/webhook"
 )
-
-type Notifier interface {
-	PostCompletion(ctx context.Context, n discord.Completion) (discord.Message, error)
-	PostSaga(ctx context.Context, n discord.SagaNotice) (discord.Message, error)
-	PostLevel(ctx context.Context, n discord.LevelNotice) (discord.Message, error)
-}
 
 type Server struct {
 	store            *Store
@@ -31,7 +25,7 @@ type Server struct {
 	publicBaseURL    string
 	imageURLSecret   string
 	imageURLTTL      time.Duration
-	discord          Notifier
+	webhooks         *webhook.Queue
 	events           *realtime.Hub
 	devToken         string
 	bnetClientID     string
@@ -95,7 +89,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/invites/{id}/decline", s.withPlayer(s.declineInvite))
 	mux.HandleFunc("POST /v1/groups/{id}/leave", s.withPlayer(s.leaveGroup))
 	mux.HandleFunc("DELETE /v1/groups/{id}/members/{playerID}", s.withMember(s.removeMember))
-	mux.HandleFunc("PUT /v1/groups/{id}/discord", s.withMember(s.putGroupDiscord))
+	mux.HandleFunc("PUT /v1/groups/{id}/webhook", s.withMember(s.putGroupWebhook))
 	mux.HandleFunc("PUT /v1/groups/{id}/locale", s.withMember(s.putGroupLocale))
 	mux.HandleFunc("POST /v1/me/tokens", s.withPlayer(s.mintToken))
 	mux.HandleFunc("DELETE /v1/me/tokens/{id}", s.withPlayer(s.revokeToken))
@@ -244,35 +238,8 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 				when = t.UTC()
 			}
 		}
-		objLines := make([]discord.ObjectiveLine, 0, len(res.Objectives))
-		for _, o := range res.Objectives {
-			objLines = append(objLines, discord.ObjectiveLine{Text: o.Text})
-		}
-		note := discord.Completion{
-			ProgressID: res.ProgressID,
-			Character:  res.CharacterName,
-			// Only values stamped on this completion (from the game) — never the
-			// characters row, which may be stale on Classic Era.
-			Race:        strings.TrimSpace(in.Race),
-			Class:       strings.TrimSpace(in.Class),
-			Level:       in.Level,
-			Title:       res.QuestTitle,
-			Objectives:  objLines,
-			When:        when,
-			Image:       image,
-			ContentType: contentType,
-		}
-		s.attachGroupDiscord(r.Context(), in.QuestID, &note.WebhookURL, &note.Locale)
-		msg, ok := s.postDiscord(r.Context(), func(ctx context.Context, n Notifier) (discord.Message, error) {
-			return n.PostCompletion(ctx, note)
-		})
-		if ok {
-			res.DiscordPosted = true
-			if msg.AttachmentURL != "" && res.ProgressID != "" {
-				if err := s.store.MarkDiscord(r.Context(), res.ProgressID, msg.AttachmentURL); err != nil {
-					slog.Error("mark discord", "err", err)
-				}
-			}
+		if s.announceCompleted(r.Context(), in.QuestID, res, in, when) {
+			res.WebhookPosted = true
 		}
 	}
 	writeJSON(w, http.StatusOK, res)
@@ -322,7 +289,6 @@ func (s *Server) level(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
 		return
 	}
-	before, _ := s.store.GetCharacter(r.Context(), in.CharacterID)
 	res, err := s.store.SetLevel(r.Context(), p.ID, in)
 	if err != nil {
 		if errors.Is(err, ErrForbidden) {
@@ -331,9 +297,6 @@ func (s *Server) level(w http.ResponseWriter, r *http.Request) {
 		}
 		s.fail(w, err)
 		return
-	}
-	if res.Changed && res.Allowed {
-		s.announceLevel(r.Context(), before, res.Level)
 	}
 	writeJSON(w, http.StatusOK, res)
 }
@@ -475,7 +438,7 @@ func (s *Server) createQuest(w http.ResponseWriter, r *http.Request) {
 			out.HasImage = true
 		}
 	}
-	s.announceCreated(r.Context(), out, body.Announce, cover, coverType)
+	s.announceCreated(r.Context(), out, body.Announce)
 	writeJSON(w, http.StatusCreated, s.withSignedCoverURL(withSagaImageURL(out)))
 }
 
@@ -739,7 +702,7 @@ type questBody struct {
 	AssignedCharacterIDs []string             `json:"assigned_character_ids"`
 	Requires             json.RawMessage      `json:"requires"`
 	Chain                json.RawMessage      `json:"chain"`
-	// Announce skips the Discord note when false. Omitted announces an active saga.
+	// Announce skips the webhook when false. Omitted announces an active saga.
 	Announce *bool `json:"announce"`
 	// ImageBase64 is an optional cover. The bytes are stored and attached to the announcement.
 	ImageBase64 string `json:"image_base64"`
@@ -757,14 +720,14 @@ type questPatchBody struct {
 	PartyQuest        *bool                 `json:"party"`
 	Active            *bool                 `json:"active"`
 	CreatedBy         *string               `json:"created_by"`
-	// UpdatedBy is who edited the saga (Discord line / BattleTag ownership). Admin optional.
+	// UpdatedBy is who edited the saga (webhook actor / BattleTag ownership). Admin optional.
 	UpdatedBy *string `json:"updated_by"`
 	// EditorEmail is rejected. Saga authorship is the signed-in player.
 	EditorEmail          *string         `json:"editor_email"`
 	AssignedCharacterIDs *[]string       `json:"assigned_character_ids"`
 	Requires             json.RawMessage `json:"requires"`
 	Chain                json.RawMessage `json:"chain"`
-	// Announce skips the Discord note when false. Omitted posts a version note or a retirement.
+	// Announce skips the webhook when false. Omitted posts a version note or a retirement.
 	Announce *bool `json:"announce"`
 }
 

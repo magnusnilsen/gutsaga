@@ -18,7 +18,7 @@ Sagalore is three programs that share one product name.
 
 ## API (Go + Postgres)
 
-- Auth, groups, sagas, sync, leaderboards, Discord webhooks, OAuth for external clients.
+- Auth, groups, sagas, sync, leaderboards, group webhooks (JSON), OAuth for external clients.
 - Realtime: Postgres `NOTIFY` on `sagalore_events`, one dedicated `LISTEN` connection per API process, WebSocket fan-out to companions.
 - Hosted convenience at `api.sagalore.app`; self-host with Compose or any Postgres-backed host. Docs stay host-provider agnostic.
 - Marketing site is a separate repo ([sagalore/website](https://github.com/sagalore/website)); the API does not serve it.

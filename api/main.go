@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/sagalore/sagalore/internal/discord"
 	"github.com/sagalore/sagalore/internal/envcompat"
 	"github.com/sagalore/sagalore/internal/realtime"
+	"github.com/sagalore/sagalore/internal/webhook"
 )
 
 func main() {
@@ -66,7 +66,7 @@ Environment:
   SAGALORE_DEV_TOKEN            dev/CI login bypass. Not a stand-in for Battle.net.
   SAGALORE_BOOTSTRAP_GROUP      slug:Name, required only when sagas have no group yet
   SAGALORE_OWNER_BATTLETAG      owner of the bootstrap group (else the oldest BattleTag)
-  DISCORD_WEBHOOK_URL          copied once onto the bootstrap group when its webhook is empty
+  SAGALORE_BOOTSTRAP_WEBHOOK_URL  copied once onto the bootstrap group when its webhook is empty
   SAGALORE_ALLOW_DEV_SECRETS    set to 1 for local docker-compose only
 `)
 }
@@ -124,22 +124,21 @@ func serve(args []string) int {
 		return 1
 	}
 	store := NewStore(pool)
-	if err := store.Bootstrap(ctx, envcompat.Get("SAGALORE_BOOTSTRAP_GROUP"), envcompat.Get("SAGALORE_OWNER_BATTLETAG"), os.Getenv("DISCORD_WEBHOOK_URL")); err != nil {
+	if err := store.Bootstrap(ctx, envcompat.Get("SAGALORE_BOOTSTRAP_GROUP"), envcompat.Get("SAGALORE_OWNER_BATTLETAG"), envcompat.Get("SAGALORE_BOOTSTRAP_WEBHOOK_URL")); err != nil {
 		slog.Error("bootstrap", "err", err)
 		return 1
 	}
-	q := discord.NewQueue(&discord.Client{})
-	q.After = func(res discord.Result) {
-		if res.Err != nil || res.Kind != discord.KindCompletion || res.Ref == "" {
+	q := webhook.NewQueue(&webhook.Client{})
+	q.After = func(res webhook.Result) {
+		if res.Err != nil || res.Type != webhook.TypeSagaCompleted || res.Ref == "" {
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := store.MarkDiscord(ctx, res.Ref, res.Message.AttachmentURL); err != nil {
-			slog.Error("mark discord", "err", err)
+		if err := store.MarkWebhookPosted(ctx, res.Ref); err != nil {
+			slog.Error("mark webhook", "err", err)
 		}
 	}
-	var notifier Notifier = q
 	if strings.TrimSpace(os.Getenv("ADMIN_TOKEN")) == "" {
 		slog.Warn("ADMIN_TOKEN is empty; admin routes are disabled")
 	}
@@ -166,7 +165,7 @@ func serve(args []string) int {
 		publicBaseURL:    publicBase,
 		imageURLSecret:   imageSecret,
 		imageURLTTL:      imageTTL,
-		discord:          notifier,
+		webhooks:         q,
 		events:           hub,
 		devToken:         envcompat.Get("SAGALORE_DEV_TOKEN"),
 		bnetClientID:     strings.TrimSpace(os.Getenv("BNET_CLIENT_ID")),
@@ -233,7 +232,7 @@ func seedCmd() int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := store.Bootstrap(ctx, envcompat.Get("SAGALORE_BOOTSTRAP_GROUP"), envcompat.Get("SAGALORE_OWNER_BATTLETAG"), os.Getenv("DISCORD_WEBHOOK_URL")); err != nil {
+	if err := store.Bootstrap(ctx, envcompat.Get("SAGALORE_BOOTSTRAP_GROUP"), envcompat.Get("SAGALORE_OWNER_BATTLETAG"), envcompat.Get("SAGALORE_BOOTSTRAP_WEBHOOK_URL")); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

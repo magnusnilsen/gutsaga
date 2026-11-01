@@ -16,10 +16,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sagalore/sagalore/internal/contract"
-	"github.com/sagalore/sagalore/internal/discord"
+	"github.com/sagalore/sagalore/internal/webhook"
 )
 
 var testPool *pgxpool.Pool
@@ -67,37 +68,79 @@ func resetDB(t *testing.T) {
 	}
 }
 
-type fakeDiscord struct {
+type webhookSink struct {
 	mu     sync.Mutex
-	calls  int
-	last   string
-	image  int
-	sagas  []discord.SagaNotice
-	levels []discord.LevelNotice
+	events []webhook.Event
+	server *httptest.Server
+	url    string
+	queue  *webhook.Queue
 }
 
-func (f *fakeDiscord) PostCompletion(_ context.Context, n discord.Completion) (discord.Message, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.calls++
-	f.last = discord.CompletionText(n.Character, n.Title)
-	f.image = len(n.Image)
-	return discord.Message{Content: f.last, AttachmentURL: "https://cdn.example/shot.png"}, nil
+func newWebhookSink(t *testing.T) *webhookSink {
+	t.Helper()
+	s := &webhookSink{}
+	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var ev webhook.Event
+		if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		s.mu.Lock()
+		s.events = append(s.events, ev)
+		s.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(s.server.Close)
+	s.url = s.server.URL
+	s.queue = webhook.NewQueue(&webhook.Client{HTTP: s.server.Client()})
+	return s
 }
 
-func (f *fakeDiscord) PostSaga(_ context.Context, n discord.SagaNotice) (discord.Message, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	n.Image = append([]byte(nil), n.Image...)
-	f.sagas = append(f.sagas, n)
-	return discord.Message{Content: n.Title}, nil
+func (s *webhookSink) snapshot() []webhook.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]webhook.Event(nil), s.events...)
 }
 
-func (f *fakeDiscord) PostLevel(_ context.Context, n discord.LevelNotice) (discord.Message, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.levels = append(f.levels, n)
-	return discord.Message{Content: n.Character}, nil
+func (s *webhookSink) waitEvents(t *testing.T, n int) []webhook.Event {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		out := s.snapshot()
+		if len(out) >= n {
+			return out
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	out := s.snapshot()
+	t.Fatalf("want %d webhook events, got %d: %+v", n, len(out), out)
+	return nil
+}
+
+func (s *webhookSink) waitType(t *testing.T, typ string) webhook.Event {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, ev := range s.snapshot() {
+			if ev.Type == typ {
+				return ev
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("missing webhook type %s in %+v", typ, s.snapshot())
+	return webhook.Event{}
+}
+
+func (s *webhookSink) countType(typ string) int {
+	n := 0
+	for _, ev := range s.snapshot() {
+		if ev.Type == typ {
+			n++
+		}
+	}
+	return n
 }
 
 type apiClient struct {
@@ -155,14 +198,18 @@ func TestHealthz(t *testing.T) {
 
 func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	resetDB(t)
-	fake := &fakeDiscord{}
-	srv := httptest.NewServer((&Server{store: NewStore(testPool), adminToken: "admin-test", discord: fake}).Handler())
+	sink := newWebhookSink(t)
+	store := NewStore(testPool)
+	srv := httptest.NewServer((&Server{store: store, adminToken: "admin-test", webhooks: sink.queue}).Handler())
 	t.Cleanup(srv.Close)
 	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
 
 	magnusPlayer, magnusToken := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
 	otherPlayer, otherToken := devSession(t, "bnet-other", "Other#1", "Other")
-	devGroup(t, magnusPlayer.ID, "tutorial", "Tutorial")
+	group := devGroup(t, magnusPlayer.ID, "tutorial", "Tutorial")
+	if err := store.SetGroupWebhook(context.Background(), magnusPlayer.ID, group.ID, sink.url); err != nil {
+		t.Fatal(err)
+	}
 	created := contract.CreatePlayerResponse{Player: magnusPlayer, APIKey: magnusToken}
 	other := contract.CreatePlayerResponse{Player: otherPlayer, APIKey: otherToken}
 	var resp *http.Response
@@ -227,14 +274,21 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != 200 || !first.Completed || first.AlreadyCompleted || !first.LogWritten || !first.DiscordPosted {
+	if resp.StatusCode != 200 || !first.Completed || first.AlreadyCompleted || !first.LogWritten || !first.WebhookPosted {
 		t.Fatalf("first %+v status %d", first, resp.StatusCode)
 	}
 	if first.QuestVersion != 1 || first.QuestTitle != "Første vakt" {
 		t.Fatalf("recorded %+v", first)
 	}
-	if fake.calls != 1 || !strings.Contains(fake.last, "**Magni** completed a saga!") || fake.image == 0 {
-		t.Fatalf("discord calls=%d text=%q image=%d", fake.calls, fake.last, fake.image)
+	completed := sink.waitType(t, webhook.TypeSagaCompleted)
+	if completed.Saga == nil || completed.Saga.Title != "Første vakt" {
+		t.Fatalf("webhook %+v", completed)
+	}
+	if completed.Character == nil || completed.Character.Name != "Magni" {
+		t.Fatalf("character %+v", completed.Character)
+	}
+	if sink.countType(webhook.TypeSagaCompleted) != 1 {
+		t.Fatalf("completed count %d", sink.countType(webhook.TypeSagaCompleted))
 	}
 
 	var second contract.CompletionResponse
@@ -247,8 +301,9 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	if resp.StatusCode != 200 || !second.AlreadyCompleted || second.LogWritten || second.QuestVersion != 1 {
 		t.Fatalf("second %+v status %d", second, resp.StatusCode)
 	}
-	if fake.calls != 1 {
-		t.Fatalf("discord posted again: %d", fake.calls)
+	time.Sleep(50 * time.Millisecond)
+	if sink.countType(webhook.TypeSagaCompleted) != 1 {
+		t.Fatalf("webhook posted again: %d", sink.countType(webhook.TypeSagaCompleted))
 	}
 
 	var updated contract.Quest
@@ -283,8 +338,9 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	if !third.AlreadyCompleted || third.QuestVersion != 1 {
 		t.Fatalf("version bump must not open a second completion: %+v", third)
 	}
-	if fake.calls != 1 {
-		t.Fatal("discord count")
+	time.Sleep(50 * time.Millisecond)
+	if sink.countType(webhook.TypeSagaCompleted) != 1 {
+		t.Fatalf("webhook completed count %d", sink.countType(webhook.TypeSagaCompleted))
 	}
 
 	resp, err = player.do(http.MethodPost, "/v1/complete", contract.CompletionRequest{
@@ -318,8 +374,9 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	if syncedQuest.Version != 2 || syncOut.Progress[0].QuestVersion != 1 || syncOut.Progress[0].Status != "completed" {
 		t.Fatalf("sync versions quest=%d progress=%+v", syncedQuest.Version, syncOut.Progress[0])
 	}
-	if syncOut.Progress[0].ScreenshotURL != "https://cdn.example/shot.png" {
-		t.Fatalf("screenshot url %q", syncOut.Progress[0].ScreenshotURL)
+	var shotCount int
+	if err := testPool.QueryRow(context.Background(), `SELECT count(*) FROM screenshots`).Scan(&shotCount); err != nil || shotCount != 1 {
+		t.Fatalf("screenshot rows %d %v", shotCount, err)
 	}
 	if len(syncOut.Completions) != 1 || syncOut.Completions[0].Character != "Magni" || syncOut.Completions[0].QuestID != quest.ID {
 		t.Fatalf("completions %+v", syncOut.Completions)

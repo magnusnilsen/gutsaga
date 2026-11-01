@@ -5,118 +5,161 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/sagalore/sagalore/internal/contract"
-	"github.com/sagalore/sagalore/internal/discord"
 	"github.com/sagalore/sagalore/internal/screenshot"
+	"github.com/sagalore/sagalore/internal/webhook"
 )
 
-// The production notifier is a discord.Queue so HTTP handlers return
-// before Discord answers. A synchronous Client also satisfies Notifier.
-var (
-	_ Notifier = (*discord.Client)(nil)
-	_ Notifier = (*discord.Queue)(nil)
-)
-
-// Discord notices are best-effort. postDiscord logs provider failures and
-// never returns them to the HTTP handler. Queue.Post returns before Discord
-// answers, so a slow or rate-limited webhook does not hold the request.
-func (s *Server) postDiscord(ctx context.Context, fn func(context.Context, Notifier) (discord.Message, error)) (discord.Message, bool) {
-	if s == nil || s.discord == nil {
-		return discord.Message{}, false
-	}
-	msg, err := fn(ctx, s.discord)
-	if err != nil {
-		if !errors.Is(err, discord.ErrNotConfigured) {
-			slog.Error("discord", "err", err)
-		}
-		return discord.Message{}, false
-	}
-	return msg, true
-}
-
-func (s *Server) announceCreated(ctx context.Context, q contract.Quest, flag *bool, cover []byte, coverType string) {
-	if !announceCreate(flag, q.Active) || s.discord == nil {
+func (s *Server) announceCreated(ctx context.Context, q contract.Quest, flag *bool) {
+	if !announceCreate(flag, q.Active) || s.webhooks == nil {
 		return
 	}
-	img, ct := cover, coverType
-	if len(img) == 0 && q.ID != "" {
-		if c, b, err := s.store.QuestImage(ctx, q.ID); err == nil {
-			img, ct = b, c
-		}
+	url, group, ok := s.groupWebhookForQuest(ctx, q.ID)
+	if !ok {
+		return
 	}
-	notice := sagaNotice(ctx, s.store, discord.KindAnnounced, q, "", img, ct)
-	s.attachGroupDiscord(ctx, q.ID, &notice.WebhookURL, &notice.Locale)
-	s.postDiscord(ctx, func(ctx context.Context, n Notifier) (discord.Message, error) {
-		return n.PostSaga(ctx, notice)
+	s.webhooks.Enqueue(url, q.ID, webhook.Event{
+		Type:       webhook.TypeSagaCreated,
+		OccurredAt: time.Now().UTC(),
+		Group:      group,
+		Saga:       sagaRef(q),
+		Actor:      actorRef(q.CreatedBy, ""),
 	})
 }
 
-// announceEdited posts an update or retirement. actor is a short display name
-// (e.g. "Magnus"); empty falls back to the quest's created_by BattleTag name.
+// announceEdited posts an update or retirement. actor is a short display name.
 func (s *Server) announceEdited(ctx context.Context, before, after contract.Quest, flag *bool, actor string, changes []string) {
-	if before.ID == "" || after.ID == "" || !announceUpdate(flag) || s.discord == nil {
+	if before.ID == "" || after.ID == "" || !announceUpdate(flag) || s.webhooks == nil {
 		return
 	}
-	kind := ""
+	var typ string
 	switch {
 	case before.Active && !after.Active:
-		kind = discord.KindRetired
+		typ = webhook.TypeSagaRetired
 	case after.Active && after.Version > before.Version:
-		kind = discord.KindUpdated
+		typ = webhook.TypeSagaUpdated
 	default:
 		return
 	}
-	notice := sagaNotice(ctx, s.store, kind, after, actor, nil, "")
-	notice.Changes = changes
-	s.attachGroupDiscord(ctx, after.ID, &notice.WebhookURL, &notice.Locale)
-	s.postDiscord(ctx, func(ctx context.Context, n Notifier) (discord.Message, error) {
-		return n.PostSaga(ctx, notice)
-	})
-}
-
-func (s *Server) announceLevel(ctx context.Context, before contract.Character, level int) {
-	if s.discord == nil || strings.TrimSpace(before.Name) == "" || level <= before.Level || !discord.Milestone(level) {
+	url, group, ok := s.groupWebhookForQuest(ctx, after.ID)
+	if !ok {
 		return
 	}
-	s.postDiscord(ctx, func(ctx context.Context, n Notifier) (discord.Message, error) {
-		return n.PostLevel(ctx, discord.LevelNotice{
-			Character: before.Name,
-			Level:     level,
-			When:      time.Now().UTC(),
-		})
+	name := strings.TrimSpace(actor)
+	if name == "" {
+		name = displayActor("", "", after.CreatedBy)
+	}
+	s.webhooks.Enqueue(url, after.ID, webhook.Event{
+		Type:       typ,
+		OccurredAt: time.Now().UTC(),
+		Group:      group,
+		Saga:       sagaRef(after),
+		Actor:      actorRef(after.CreatedBy, name),
+		Changes:    changes,
 	})
 }
 
-func sagaNotice(_ context.Context, _ *Store, kind string, q contract.Quest, actor string, image []byte, contentType string) discord.SagaNotice {
-	lines := make([]discord.ObjectiveLine, 0, len(q.Objectives))
-	for _, o := range q.Objectives {
-		lines = append(lines, discord.ObjectiveLine{Text: o.Text})
+func (s *Server) announceCompleted(ctx context.Context, questID string, res contract.CompletionResponse, in contract.CompletionRequest, when time.Time) bool {
+	if s.webhooks == nil || !res.Completed || res.AlreadyCompleted {
+		return false
 	}
-	updatedBy := strings.TrimSpace(actor)
-	if updatedBy == "" {
-		updatedBy = displayActor("", "", q.CreatedBy)
+	url, group, ok := s.groupWebhookForQuest(ctx, questID)
+	if !ok {
+		return false
 	}
-	return discord.SagaNotice{
-		Kind:        kind,
+	ev := webhook.Event{
+		Type:       webhook.TypeSagaCompleted,
+		OccurredAt: when,
+		Group:      group,
+		Saga: &webhook.SagaRef{
+			ID:      questID,
+			Title:   res.QuestTitle,
+			Version: res.QuestVersion,
+			Active:  true,
+		},
+		Character: &webhook.CharRef{
+			Name:  res.CharacterName,
+			Race:  strings.TrimSpace(in.Race),
+			Class: strings.TrimSpace(in.Class),
+			Level: in.Level,
+		},
+	}
+	if detail, err := s.store.GetQuest(ctx, questID); err == nil {
+		ev.Saga.Description = detail.Description
+		ev.Saga.Active = detail.Active
+	}
+	return s.webhooks.Enqueue(url, res.ProgressID, ev)
+}
+
+func (s *Server) announceInviteAccepted(ctx context.Context, inv contract.Invite, playerBattleTag string) {
+	if s.webhooks == nil || inv.GroupID == "" {
+		return
+	}
+	url, group, ok := s.groupWebhook(ctx, inv.GroupID)
+	if !ok {
+		return
+	}
+	if group.Name == "" {
+		group.Name = inv.GroupName
+	}
+	s.webhooks.Enqueue(url, inv.ID, webhook.Event{
+		Type:       webhook.TypeInviteAccepted,
+		OccurredAt: time.Now().UTC(),
+		Group:      group,
+		Invite:     &webhook.InviteRef{ID: inv.ID},
+		Character:  &webhook.CharRef{Name: inv.Name, Realm: inv.Realm},
+		Actor:      actorRef(playerBattleTag, displayActor("", "", playerBattleTag)),
+	})
+}
+
+func sagaRef(q contract.Quest) *webhook.SagaRef {
+	return &webhook.SagaRef{
+		ID:          q.ID,
 		Title:       q.Title,
-		Description: q.Description,
-		Objectives:  lines,
-		Ordered:     q.ObjectivesOrdered,
-		CreatedBy:   q.CreatedBy,
-		UpdatedBy:   updatedBy,
 		Version:     q.Version,
-		When:        time.Now().UTC(),
-		Image:       image,
-		ContentType: contentType,
+		Description: q.Description,
+		Active:      q.Active,
 	}
 }
 
-// displayActor picks a short name for Discord lines. Prefer a real display
-// name, then the BattleTag name, then the email local-part.
+func actorRef(battleTag, name string) *webhook.ActorRef {
+	name = strings.TrimSpace(name)
+	battleTag = strings.TrimSpace(battleTag)
+	if name == "" && battleTag == "" {
+		return nil
+	}
+	if name == "" {
+		name = displayActor("", "", battleTag)
+	}
+	return &webhook.ActorRef{Name: name, BattleTag: battleTag}
+}
+
+func (s *Server) groupWebhookForQuest(ctx context.Context, questID string) (url string, group webhook.GroupRef, ok bool) {
+	if s == nil || s.store == nil || questID == "" {
+		return "", webhook.GroupRef{}, false
+	}
+	hook, g, err := s.store.GroupWebhookForQuest(ctx, questID)
+	if err != nil || strings.TrimSpace(hook) == "" {
+		return "", webhook.GroupRef{}, false
+	}
+	return hook, g, true
+}
+
+func (s *Server) groupWebhook(ctx context.Context, groupID string) (url string, group webhook.GroupRef, ok bool) {
+	if s == nil || s.store == nil || groupID == "" {
+		return "", webhook.GroupRef{}, false
+	}
+	hook, g, err := s.store.GroupWebhook(ctx, groupID)
+	if err != nil || strings.TrimSpace(hook) == "" {
+		return "", webhook.GroupRef{}, false
+	}
+	return hook, g, true
+}
+
+// displayActor picks a short name. Prefer a real display name, then BattleTag name.
 func displayActor(displayName, email, battleTag string) string {
 	name := strings.TrimSpace(displayName)
 	if name != "" && !strings.Contains(name, "@") {
@@ -143,24 +186,6 @@ func displayActor(displayName, email, battleTag string) string {
 	return ""
 }
 
-func (s *Server) attachGroupDiscord(ctx context.Context, questID string, webhook, locale *string) {
-	if s == nil || s.store == nil || questID == "" {
-		return
-	}
-	hook, lang, err := s.store.GroupDiscordForQuest(ctx, questID)
-	if err != nil {
-		return
-	}
-	if webhook != nil {
-		*webhook = hook
-	}
-	if locale != nil {
-		*locale = lang
-	}
-}
-
-// announceCreate reports whether a new saga should be posted.
-// An omitted flag announces active sagas. announce:false skips, announce:true posts even a draft.
 func announceCreate(flag *bool, active bool) bool {
 	if flag != nil {
 		return *flag
@@ -168,12 +193,10 @@ func announceCreate(flag *bool, active bool) bool {
 	return active
 }
 
-// announceUpdate reports whether a patch may post a version note or a retirement.
 func announceUpdate(flag *bool) bool {
 	return flag == nil || *flag
 }
 
-// significantQuestChange is a text, goal, level, or party change.
 func significantQuestChange(before, after contract.Quest) bool {
 	return questContentKey(before) != questContentKey(after)
 }

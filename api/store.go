@@ -1454,7 +1454,7 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 	}
 	prows, err := s.pool.Query(ctx, `
 		SELECT p.quest_id::text, p.character_id::text, p.quest_version, p.status,
-			p.completed_at, p.started_at, p.duration_sec, p.discord_url
+			p.completed_at, p.started_at, p.duration_sec
 		FROM progress p
 		JOIN characters c ON c.id = p.character_id
 		WHERE c.player_id=$1
@@ -1468,8 +1468,7 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 		var p contract.Progress
 		var completed, started sql.NullTime
 		var duration sql.NullInt32
-		var discordURL string
-		if err := prows.Scan(&p.QuestID, &p.CharacterID, &p.QuestVersion, &p.Status, &completed, &started, &duration, &discordURL); err != nil {
+		if err := prows.Scan(&p.QuestID, &p.CharacterID, &p.QuestVersion, &p.Status, &completed, &started, &duration); err != nil {
 			return contract.SyncResponse{}, err
 		}
 		if completed.Valid {
@@ -1477,9 +1476,6 @@ func (s *Store) Sync(ctx context.Context, playerID string) (contract.SyncRespons
 		}
 		p.StartedAt = formatNullTime(started)
 		p.DurationSec = durationPtr(duration)
-		if discordURL != "" {
-			p.ScreenshotURL = discordURL
-		}
 		progress = append(progress, p)
 	}
 	if progress == nil {
@@ -1924,8 +1920,8 @@ func creditGroup(ctx context.Context, tx querier, questID string, questVersion i
 	return out, nil
 }
 
-func (s *Store) MarkDiscord(ctx context.Context, progressID, discordURL string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE progress SET discord_posted=true, discord_url=$2 WHERE id=$1`, progressID, discordURL)
+func (s *Store) MarkWebhookPosted(ctx context.Context, progressID string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE progress SET webhook_posted=true WHERE id=$1`, progressID)
 	return err
 }
 
